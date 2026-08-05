@@ -99,10 +99,15 @@ struct MessageBubbleView: View {
                     loadMediaImage: loadTranscriptMediaImage,
                     loadMediaData: loadTranscriptMediaData,
                     onPreviewMedia: onPreviewTranscriptMedia,
-                    isStreaming: isStreaming
+                    isStreaming: isStreaming,
+                    typographyRole: .assistantResponse
                 )
             } else {
-                MarkdownRenderer(content: messageText, isStreaming: isStreaming)
+                MarkdownRenderer(
+                    content: messageText,
+                    isStreaming: isStreaming,
+                    typographyRole: .assistantResponse
+                )
             }
 
             linkPreview

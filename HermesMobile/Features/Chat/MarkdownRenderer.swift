@@ -4,15 +4,30 @@ import OSLog
 import SwiftUI
 import UIKit
 
+enum MarkdownTypographyRole {
+    case standard
+    case assistantResponse
+
+    var usesResponseFontPreference: Bool {
+        self == .assistantResponse
+    }
+}
+
 struct MarkdownRenderer: View {
     let content: String
     let isStreaming: Bool
+    let typographyRole: MarkdownTypographyRole
 
     @Environment(\.colorScheme) private var colorScheme
 
-    init(content: String, isStreaming: Bool = false) {
+    init(
+        content: String,
+        isStreaming: Bool = false,
+        typographyRole: MarkdownTypographyRole = .standard
+    ) {
         self.content = content
         self.isStreaming = isStreaming
+        self.typographyRole = typographyRole
     }
 
     /// Keeps the streaming renderer mounted briefly after streaming ends so
@@ -23,7 +38,10 @@ struct MarkdownRenderer: View {
     var body: some View {
         Group {
             if isStreaming || lingersAfterStreaming {
-                StreamingMarkdownRenderer(content: content)
+                StreamingMarkdownRenderer(
+                    content: content,
+                    typographyRole: typographyRole
+                )
             } else if content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Text(verbatim: " ")
             } else if let fallbackReason = MarkdownContentRenderingPolicy.fallbackReason(for: content) {
@@ -61,7 +79,8 @@ struct MarkdownRenderer: View {
                             ChatMarkdownView(
                                 content: markdown,
                                 colorScheme: colorScheme,
-                                isStreaming: isStreaming
+                                isStreaming: isStreaming,
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference
                             )
                         }
                     case .displayMath(let latex):
@@ -74,7 +93,8 @@ struct MarkdownRenderer: View {
             ChatMarkdownView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: content),
                 colorScheme: colorScheme,
-                isStreaming: isStreaming
+                isStreaming: isStreaming,
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference
             )
             .textSelection(.enabled)
         }
@@ -83,12 +103,14 @@ struct MarkdownRenderer: View {
 
 struct StreamingMarkdownRenderer: View {
     let content: String
+    let typographyRole: MarkdownTypographyRole
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var displayedContent: String
 
-    init(content: String) {
+    init(content: String, typographyRole: MarkdownTypographyRole = .standard) {
         self.content = content
+        self.typographyRole = typographyRole
         _displayedContent = State(initialValue: content)
     }
 
@@ -125,7 +147,8 @@ struct StreamingMarkdownRenderer: View {
                         if !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                             StreamingMarkdownChunkedView(
                                 content: markdown,
-                                colorScheme: colorScheme
+                                colorScheme: colorScheme,
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference
                             )
                         }
                     case .displayMath(let latex):
@@ -136,7 +159,8 @@ struct StreamingMarkdownRenderer: View {
         } else {
             StreamingMarkdownChunkedView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: displayedContent),
-                colorScheme: colorScheme
+                colorScheme: colorScheme,
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference
             )
         }
     }
@@ -146,6 +170,7 @@ struct StreamingMarkdownRenderer: View {
 private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
+    let usesResponseFontPreference: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
@@ -184,7 +209,8 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: chunk.text,
                     colorScheme: colorScheme,
-                    isStreaming: false
+                    isStreaming: false,
+                    usesResponseFontPreference: usesResponseFontPreference
                 )
             }
 
@@ -192,7 +218,8 @@ private struct StreamingMarkdownChunkedView: View {
                 ChatMarkdownView(
                     content: blockSplit.head,
                     colorScheme: colorScheme,
-                    isStreaming: true
+                    isStreaming: true,
+                    usesResponseFontPreference: usesResponseFontPreference
                 )
             }
 
@@ -210,7 +237,8 @@ private struct StreamingMarkdownChunkedView: View {
                                 fadeEnabled: block.fadeEnabled,
                                 armOnAppear: block.ordinal > mountBoundaryCount,
                                 clock: context.date.timeIntervalSinceReferenceDate,
-                                chain: chain
+                                chain: chain,
+                                usesResponseFontPreference: usesResponseFontPreference
                             )
                         }
                     }
@@ -307,6 +335,7 @@ private struct StreamingFadeBlockView: View {
     let fadeEnabled: Bool
     let armOnAppear: Bool
     let clock: TimeInterval
+    let usesResponseFontPreference: Bool
 
     @State private var store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
 
@@ -316,13 +345,15 @@ private struct StreamingFadeBlockView: View {
         fadeEnabled: Bool,
         armOnAppear: Bool,
         clock: TimeInterval,
-        chain: StreamingTextFadeStampChain
+        chain: StreamingTextFadeStampChain,
+        usesResponseFontPreference: Bool
     ) {
         self.text = text
         self.colorScheme = colorScheme
         self.fadeEnabled = fadeEnabled
         self.armOnAppear = armOnAppear
         self.clock = clock
+        self.usesResponseFontPreference = usesResponseFontPreference
         _store = State(initialValue: StreamingTextFadeStampStore(chain: chain))
     }
 
@@ -333,14 +364,16 @@ private struct StreamingFadeBlockView: View {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        usesResponseFontPreference: usesResponseFontPreference
                     )
                     .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
                 } else {
                     ChatMarkdownView(
                         content: text,
                         colorScheme: colorScheme,
-                        isStreaming: true
+                        isStreaming: true,
+                        usesResponseFontPreference: usesResponseFontPreference
                     )
                 }
             }
@@ -360,6 +393,7 @@ private struct ChatMarkdownView: View {
     let content: String
     let colorScheme: ColorScheme
     let isStreaming: Bool
+    let usesResponseFontPreference: Bool
 
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
@@ -376,7 +410,7 @@ private struct ChatMarkdownView: View {
             .markdownTheme(MarkdownUI.Theme.chat(
                 isStreaming: isStreaming,
                 palette: palette,
-                usesTimesSerif: responseFontStyle.usesTimesSerif,
+                usesSerif: usesResponseFontPreference && responseFontStyle.usesSerif,
                 accentColor: HeaderLogoColor.color(for: headerLogoColorHex)
             ))
             .markdownCodeSyntaxHighlighter(.plainText)
@@ -1150,13 +1184,13 @@ private extension MarkdownUI.Theme {
     static func chat(
         isStreaming: Bool,
         palette: ChatPalette,
-        usesTimesSerif: Bool,
+        usesSerif: Bool,
         accentColor: SwiftUI.Color
     ) -> MarkdownUI.Theme {
         MarkdownUI.Theme()
             .text {
-                if usesTimesSerif {
-                    FontFamily(.custom("Times New Roman"))
+                if usesSerif {
+                    FontFamily(.system(.serif))
                 }
                 FontSize(.em(1.0))
                 ForegroundColor(palette.textPrimary)

@@ -168,7 +168,11 @@ struct StreamingLabView: View {
     }
 
     private var transcript: some View {
-        MarkdownRenderer(content: displayedContent, isStreaming: isStreaming)
+        MarkdownRenderer(
+            content: displayedContent,
+            isStreaming: isStreaming,
+            typographyRole: .assistantResponse
+        )
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -216,7 +220,13 @@ struct ChatThemeLabView: View {
             VStack(alignment: .leading, spacing: 18) {
                 appearanceControls
                 MessageBubbleView(message: Self.userMessage)
+                ReasoningBlockView(text: Self.reasoningText)
+                ToolCallCardView(toolCall: Self.toolCall)
                 MessageBubbleView(message: Self.assistantMessage)
+                MarkerMessageCardView(
+                    kind: .contextCompaction,
+                    content: Self.markerText
+                )
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 14)
@@ -235,17 +245,17 @@ struct ChatThemeLabView: View {
             }
             .pickerStyle(.segmented)
 
-            Toggle("Times Serif Responses", isOn: timesSerifBinding)
+            Toggle("Serif Responses", isOn: serifBinding)
                 .font(AppFont.subheadline())
         }
         .padding(12)
         .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    private var timesSerifBinding: Binding<Bool> {
+    private var serifBinding: Binding<Bool> {
         Binding(
-            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesTimesSerif },
-            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.timesSerif : .system).rawValue }
+            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesSerif },
+            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.serif : .system).rawValue }
         )
     }
 
@@ -268,9 +278,13 @@ struct ChatThemeLabView: View {
         content: """
         # Session polish
 
-        The transcript now uses a **warm, low-chrome palette** with more relaxed line spacing and `semantic tokens` throughout.
+        The transcript now uses a **warm, low-chrome palette** with relaxed line spacing and `semantic tokens` throughout. Long-form responses stay comfortable to scan while compact status surfaces remain visually secondary.
+
+        ## Reading rhythm
 
         > Calm surfaces should make the response easier to read without making the interface feel ornamental.
+
+        ### Structure and data
 
         | Element | Treatment |
         | --- | --- |
@@ -293,11 +307,27 @@ struct ChatThemeLabView: View {
         Display math remains supported:
 
         $$E = mc^2$$
+
+        Reference: https://get-hermes.ai
         """,
         timestamp: 1_750_000_020,
         messageId: "chat-theme-lab-assistant",
         turnTps: 42.7
     )
+
+    private static let reasoningText = "Compared the transcript hierarchy, normalized the surfaces, and kept streaming behavior unchanged."
+
+    private static let toolCall = ToolCall(
+        id: "chat-theme-lab-tool",
+        name: "read_file",
+        preview: "Loaded MarkdownRenderer.swift",
+        args: ["path": .string("HermesMobile/Features/Chat/MarkdownRenderer.swift")],
+        duration: 0.8,
+        isCompleted: true,
+        startedAt: 1_750_000_010
+    )
+
+    private static let markerText = "[Context compaction] Earlier transcript context remains available through the session summary."
 }
 
 #Preview {

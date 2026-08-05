@@ -2,6 +2,7 @@ import SwiftUI
 
 private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
 
     let fallbackMaterial: Material
     let cornerRadius: CGFloat
@@ -9,7 +10,7 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background(
-                Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.28 : 0.48),
+                palette.surface.opacity(colorScheme == .dark ? 0.52 : 0.72),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .adaptiveGlass(
@@ -20,17 +21,33 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue)
+        )
+    }
 }
 
 private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
 
     private var backgroundColor: Color {
         if reduceTransparency {
-            return Color(.secondarySystemGroupedBackground)
+            return palette.surfaceInset
         }
 
-        return Color(.secondarySystemFill).opacity(0.72)
+        return palette.surfaceInset.opacity(0.72)
+    }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue)
+        )
     }
 
     func body(content: Content) -> some View {

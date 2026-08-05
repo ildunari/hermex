@@ -136,7 +136,7 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         )
     }
 
-    func testTimesSerifDefaultsOffAndRoundTripsOn() throws {
+    func testSerifDefaultsOffAndRoundTripsOn() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
 
         XCTAssertEqual(ResponseFontStyle.storageKey, "chatTranscript.responseFontStyle")
@@ -144,12 +144,21 @@ final class ChatAppearanceSettingsTests: XCTestCase {
             ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)),
             .system
         )
-        XCTAssertFalse(ResponseFontStyle.defaultValue.usesTimesSerif)
+        XCTAssertFalse(ResponseFontStyle.defaultValue.usesSerif)
 
-        defaults.set(ResponseFontStyle.timesSerif.rawValue, forKey: ResponseFontStyle.storageKey)
+        defaults.set(ResponseFontStyle.serif.rawValue, forKey: ResponseFontStyle.storageKey)
         XCTAssertTrue(
-            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)).usesTimesSerif
+            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)).usesSerif
         )
+    }
+
+    func testLegacyTimesSerifValueMigratesToSerif() {
+        XCTAssertEqual(ResponseFontStyle.storedValue("timesSerif"), .serif)
+    }
+
+    func testResponseFontPreferenceIsAssistantScoped() {
+        XCTAssertFalse(MarkdownTypographyRole.standard.usesResponseFontPreference)
+        XCTAssertTrue(MarkdownTypographyRole.assistantResponse.usesResponseFontPreference)
     }
 }
 

@@ -148,12 +148,12 @@ struct SettingsView: View {
                     SettingsDivider()
 
                     SettingsToggleRow(
-                        title: String(localized: "Times Serif Responses"),
+                        title: String(localized: "Serif Responses"),
                         systemImage: "textformat",
-                        isOn: timesSerifResponsesBinding
+                        isOn: serifResponsesBinding
                     )
 
-                    SettingsFootnote(String(localized: "Uses Times New Roman for assistant prose. System font remains the default."))
+                    SettingsFootnote(String(localized: "Uses Apple’s New York serif for assistant prose. System font remains the default."))
 
                     SettingsDivider()
 
@@ -872,10 +872,10 @@ struct SettingsView: View {
         )
     }
 
-    private var timesSerifResponsesBinding: Binding<Bool> {
+    private var serifResponsesBinding: Binding<Bool> {
         Binding(
-            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesTimesSerif },
-            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.timesSerif : .system).rawValue }
+            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesSerif },
+            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.serif : .system).rawValue }
         )
     }
 

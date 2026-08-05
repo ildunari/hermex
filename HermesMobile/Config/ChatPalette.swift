@@ -25,17 +25,22 @@ enum ChatBackgroundStyle: String, CaseIterable, Identifiable {
 
 enum ResponseFontStyle: String, CaseIterable, Identifiable {
     case system
-    case timesSerif
+    case serif
 
     static let storageKey = "chatTranscript.responseFontStyle"
     static let defaultValue = ResponseFontStyle.system
 
     var id: String { rawValue }
 
-    var usesTimesSerif: Bool { self == .timesSerif }
+    var usesSerif: Bool { self == .serif }
 
     static func storedValue(_ rawValue: String?) -> ResponseFontStyle {
-        rawValue.flatMap(ResponseFontStyle.init(rawValue:)) ?? defaultValue
+        // Preserve the short-lived pre-release value from the first theme
+        // checkpoint while moving the UI to the more refined New York face.
+        if rawValue == "timesSerif" {
+            return .serif
+        }
+        return rawValue.flatMap(ResponseFontStyle.init(rawValue:)) ?? defaultValue
     }
 }
 

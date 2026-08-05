@@ -19,6 +19,7 @@ struct TranscriptMediaContentView: View {
     let loadMediaData: ((TranscriptMediaReference) async -> Data?)?
     let onPreviewMedia: ((TranscriptMediaReference) -> Void)?
     let isStreaming: Bool
+    let typographyRole: MarkdownTypographyRole
 
     init(
         segments: [TranscriptMediaSegment],
@@ -26,7 +27,8 @@ struct TranscriptMediaContentView: View {
         loadMediaImage: ((TranscriptMediaReference) async -> Data?)?,
         loadMediaData: ((TranscriptMediaReference) async -> Data?)?,
         onPreviewMedia: ((TranscriptMediaReference) -> Void)?,
-        isStreaming: Bool = false
+        isStreaming: Bool = false,
+        typographyRole: MarkdownTypographyRole = .standard
     ) {
         self.segments = segments
         self.cacheNamespace = cacheNamespace
@@ -34,6 +36,7 @@ struct TranscriptMediaContentView: View {
         self.loadMediaData = loadMediaData
         self.onPreviewMedia = onPreviewMedia
         self.isStreaming = isStreaming
+        self.typographyRole = typographyRole
     }
 
     var body: some View {
@@ -42,7 +45,11 @@ struct TranscriptMediaContentView: View {
                 switch segment {
                 case let .text(text):
                     if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        MarkdownRenderer(content: text, isStreaming: isStreaming)
+                        MarkdownRenderer(
+                            content: text,
+                            isStreaming: isStreaming,
+                            typographyRole: typographyRole
+                        )
                     }
                 case let .media(reference):
                     TranscriptMediaThumbnailView(
