@@ -3232,7 +3232,9 @@ final class ChatViewModel {
             contentParts: existing.contentParts,
             reasoning: existing.reasoning,
             attachments: existing.attachments,
-            turnTps: existing.turnTps
+            turnTps: existing.turnTps,
+            phase: existing.phase,
+            codexMessageItems: existing.codexMessageItems
         )
         scheduleStreamingScrollTrigger()
     }
@@ -3925,47 +3927,49 @@ final class ChatViewModel {
 
     @discardableResult
     private func appendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool {
-        guard payload.alreadyStreamed != true else { return false }
-
         let text = payload.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !text.isEmpty else { return false }
 
         flushPendingStreamingContent()
-
-        if let streamingAssistantMessageID,
-           let index = messages.firstIndex(where: { $0.messageId == streamingAssistantMessageID }) {
-            let existing = messages[index]
-            let currentContent = existing.content ?? ""
-            let textToAppend = deduplicatedReplayText(
-                text,
-                existingContent: currentContent,
-                matchedPrefixLength: &activeStreamReplayMatchedInterimLength
-            )
-            guard !textToAppend.isEmpty else { return false }
-
-            let shouldAppendReplaySuffixDirectly = isActiveStreamReplayConnection && textToAppend != text
-            let shouldUseSeparator = currentContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
-                && !shouldAppendReplaySuffixDirectly
-            let separator = shouldUseSeparator ? "\n\n" : ""
-            messages[index] = ChatMessage(
-                role: existing.role,
-                content: currentContent + separator + textToAppend,
-                timestamp: existing.timestamp,
-                messageId: existing.messageId,
-                name: existing.name,
-                toolCallId: existing.toolCallId,
-                toolUseId: existing.toolUseId,
-                toolCalls: existing.toolCalls,
-                contentParts: existing.contentParts,
-                reasoning: existing.reasoning,
-                attachments: existing.attachments,
-                turnTps: existing.turnTps
-            )
-            scheduleStreamingScrollTrigger()
-            return true
+        let messageID = ensureStreamingAssistantMessage()
+        if payload.alreadyStreamed == true {
+            removeAlreadyStreamedInterimText(text, fromMessageID: messageID)
+        }
+        if reasoningAnchorMessageID == nil {
+            reasoningAnchorMessageID = messageID
         }
 
-        return appendAssistantToken(text)
+        let textToAppend = deduplicatedReplayText(
+            text,
+            existingContent: liveReasoningText,
+            matchedPrefixLength: &activeStreamReplayMatchedInterimLength
+        )
+        guard !textToAppend.isEmpty else { return false }
+
+        let separator = liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? ""
+            : "\n\n"
+        liveReasoningText += separator + textToAppend
+        scheduleStreamingScrollTrigger()
+        return true
+    }
+
+    private func removeAlreadyStreamedInterimText(_ text: String, fromMessageID messageID: String) {
+        guard let index = messages.firstIndex(where: { $0.messageId == messageID }) else { return }
+
+        let existing = messages[index]
+        let currentContent = existing.content ?? ""
+        let updatedContent: String
+        if currentContent.trimmingCharacters(in: .whitespacesAndNewlines) == text {
+            updatedContent = ""
+        } else if let range = currentContent.range(of: text, options: [.backwards, .anchored]) {
+            updatedContent = String(currentContent[..<range.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        } else {
+            return
+        }
+
+        messages[index] = existing.replacingContentForTranscript(updatedContent)
     }
 
     private func applyCompletedStreamSession(_ completedSession: SessionDetail) {
@@ -4051,10 +4055,24 @@ final class ChatViewModel {
     }
 
     private func setCompletedToolCallGroups(_ groups: [ToolCallGroup]) {
-        let lookup = ToolCallGroupAnchorLookup(groups: groups)
-        guard completedToolCallGroups != groups else { return }
+        let reanchoredGroups = groups.map { group in
+            guard let anchorMessageID = group.anchorMessageID else { return group }
+            let displayAnchorID = TranscriptTurnClassifier.displayAnchorID(
+                forAssistantAnchorID: anchorMessageID,
+                in: messages,
+                messageOffset: messagesOffset
+            )
+            guard displayAnchorID != anchorMessageID else { return group }
+            return ToolCallGroup(
+                id: group.id,
+                anchorMessageID: displayAnchorID,
+                toolCalls: group.toolCalls
+            )
+        }
+        let lookup = ToolCallGroupAnchorLookup(groups: reanchoredGroups)
+        guard completedToolCallGroups != reanchoredGroups else { return }
 
-        completedToolCallGroups = groups
+        completedToolCallGroups = reanchoredGroups
         completedToolCallGroupLookup = lookup
     }
 
@@ -4337,7 +4355,9 @@ final class ChatViewModel {
                 contentParts: existing.contentParts,
                 reasoning: existing.reasoning,
                 attachments: existing.attachments,
-                turnTps: existing.turnTps
+                turnTps: existing.turnTps,
+                phase: existing.phase,
+                codexMessageItems: existing.codexMessageItems
             )
             return true
         }
@@ -5056,7 +5076,9 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
                 contentParts: message.contentParts,
                 reasoning: message.reasoning,
                 attachments: message.attachments,
-                turnTps: finalTokensPerSecond
+                turnTps: finalTokensPerSecond,
+                phase: message.phase,
+                codexMessageItems: message.codexMessageItems
             )
         }
         return hasCompletedTranscript
@@ -5236,6 +5258,10 @@ extension ChatViewModel {
             messages,
             messageOffset: messageOffset
         )
+        let displayAnchorIDsByAnchorID = TranscriptTurnClassifier.assistantDisplayAnchorIDsByAnchorID(
+            messages,
+            messageOffset: messageOffset
+        )
         let assistantMessagesByID = messages.enumerated().reduce(into: [String: ChatMessage]()) { result, entry in
             let message = entry.element
             guard message.role == "assistant" else { return }
@@ -5263,6 +5289,20 @@ extension ChatViewModel {
                 messageOffset: messageOffset
             )
             let turnKey = turnKeysByMessageID[anchorID] ?? "message:\(anchorID)"
+            for text in TranscriptTurnClassifier.progressTexts(
+                for: message,
+                anchorID: anchorID,
+                displayAnchorIDsByAnchorID: displayAnchorIDsByAnchorID
+            ) {
+                appendReasoningCandidate(
+                    text: text,
+                    anchorMessageID: anchorID,
+                    turnKey: turnKey,
+                    visibleText: nil,
+                    order: &order,
+                    candidates: &candidates
+                )
+            }
             for text in reasoningTexts(from: message) {
                 appendReasoningCandidate(
                     text: text,
@@ -5275,19 +5315,32 @@ extension ChatViewModel {
             }
         }
 
-        var latestCandidateIndexByKey: [String: Int] = [:]
-        for (index, candidate) in candidates.enumerated() {
-            latestCandidateIndexByKey["\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"] = index
+        var turnOrder: [String] = []
+        var textsByTurn: [String: [String]] = [:]
+        var anchorByTurn: [String: String?] = [:]
+        var seenKeys: Set<String> = []
+
+        for candidate in candidates {
+            let normalizedKey = normalizedReasoningKey(candidate.text)
+            let candidateKey = "\(candidate.turnKey)::\(normalizedKey)"
+            guard seenKeys.insert(candidateKey).inserted else { continue }
+
+            if textsByTurn[candidate.turnKey] == nil {
+                turnOrder.append(candidate.turnKey)
+            }
+            textsByTurn[candidate.turnKey, default: []].append(candidate.text)
+            anchorByTurn[candidate.turnKey] = candidate.anchorMessageID.map {
+                displayAnchorIDsByAnchorID[$0] ?? $0
+            }
         }
 
-        return candidates.enumerated().compactMap { index, candidate in
-            let key = "\(candidate.turnKey)::\(normalizedReasoningKey(candidate.text))"
-            guard latestCandidateIndexByKey[key] == index else { return nil }
-
+        return turnOrder.compactMap { turnKey in
+            guard let texts = textsByTurn[turnKey], !texts.isEmpty else { return nil }
+            let anchor = anchorByTurn[turnKey] ?? nil
             return ReasoningGroup(
-                id: "reasoning-\(candidate.anchorMessageID ?? "unanchored")-\(candidate.order)",
-                anchorMessageID: candidate.anchorMessageID,
-                text: candidate.text
+                id: "reasoning-turn-\(anchor ?? turnKey)",
+                anchorMessageID: anchor,
+                text: texts.joined(separator: "\n\n")
             )
         }
     }
@@ -5302,6 +5355,10 @@ extension ChatViewModel {
         hidingStreamingAssistantID streamingAssistantID: String?
     ) -> [TranscriptMessage] {
         let offset = max(0, messageOffset ?? 0)
+        let displayAnchorIDsByAnchorID = TranscriptTurnClassifier.assistantDisplayAnchorIDsByAnchorID(
+            messages,
+            messageOffset: messageOffset
+        )
         var transcriptMessages: [TranscriptMessage] = []
         transcriptMessages.reserveCapacity(messages.count)
 
@@ -5317,14 +5374,25 @@ extension ChatViewModel {
                 at: loadedIndex,
                 messageOffset: messageOffset
             )
+            if message.role == "assistant",
+               ChatMarkerMessageClassifier.classify(message) == nil,
+               displayAnchorIDsByAnchorID[anchorID] != anchorID {
+                continue
+            }
             let absoluteIndex = offset + loadedIndex
             let renderID = "transcript:\(absoluteIndex)"
+            let displayMessage: ChatMessage
+            if message.role == "assistant", let finalText = message.codexFinalAnswerText {
+                displayMessage = message.replacingContentForTranscript(finalText)
+            } else {
+                displayMessage = message
+            }
 
             transcriptMessages.append(TranscriptMessage(
                 loadedIndex: loadedIndex,
                 renderID: renderID,
                 anchorID: anchorID,
-                message: message
+                message: displayMessage
             ))
         }
 
