@@ -218,7 +218,9 @@ struct ChatThemeLabView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                appearanceControls
+                if !isCaptureMode {
+                    appearanceControls
+                }
                 MessageBubbleView(message: Self.userMessage)
                 ReasoningBlockView(text: Self.reasoningText)
                 ToolCallCardView(toolCall: Self.toolCall)
@@ -234,6 +236,10 @@ struct ChatThemeLabView: View {
         .background(palette.chatBackground)
         .navigationTitle("Chat Theme Lab")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var isCaptureMode: Bool {
+        ProcessInfo.processInfo.arguments.contains("--chat-theme-lab-capture")
     }
 
     private var appearanceControls: some View {
@@ -280,11 +286,27 @@ struct ChatThemeLabView: View {
 
         The transcript now uses a **warm, low-chrome palette** with relaxed line spacing and `semantic tokens` throughout. Long-form responses stay comfortable to scan while compact status surfaces remain visually secondary.
 
+        This specimen includes **strong emphasis**, *italic emphasis*, ~~strikethrough~~, `inline code`, and an [accent-colored link](https://get-hermes.ai/api-docs/) in running prose.
+
         ## Reading rhythm
 
         > Calm surfaces should make the response easier to read without making the interface feel ornamental.
 
-        ### Structure and data
+        ### Lists and hierarchy
+
+        - A compact unordered item
+          - A nested item that still wraps naturally
+        - A second item with **bold context**
+        - [x] Completed transcript polish
+        - [ ] Final design approval
+
+        1. Inspect the rendered hierarchy
+           1. Keep nested numbering readable
+        2. Compare the same content across themes
+
+        ---
+
+        #### Table and data
 
         | Element | Treatment |
         | --- | --- |
@@ -293,6 +315,8 @@ struct ChatThemeLabView: View {
         | Cards | Strokeless surfaces |
         | Radius | 10 / 14 / 20 |
 
+        ##### Swift example
+
         ```swift
         let palette = ChatPalette(
             colorScheme: colorScheme,
@@ -300,11 +324,13 @@ struct ChatThemeLabView: View {
         )
         ```
 
+        ###### Python example
+
         ```python
         result = {"status": "ready", "tests": "green"}
         ```
 
-        Display math remains supported:
+        Display math remains supported alongside inline math such as $a^2 + b^2 = c^2$:
 
         $$E = mc^2$$
 
