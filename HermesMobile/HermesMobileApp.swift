@@ -54,6 +54,11 @@ struct HermesMobileApp: App {
                     ChatThemeLabView()
                 }
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+            } else if ProcessInfo.processInfo.arguments.contains("--surface-gallery") {
+                NavigationStack {
+                    SurfaceGalleryView()
+                }
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
             } else if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
                 NavigationStack {
                     StreamingLabView()
