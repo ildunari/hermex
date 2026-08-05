@@ -12,6 +12,45 @@ struct SurfaceGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
+                if page == nil || page == 1 {
+                section("Assistant markdown") {
+                    MarkdownRenderer(
+                        content: Self.markdownSpecimen,
+                        typographyRole: .assistantResponse
+                    )
+                }
+                }
+
+                if page == nil || page == 2 {
+                section("Transcript cards") {
+                    MessageBubbleView(message: Self.userMessage)
+                    ReasoningBlockView(text: Self.reasoningText)
+                    ToolCallCardView(toolCall: Self.toolCall)
+                    MarkerMessageCardView(
+                        kind: .contextCompaction,
+                        content: Self.markerText
+                    )
+                }
+
+                section("Status pills") {
+                    HStack(spacing: 10) {
+                        TranscriptStatusPill(text: "Running", color: .secondary)
+                        TranscriptStatusPill(text: "Failed", color: .red)
+                        TranscriptStatusPill(text: "Completed", color: .green)
+                    }
+                }
+
+                section("Voice recording bar") {
+                    ComposerVoiceRecordingBar(
+                        elapsed: 12,
+                        isCancelArmed: false,
+                        onStop: {},
+                        onCancel: {}
+                    )
+                }
+                }
+
+                if page == nil || page == 3 {
                 section("Settings card") {
                     galleryCard(title: "Appearance") {
                         galleryRow(icon: "circle.lefthalf.filled", title: "Theme", value: "System")
@@ -69,6 +108,7 @@ struct SurfaceGalleryView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .appSurfaceBackground(.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
+                }
             }
             .padding(16)
         }
@@ -78,6 +118,19 @@ struct SurfaceGalleryView: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
+
+    /// Optional page filter so every comparison panel is framed identically
+    /// instead of depending on scroll position.
+    private var page: Int? {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--surface-gallery-page"),
+              index + 1 < arguments.count,
+              let value = Int(arguments[index + 1])
+        else {
+            return nil
+        }
+        return value
+    }
 
     private var galleryPalette: ChatPalette {
         ChatPalette.appChrome(colorScheme: colorScheme)
@@ -219,5 +272,69 @@ struct SurfaceGalleryView: View {
             .padding(.vertical, 6)
             .appSurfaceBackground(.inset, opacity: 0.5, in: Capsule())
     }
+
+    // MARK: - Fixtures
+
+    private static let markdownSpecimen = """
+    # Heading one
+
+    Running prose with **bold**, *italic*, ~~strikethrough~~, `inline code`, and an \
+    [accent link](https://get-hermes.ai) so every inline style is visible at once.
+
+    ## Heading two
+
+    > A blockquote showing the accent bar and secondary text treatment.
+
+    ### Heading three
+
+    - Unordered item
+      - Nested item that wraps
+    - [x] Completed task
+    - [ ] Open task
+
+    1. Ordered item
+       1. Nested ordered item
+    2. Second ordered item
+
+    ---
+
+    | Element | Treatment |
+    | --- | --- |
+    | Prose | Dynamic body type |
+    | Code | Warm inset slab |
+    | Rule | Hairline |
+
+    ```swift
+    let palette = ChatPalette(
+        colorScheme: colorScheme,
+        temperature: .warm
+    )
+    ```
+
+    Inline math $a^2 + b^2 = c^2$ and display math:
+
+    $$E = mc^2$$
+    """
+
+    private static let userMessage = ChatMessage(
+        role: "user",
+        content: "Show me every surface in one pass.",
+        timestamp: 1_750_000_000,
+        messageId: "surface-gallery-user"
+    )
+
+    private static let reasoningText = "Checked each surface against the palette tokens and confirmed the roles resolve consistently."
+
+    private static let toolCall = ToolCall(
+        id: "surface-gallery-tool",
+        name: "read_file",
+        preview: "Loaded ChatPalette.swift",
+        args: ["path": .string("HermesMobile/Config/ChatPalette.swift")],
+        duration: 0.6,
+        isCompleted: true,
+        startedAt: 1_750_000_010
+    )
+
+    private static let markerText = "[Context compaction] Earlier transcript context remains available through the session summary."
 }
 #endif
