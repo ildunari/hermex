@@ -388,6 +388,7 @@ private struct TranscriptMediaFileExportView: View {
     let reference: TranscriptMediaReference
     let loadMediaData: () async -> Data?
 
+    @Environment(\.colorScheme) private var colorScheme
     @State private var cachedData: Data?
     @State private var exportDocument = ExportedFileDocument(data: Data())
     @State private var exportContentType = UTType.data
@@ -442,7 +443,7 @@ private struct TranscriptMediaFileExportView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
         .fileExporter(
@@ -507,10 +508,12 @@ private struct TranscriptMediaFileExportView: View {
 private struct TranscriptMediaVideoTile: View {
     let reference: TranscriptMediaReference
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
                 .frame(width: 210, height: 132)
 
             VStack(spacing: 8) {
@@ -537,6 +540,8 @@ private struct TranscriptMediaVideoTile: View {
 private struct TranscriptMediaUnavailableChip: View {
     let reference: TranscriptMediaReference
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: iconName)
@@ -559,7 +564,7 @@ private struct TranscriptMediaUnavailableChip: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
-        .background(Color(.secondarySystemBackground))
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))
@@ -630,6 +635,7 @@ struct TranscriptMediaImageCacheKey: Hashable {
 struct TranscriptMediaPreviewView: View {
     let onAPIError: (Error) -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     private let item: TranscriptMediaPreviewItem
     @State private var viewModel: TranscriptMediaPreviewViewModel
     @State private var exportDocument = ExportedFileDocument(data: Data())
@@ -786,7 +792,7 @@ struct TranscriptMediaPreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground)
     }
 
     private func audioContent(_ data: Data) -> some View {
@@ -800,7 +806,7 @@ struct TranscriptMediaPreviewView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(.systemBackground))
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground)
     }
 
     private func videoContent(_ url: URL) -> some View {
@@ -814,7 +820,7 @@ struct TranscriptMediaPreviewView: View {
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(.systemBackground))
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground)
     }
 
     private func unavailableContent(_ message: String) -> some View {

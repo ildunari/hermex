@@ -8,6 +8,8 @@ private struct ComposerStatusView: View {
     let isDismissible: Bool
     let onDismiss: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         HStack(alignment: .top, spacing: 8) {
             Text(text)
@@ -33,10 +35,15 @@ private struct ComposerStatusView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(backgroundColor)
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(borderColor, lineWidth: 0.5)
-        )
+        .overlay {
+            // The error state keeps a definition stroke so it reads as an alert
+            // on same-color ground; the neutral state is strokeless like the
+            // rest of the transcript chrome.
+            if isError {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.red.opacity(0.25), lineWidth: 0.5)
+            }
+        }
         .padding(.horizontal, 16)
     }
 
@@ -45,11 +52,9 @@ private struct ComposerStatusView: View {
     }
 
     private var backgroundColor: Color {
-        isError ? Color.red.opacity(0.08) : Color(.secondarySystemBackground)
-    }
-
-    private var borderColor: Color {
-        isError ? Color.red.opacity(0.25) : Color(.separator).opacity(0.25)
+        isError
+            ? Color.red.opacity(0.08)
+            : ChatPalette.appChrome(colorScheme: colorScheme).surface
     }
 }
 

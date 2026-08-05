@@ -263,6 +263,7 @@ struct ChatView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -573,6 +574,13 @@ struct ChatView: View {
         }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // Carry the transcript canvas into the navigation bar so the chat
+        // surface reads as one continuous material instead of warm content
+        // framed by cool system chrome.
+        .toolbarBackground(
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground,
+            for: .navigationBar
+        )
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .task(id: didCompleteInitialAppearance) {
             await handleInitialAppearanceTask()

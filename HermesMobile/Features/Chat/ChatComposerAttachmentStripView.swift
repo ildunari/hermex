@@ -40,6 +40,7 @@ private struct ComposerAttachmentThumbnailView: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -53,7 +54,7 @@ private struct ComposerAttachmentThumbnailView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 11, weight: .bold))
                     .frame(width: 24, height: 24)
-                    .background(Circle().fill(Color(.systemBackground)))
+                    .background(Circle().fill(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground))
                     .foregroundStyle(Color(.label))
             }
             .buttonStyle(.chatTactile(
@@ -143,7 +144,7 @@ private struct ComposerAttachmentThumbnailView: View {
         .frame(minHeight: usesAccessibilityLayout ? 112 : 92)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")

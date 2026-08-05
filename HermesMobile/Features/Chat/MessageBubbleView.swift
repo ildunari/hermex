@@ -8,6 +8,7 @@ struct MessageBubbleView: View {
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
     @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
@@ -382,7 +383,8 @@ struct MessageBubbleView: View {
     private var chatPalette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue)
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
 
@@ -425,6 +427,8 @@ private struct GridAttachmentCell: View {
     let loadAttachmentImage: ((String) async -> Data?)?
     let onPreviewAttachment: ((MessageAttachment, Data?) -> Void)?
     let size: CGFloat
+
+    @Environment(\.colorScheme) private var colorScheme
 
     private var resolvedPath: String? {
         // The server saves uploads to the workspace root. Use the explicit
@@ -499,7 +503,7 @@ private struct GridAttachmentCell: View {
     private var fileCell: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
 
             VStack(spacing: 5) {
                 Image(systemName: fileIconName)

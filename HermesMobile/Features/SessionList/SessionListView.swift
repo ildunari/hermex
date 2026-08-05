@@ -480,7 +480,9 @@ struct SessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
-        .background(Color(.systemBackground))
+        // Shares the transcript canvas so the app reads as one warm material
+        // from the session list through the chat surface.
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground)
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
