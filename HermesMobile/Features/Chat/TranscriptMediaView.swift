@@ -170,10 +170,6 @@ private struct TranscriptMediaThumbnailView: View {
                 .frame(width: thumbnailWidth, height: thumbnailHeight)
                 .clipped()
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-                )
         } else if didAttemptLoad {
             if reference.isExtensionlessRemoteMediaCandidate {
                 TranscriptMediaVideoTile(reference: reference)
@@ -260,10 +256,6 @@ private struct TranscriptMediaResolvedRemoteView: View {
             .frame(width: 210, height: 132)
             .clipped()
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-            )
     }
 
     private static func resolve(_ data: Data) -> ResolvedMedia {
@@ -444,11 +436,7 @@ private struct TranscriptMediaFileExportView: View {
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
         .fileExporter(
             isPresented: $isFileExporterPresented,
@@ -517,10 +505,6 @@ private struct TranscriptMediaVideoTile: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
                 .frame(width: 210, height: 132)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-                )
 
             VStack(spacing: 8) {
                 Image(systemName: "play.rectangle.fill")
@@ -569,11 +553,7 @@ private struct TranscriptMediaUnavailableChip: View {
         .padding(.vertical, 8)
         .frame(maxWidth: 240, alignment: .leading)
         .background(Color(.secondarySystemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Media unavailable \(reference.displayName)"))
     }
@@ -824,10 +804,6 @@ struct TranscriptMediaPreviewView: View {
                 .frame(maxWidth: .infinity)
                 .aspectRatio(16 / 9, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .stroke(Color(.separator).opacity(0.35), lineWidth: 0.5)
-                )
         }
         .padding()
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

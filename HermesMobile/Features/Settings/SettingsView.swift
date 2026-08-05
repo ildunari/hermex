@@ -58,6 +58,8 @@ struct SettingsView: View {
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
@@ -128,6 +130,30 @@ struct SettingsView: View {
                             Text(theme.title).tag(theme.rawValue)
                         }
                     }
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Dark Chat Background"),
+                        systemImage: "moon.stars",
+                        selection: $chatBackgroundStyleRawValue
+                    ) {
+                        ForEach(ChatBackgroundStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Warm is the default. Black uses a pure-black chat canvas in dark mode only."))
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Times Serif Responses"),
+                        systemImage: "textformat",
+                        isOn: timesSerifResponsesBinding
+                    )
+
+                    SettingsFootnote(String(localized: "Uses Times New Roman for assistant prose. System font remains the default."))
 
                     SettingsDivider()
 
@@ -843,6 +869,13 @@ struct SettingsView: View {
                     headerLogoColorHex = hex
                 }
             }
+        )
+    }
+
+    private var timesSerifResponsesBinding: Binding<Bool> {
+        Binding(
+            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesTimesSerif },
+            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.timesSerif : .system).rawValue }
         )
     }
 

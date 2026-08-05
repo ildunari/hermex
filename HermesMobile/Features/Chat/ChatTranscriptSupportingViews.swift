@@ -569,7 +569,7 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
             .padding(.vertical, 10)
             .background(Color(.secondarySystemFill))
             .foregroundStyle(.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .redacted(reason: .placeholder)
         .accessibilityHidden(true)

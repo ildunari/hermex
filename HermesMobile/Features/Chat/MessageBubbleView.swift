@@ -7,6 +7,7 @@ struct MessageBubbleView: View {
     @AppStorage(ChatTranscriptDisplaySettings.hidesAttachmentPathsKey) private var hidesAttachmentPaths = true
     @AppStorage(ChatTranscriptDisplaySettings.showsAssistantTurnTimestampsKey) private var showsAssistantTurnTimestamps = false
     @AppStorage(ChatTranscriptDisplaySettings.showsResponseSpeedKey) private var showsResponseSpeed = false
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
 
     let message: ChatMessage
     let loadAttachmentImage: ((String) async -> Data?)?
@@ -213,11 +214,7 @@ struct MessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
-        )
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.vertical, 4)
     }
 
@@ -229,10 +226,6 @@ struct MessageBubbleView: View {
             .padding(.vertical, 8)
             .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             .foregroundStyle(userBubbleForeground)
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(userBubbleBorder, lineWidth: 0.5)
-            )
     }
 
     @ViewBuilder
@@ -374,17 +367,18 @@ struct MessageBubbleView: View {
     }
 
     private var userBubbleBackground: Color {
-        colorScheme == .dark ? Color(.systemGray3) : Color(.systemGray6)
+        chatPalette.userBubble
     }
 
     private var userBubbleForeground: Color {
-        Color(.label)
+        chatPalette.textPrimary
     }
 
-    private var userBubbleBorder: Color {
-        colorScheme == .dark
-            ? Color.white.opacity(0.08)
-            : Color.black.opacity(0.04)
+    private var chatPalette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue)
+        )
     }
 
     private var messageText: String {
@@ -493,17 +487,13 @@ private struct GridAttachmentCell: View {
         }
         .frame(width: size, height: size)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
-        )
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Image attachment \(attachmentAccessibilityName)")
     }
 
     private var fileCell: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
 
             VStack(spacing: 5) {
@@ -526,16 +516,13 @@ private struct GridAttachmentCell: View {
             }
         }
         .frame(width: size, height: size)
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
-        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(fileDisplayName), \(fileExtensionLabel)")
     }
 
     private var fallbackImage: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(Color(.systemFill))
             .overlay(
                 Image(systemName: "photo")
@@ -545,7 +532,7 @@ private struct GridAttachmentCell: View {
     }
 
     private var placeholderImage: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(Color(.systemFill))
             .overlay(
                 ProgressView()
@@ -643,7 +630,7 @@ private struct RemoteAttachmentImage: View {
     }
 
     private var fallbackImage: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(Color(.systemFill))
             .overlay(
                 Image(systemName: "photo")
@@ -653,7 +640,7 @@ private struct RemoteAttachmentImage: View {
     }
 
     private var placeholderImage: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
+        RoundedRectangle(cornerRadius: 14, style: .continuous)
             .fill(Color(.systemFill))
             .overlay(
                 ProgressView()

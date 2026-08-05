@@ -112,6 +112,47 @@ final class PrimaryActionTintSettingsTests: XCTestCase {
     }
 }
 
+final class ChatAppearanceSettingsTests: XCTestCase {
+    private let suiteName = "ChatAppearanceSettingsTests"
+
+    override func tearDown() {
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    func testChatBackgroundDefaultsToWarmAndRoundTripsBlack() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ChatBackgroundStyle.storageKey, "appearance.chatBackgroundStyle")
+        XCTAssertEqual(
+            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
+            .warm
+        )
+
+        defaults.set(ChatBackgroundStyle.black.rawValue, forKey: ChatBackgroundStyle.storageKey)
+        XCTAssertEqual(
+            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
+            .black
+        )
+    }
+
+    func testTimesSerifDefaultsOffAndRoundTripsOn() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ResponseFontStyle.storageKey, "chatTranscript.responseFontStyle")
+        XCTAssertEqual(
+            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)),
+            .system
+        )
+        XCTAssertFalse(ResponseFontStyle.defaultValue.usesTimesSerif)
+
+        defaults.set(ResponseFontStyle.timesSerif.rawValue, forKey: ResponseFontStyle.storageKey)
+        XCTAssertTrue(
+            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)).usesTimesSerif
+        )
+    }
+}
+
 final class ChatLayoutDirectionSettingsTests: XCTestCase {
     func testRTLChatLayoutKeyIsStable() {
         XCTAssertEqual(

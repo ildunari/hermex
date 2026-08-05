@@ -4,6 +4,8 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
 
     let isLoading: Bool
     let errorMessage: String?
@@ -79,32 +81,35 @@ struct ChatTranscriptView: View {
     var onOpenTurnFileDiff: (GitFile) -> Void = { _ in }
 
     var body: some View {
-        if isLoading && messages.isEmpty && clarificationPrompt == nil {
-            ChatTranscriptLoadingSkeletonView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
-            ContentUnavailableView {
-                Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await onLoadMessages() }
+        Group {
+            if isLoading && messages.isEmpty && clarificationPrompt == nil {
+                ChatTranscriptLoadingSkeletonView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await onLoadMessages() }
+                    }
                 }
+            } else if messages.isEmpty && clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                } description: {
+                    Text("Send a message to start the conversation.")
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismissKeyboard()
+                }
+            } else {
+                transcriptScrollView
             }
-        } else if messages.isEmpty && clarificationPrompt == nil {
-            ContentUnavailableView {
-                Image(systemName: "bubble.left.and.bubble.right")
-            } description: {
-                Text("Send a message to start the conversation.")
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onDismissKeyboard()
-            }
-        } else {
-            transcriptScrollView
         }
+        .background(chatPalette.chatBackground)
     }
 
     private var transcriptScrollView: some View {
@@ -164,7 +169,7 @@ struct ChatTranscriptView: View {
                     }
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
-                .background(Color(.systemBackground))
+                .background(chatPalette.chatBackground)
                 .onChange(of: messages.count) {
                     guard shouldFollowLatestMessage else { return }
 
@@ -301,6 +306,13 @@ struct ChatTranscriptView: View {
 
     private var transcriptHorizontalPadding: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 20 : 16
+    }
+
+    private var chatPalette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue)
+        )
     }
 
     private func transcriptContentWidth(for viewportWidth: CGFloat) -> CGFloat {
@@ -739,10 +751,6 @@ private struct LoadOlderMessagesButton: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.regularMaterial, in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color(.separator).opacity(0.32), lineWidth: 0.5)
-            )
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isLoading)

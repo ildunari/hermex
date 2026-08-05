@@ -204,6 +204,102 @@ struct StreamingLabView: View {
     }
 }
 
+/// Deterministic transcript showcase for Chat Theme v2. It composes the real
+/// production message rows and renderer without needing server credentials.
+struct ChatThemeLabView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                appearanceControls
+                MessageBubbleView(message: Self.userMessage)
+                MessageBubbleView(message: Self.assistantMessage)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+        }
+        .background(palette.chatBackground)
+        .navigationTitle("Chat Theme Lab")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var appearanceControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Background", selection: $backgroundStyleRawValue) {
+                ForEach(ChatBackgroundStyle.allCases) { style in
+                    Text(style.title).tag(style.rawValue)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            Toggle("Times Serif Responses", isOn: timesSerifBinding)
+                .font(AppFont.subheadline())
+        }
+        .padding(12)
+        .background(palette.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var timesSerifBinding: Binding<Bool> {
+        Binding(
+            get: { ResponseFontStyle.storedValue(responseFontStyleRawValue).usesTimesSerif },
+            set: { responseFontStyleRawValue = ($0 ? ResponseFontStyle.timesSerif : .system).rawValue }
+        )
+    }
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue)
+        )
+    }
+
+    private static let userMessage = ChatMessage(
+        role: "user",
+        content: "Show me a polished implementation summary with examples.",
+        timestamp: 1_750_000_000,
+        messageId: "chat-theme-lab-user"
+    )
+
+    private static let assistantMessage = ChatMessage(
+        role: "assistant",
+        content: """
+        # Session polish
+
+        The transcript now uses a **warm, low-chrome palette** with more relaxed line spacing and `semantic tokens` throughout.
+
+        > Calm surfaces should make the response easier to read without making the interface feel ornamental.
+
+        | Element | Treatment |
+        | --- | --- |
+        | Prose | Dynamic body type |
+        | Code | Warm inset slab |
+        | Cards | Strokeless surfaces |
+        | Radius | 10 / 14 / 20 |
+
+        ```swift
+        let palette = ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: .warm
+        )
+        ```
+
+        ```python
+        result = {"status": "ready", "tests": "green"}
+        ```
+
+        Display math remains supported:
+
+        $$E = mc^2$$
+        """,
+        timestamp: 1_750_000_020,
+        messageId: "chat-theme-lab-assistant",
+        turnTps: 42.7
+    )
+}
+
 #Preview {
     NavigationStack {
         StreamingLabView()

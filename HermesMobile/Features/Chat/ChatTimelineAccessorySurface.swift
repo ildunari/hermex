@@ -19,16 +19,10 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.42 : 0.28), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            }
     }
 }
 
 private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     private var backgroundColor: Color {
@@ -43,13 +37,8 @@ private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
         content
             .background(
                 backgroundColor,
-                in: RoundedRectangle(cornerRadius: 9, style: .continuous)
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
             )
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .stroke(Color(.separator).opacity(colorScheme == .dark ? 0.36 : 0.22), lineWidth: 0.5)
-                    .allowsHitTesting(false)
-            }
     }
 }
 

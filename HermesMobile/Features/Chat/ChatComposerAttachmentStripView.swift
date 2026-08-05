@@ -55,7 +55,6 @@ private struct ComposerAttachmentThumbnailView: View {
                     .frame(width: 24, height: 24)
                     .background(Circle().fill(Color(.systemBackground)))
                     .foregroundStyle(Color(.label))
-                    .overlay(Circle().stroke(Color(.separator).opacity(0.35), lineWidth: 0.5))
             }
             .buttonStyle(.chatTactile(
                 .icon,
@@ -92,7 +91,7 @@ private struct ComposerAttachmentThumbnailView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .fill(Color(.systemFill))
                     .overlay(
                         Image(systemName: "photo")
@@ -103,7 +102,6 @@ private struct ComposerAttachmentThumbnailView: View {
         }
         .frame(width: imagePreviewSize, height: imagePreviewSize)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .overlay(previewBorder(cornerRadius: 14))
         .accessibilityLabel("Image attachment \(attachment.name)")
     }
 
@@ -147,14 +145,8 @@ private struct ComposerAttachmentThumbnailView: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(.secondarySystemBackground))
         )
-        .overlay(previewBorder(cornerRadius: 14))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("File attachment \(attachment.name), \(fileDetailText)")
-    }
-
-    private func previewBorder(cornerRadius: CGFloat) -> some View {
-        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-            .stroke(Color(.separator).opacity(0.25), lineWidth: 0.5)
     }
 
     private var fileExtensionLabel: String {

@@ -38,7 +38,7 @@ struct ToolCallCardView: View {
         .padding(.vertical, isExpanded ? 8 : 7)
         .chatTimelineAccessorySurface(
             fallbackMaterial: .thinMaterial,
-            cornerRadius: 9
+            cornerRadius: 10
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         // Tool-call bodies are commands, JSON, file paths, and results — code-like

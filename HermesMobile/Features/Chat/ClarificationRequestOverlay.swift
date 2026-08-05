@@ -102,9 +102,9 @@ struct ClarificationRequestCard: View {
             .fixedSize(horizontal: false, vertical: true)
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(questionBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background(questionBackground, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(.primary.opacity(0.06), lineWidth: 1)
             )
     }
@@ -276,7 +276,7 @@ struct ClarificationRequestCard: View {
     }
 
     private var cardCornerRadius: CGFloat {
-        24
+        20
     }
 
     private var cardBorder: some View {
