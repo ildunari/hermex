@@ -6,6 +6,7 @@ struct ChatTranscriptView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let isLoading: Bool
     let errorMessage: String?
@@ -311,7 +312,8 @@ struct ChatTranscriptView: View {
     private var chatPalette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue)
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
 

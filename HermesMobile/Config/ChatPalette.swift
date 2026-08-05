@@ -1,5 +1,33 @@
 import SwiftUI
 
+/// Hue temperature of the chat canvas and its surfaces. Independent of the
+/// dark-canvas depth choice in `ChatBackgroundStyle`: warm uses the tuned
+/// warm-gray stack, standard falls back to neutral system grays.
+enum ChatPaletteTemperature: String, CaseIterable, Identifiable {
+    case warm
+    case standard
+
+    static let storageKey = "appearance.chatPaletteTemperature"
+    static let defaultValue = ChatPaletteTemperature.warm
+
+    var id: String { rawValue }
+
+    var usesWarmSurfaces: Bool { self == .warm }
+
+    var title: String {
+        switch self {
+        case .warm:
+            String(localized: "Warm")
+        case .standard:
+            String(localized: "Standard")
+        }
+    }
+
+    static func storedValue(_ rawValue: String?) -> ChatPaletteTemperature {
+        rawValue.flatMap(ChatPaletteTemperature.init(rawValue:)) ?? defaultValue
+    }
+}
+
 enum ChatBackgroundStyle: String, CaseIterable, Identifiable {
     case warm
     case black
@@ -58,25 +86,36 @@ struct ChatPalette {
     let tableRule: Color
     let inlineCodeFill: Color
 
-    init(colorScheme: ColorScheme, backgroundStyle: ChatBackgroundStyle) {
+    init(
+        colorScheme: ColorScheme,
+        backgroundStyle: ChatBackgroundStyle,
+        temperature: ChatPaletteTemperature = .warm
+    ) {
+        let isWarm = temperature.usesWarmSurfaces
         if colorScheme == .dark {
-            chatBackground = Self.color(backgroundStyle == .black ? "#000000" : "#232220")
-            surface = Self.color("#2E2C29")
-            surfaceInset = Self.color("#383633")
-            codeSlab = Self.color(backgroundStyle == .black ? "#161514" : "#1E1D1B")
-            userBubble = Self.color("#33312E")
-            textPrimary = Self.color("#F5F4F0")
+            chatBackground = Self.color(
+                backgroundStyle == .black ? "#000000" : (isWarm ? "#232220" : "#1C1C1E")
+            )
+            surface = Self.color(isWarm ? "#2E2C29" : "#2C2C2E")
+            surfaceInset = Self.color(isWarm ? "#383633" : "#3A3A3C")
+            codeSlab = Self.color(
+                backgroundStyle == .black
+                    ? (isWarm ? "#161514" : "#141416")
+                    : (isWarm ? "#1E1D1B" : "#1A1A1C")
+            )
+            userBubble = Self.color(isWarm ? "#33312E" : "#313135")
+            textPrimary = Self.color(isWarm ? "#F5F4F0" : "#F2F2F7")
             textSecondary = textPrimary.opacity(0.62)
             textTertiary = textPrimary.opacity(0.38)
             tableRule = textPrimary.opacity(0.14)
             inlineCodeFill = Color.white.opacity(0.09)
         } else {
-            chatBackground = Self.color("#FAF9F7")
-            surface = Self.color("#F1EFEA")
-            surfaceInset = Self.color("#E9E6E0")
-            codeSlab = Self.color("#F4F2ED")
-            userBubble = Self.color("#EDEAE4")
-            textPrimary = Self.color("#1B1A18")
+            chatBackground = Self.color(isWarm ? "#FAF9F7" : "#FFFFFF")
+            surface = Self.color(isWarm ? "#F1EFEA" : "#F2F2F7")
+            surfaceInset = Self.color(isWarm ? "#E9E6E0" : "#E5E5EA")
+            codeSlab = Self.color(isWarm ? "#F4F2ED" : "#F2F2F7")
+            userBubble = Self.color(isWarm ? "#EDEAE4" : "#E9E9EE")
+            textPrimary = Self.color(isWarm ? "#1B1A18" : "#1C1C1E")
             textSecondary = textPrimary.opacity(0.55)
             textTertiary = textPrimary.opacity(0.35)
             tableRule = textPrimary.opacity(0.14)
@@ -86,5 +125,23 @@ struct ChatPalette {
 
     private static func color(_ hex: String) -> Color {
         Color(hexRGB: hex) ?? .primary
+    }
+}
+
+extension ChatPalette {
+    /// Resolves the palette from the stored background preference, for chrome
+    /// outside the transcript (navigation, session list) that should inherit the
+    /// canvas warmth without owning the dark-canvas choice itself.
+    static func appChrome(colorScheme: ColorScheme) -> ChatPalette {
+        let defaults = UserDefaults.standard
+        return ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(
+                defaults.string(forKey: ChatBackgroundStyle.storageKey)
+            ),
+            temperature: ChatPaletteTemperature.storedValue(
+                defaults.string(forKey: ChatPaletteTemperature.storageKey)
+            )
+        )
     }
 }

@@ -160,6 +160,41 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         XCTAssertFalse(MarkdownTypographyRole.standard.usesResponseFontPreference)
         XCTAssertTrue(MarkdownTypographyRole.assistantResponse.usesResponseFontPreference)
     }
+
+    func testPaletteTemperatureDefaultsToWarmAndRoundTripsStandard() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ChatPaletteTemperature.storageKey, "appearance.chatPaletteTemperature")
+        XCTAssertEqual(
+            ChatPaletteTemperature.storedValue(defaults.string(forKey: ChatPaletteTemperature.storageKey)),
+            .warm
+        )
+        XCTAssertTrue(ChatPaletteTemperature.defaultValue.usesWarmSurfaces)
+
+        defaults.set(ChatPaletteTemperature.standard.rawValue, forKey: ChatPaletteTemperature.storageKey)
+        let stored = ChatPaletteTemperature.storedValue(
+            defaults.string(forKey: ChatPaletteTemperature.storageKey)
+        )
+        XCTAssertEqual(stored, .standard)
+        XCTAssertFalse(stored.usesWarmSurfaces)
+    }
+
+    func testPaletteTemperatureFallsBackToWarmForUnknownRawValue() {
+        XCTAssertEqual(ChatPaletteTemperature.storedValue("unexpected"), .warm)
+        XCTAssertEqual(ChatPaletteTemperature.storedValue(nil), .warm)
+    }
+
+    /// The temperature axis must stay independent of the dark-canvas depth
+    /// choice: Black still resolves to a pure-black canvas under Standard.
+    func testTemperatureAndBackgroundStyleAreIndependent() {
+        let warmDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm)
+        let standardDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .standard)
+        XCTAssertNotEqual(warmDark.chatBackground, standardDark.chatBackground)
+
+        let warmBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .warm)
+        let standardBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .standard)
+        XCTAssertEqual(warmBlack.chatBackground, standardBlack.chatBackground)
+    }
 }
 
 final class ChatLayoutDirectionSettingsTests: XCTestCase {

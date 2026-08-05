@@ -213,6 +213,7 @@ struct StreamingLabView: View {
 struct ChatThemeLabView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
 
     var body: some View {
@@ -268,7 +269,8 @@ struct ChatThemeLabView: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue)
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
 

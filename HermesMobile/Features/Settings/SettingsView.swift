@@ -59,6 +59,7 @@ struct SettingsView: View {
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
     @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chatPaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
@@ -130,6 +131,20 @@ struct SettingsView: View {
                             Text(theme.title).tag(theme.rawValue)
                         }
                     }
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Chat Palette"),
+                        systemImage: "paintpalette",
+                        selection: $chatPaletteTemperatureRawValue
+                    ) {
+                        ForEach(ChatPaletteTemperature.allCases) { temperature in
+                            Text(temperature.title).tag(temperature.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Warm tints chat surfaces toward a softer, paper-like gray. Standard uses neutral system grays."))
 
                     SettingsDivider()
 
