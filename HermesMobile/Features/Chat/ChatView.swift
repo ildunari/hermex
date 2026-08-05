@@ -233,7 +233,7 @@ private struct ListenPlaybackBar: View {
                 .monospacedDigit()
                 .frame(minWidth: 36, minHeight: 30)
                 .padding(.horizontal, 6)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .appSurfaceBackground(.surface, in: Capsule())
         }
         .disabled(!isReady)
         .accessibilityLabel(String(localized: "Playback speed"))
@@ -2321,7 +2321,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
         } else {
             content
                 .background(
-                    Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
+                    ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
                 )
                 .adaptiveGlass(

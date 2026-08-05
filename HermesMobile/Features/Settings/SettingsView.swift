@@ -622,7 +622,7 @@ struct SettingsView: View {
             .padding(.bottom, 36)
             .adaptiveReadableContent(maxWidth: AdaptiveReadableContentWidth.secondaryDestination)
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .navigationTitle("Settings")
         .task {
             await loadServerSettings()
@@ -1543,6 +1543,7 @@ private struct HeaderLogoColorPresetButton: View {
 private struct SettingsCard<Content: View>: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var contentSpacing: CGFloat = 12
 
     let title: String
@@ -1571,7 +1572,7 @@ private struct SettingsCard<Content: View>: View {
             .padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background {
-                shape.fill(Color(.secondarySystemBackground).opacity(cardFillOpacity))
+                shape.fill(ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(cardFillOpacity))
             }
             .adaptiveGlass(
                 .regular,
@@ -2184,7 +2185,7 @@ private struct ServerDetailView: View {
             .padding(.top, 18)
             .padding(.bottom, 36)
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .navigationTitle(displayName.isEmpty ? hostFallback : displayName)
         .navigationBarTitleDisplayMode(.inline)
         // Persist identity edits to this server's registry entry. When it's the
@@ -2336,7 +2337,7 @@ struct AddServerView: View {
                 .padding(.top, 18)
                 .padding(.bottom, 36)
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
             .navigationTitle("Add Server")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

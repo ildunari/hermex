@@ -20,7 +20,7 @@ struct ChatActiveRunStatusView: View {
         .padding(.horizontal, 11)
         .padding(.vertical, 7)
         .background(
-            Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.28 : 0.48),
+            ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(colorScheme == .dark ? 0.28 : 0.48),
             in: Capsule(style: .continuous)
         )
         .adaptiveGlass(
@@ -61,5 +61,5 @@ struct ChatActiveRunStatusView: View {
         )
     }
     .padding()
-    .background(Color(.systemBackground))
+    .appSurfaceBackground(.canvas)
 }

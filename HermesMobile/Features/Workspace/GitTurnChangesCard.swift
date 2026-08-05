@@ -35,7 +35,7 @@ struct GitTurnChangesCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.secondarySystemBackground), in: shape)
+        .appSurfaceBackground(.surface, in: shape)
         .overlay { shape.stroke(dividerColor, lineWidth: 0.5) }
         .clipShape(shape)
         .padding(.top, 2)

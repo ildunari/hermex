@@ -166,7 +166,7 @@ struct FilePreviewView: View {
             }
             .padding()
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
     }
 
     @ViewBuilder
@@ -184,7 +184,7 @@ struct FilePreviewView: View {
                 }
                 .padding()
             }
-            .background(Color(.systemBackground))
+            .appSurfaceBackground(.canvas)
         } else {
             ContentUnavailableView {
                 Label("Could Not Preview Image", systemImage: "photo")

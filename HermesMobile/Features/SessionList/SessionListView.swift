@@ -300,7 +300,7 @@ struct SessionListView: View {
 
     private var sessionListSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground
                 .ignoresSafeArea()
 
             content
@@ -1379,6 +1379,7 @@ private struct ActiveSessionMonitorTaskID: Hashable {
 
 private struct PendingNewChatView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     let server: URL
@@ -1444,7 +1445,7 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground
                 .ignoresSafeArea()
 
             ContentUnavailableView {
@@ -1491,7 +1492,7 @@ private struct PendingNewChatView: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(Color(.secondaryLabel))
                     .frame(width: 44, height: 44)
-                    .background(Color(.tertiarySystemFill), in: Circle())
+                    .appSurfaceBackground(.inset, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(true)

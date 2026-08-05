@@ -145,3 +145,55 @@ extension ChatPalette {
         )
     }
 }
+
+/// Semantic role of an app surface, so screens outside the transcript can adopt
+/// the palette without each one re-deriving which token to use.
+enum AppSurfaceRole {
+    /// Full-screen canvas behind a screen's content.
+    case canvas
+    /// Cards, rows, and raised containers sitting on the canvas.
+    case surface
+    /// Nested panels, chips, and controls inside a card.
+    case inset
+}
+
+private struct AppSurfaceBackgroundModifier<S: Shape>: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    let role: AppSurfaceRole
+    let opacity: Double
+    let shape: S?
+
+    func body(content: Content) -> some View {
+        let palette = ChatPalette.appChrome(colorScheme: colorScheme)
+        let color: Color = {
+            switch role {
+            case .canvas: palette.chatBackground
+            case .surface: palette.surface
+            case .inset: palette.surfaceInset
+            }
+        }().opacity(opacity)
+
+        if let shape {
+            content.background(color, in: shape)
+        } else {
+            content.background(color)
+        }
+    }
+}
+
+extension View {
+    /// Applies a palette-driven background so every screen inherits the chosen
+    /// chat palette instead of hardcoding system grays.
+    func appSurfaceBackground(_ role: AppSurfaceRole, opacity: Double = 1) -> some View {
+        modifier(AppSurfaceBackgroundModifier<Rectangle>(role: role, opacity: opacity, shape: nil))
+    }
+
+    func appSurfaceBackground(
+        _ role: AppSurfaceRole,
+        opacity: Double = 1,
+        in shape: some Shape
+    ) -> some View {
+        modifier(AppSurfaceBackgroundModifier(role: role, opacity: opacity, shape: shape))
+    }
+}
