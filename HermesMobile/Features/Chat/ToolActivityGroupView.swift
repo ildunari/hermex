@@ -52,10 +52,15 @@ struct ToolActivityGroupView: View {
 
     private var header: some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image(systemName: activityIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(activityColor)
-                .frame(width: 18, height: 18)
+            if isRunning {
+                ThinkingOrbView(state: runningOrbState, size: 22, color: .secondary)
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: activityIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(activityColor)
+                    .frame(width: 18, height: 18)
+            }
 
             if usesStackedHeader {
                 VStack(alignment: .leading, spacing: 3) {
@@ -104,6 +109,15 @@ struct ToolActivityGroupView: View {
         }
 
         return group.isComplete ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill"
+    }
+
+    private var isRunning: Bool {
+        !group.hasFailedTool && !group.isComplete
+    }
+
+    private var runningOrbState: ThinkingOrbState {
+        let activeTool = group.toolCalls.first { !$0.isCompleted } ?? group.toolCalls.last
+        return ThinkingOrbState.forTool(name: activeTool?.name)
     }
 
     private var activityColor: Color {

@@ -357,7 +357,7 @@ struct ChatTranscriptView: View {
             if showsThinkingAndToolCards {
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText)
+                    ReasoningBlockView(text: liveReasoningText, isStreaming: true)
                 }
 
                 if !liveToolCalls.isEmpty,
@@ -576,7 +576,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText)
+            ReasoningBlockView(text: liveReasoningText, isStreaming: true)
         }
     }
 
@@ -617,6 +617,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
 }
 
 private struct ChatTranscriptMessageRow: View {
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     let message: ChatMessage
     let visibleIndex: Int
     let actionContext: MessageActionContext?
@@ -665,7 +667,10 @@ private struct ChatTranscriptMessageRow: View {
                         onRegenerate: onRegenerate,
                         onEdit: onEdit,
                         onFork: onFork,
-                        onCopy: onCopy
+                        onCopy: { context in
+                            ChatHaptics.messageCopied(isEnabled: isHapticsEnabled)
+                            onCopy(context)
+                        }
                     )
                 }
         } else {

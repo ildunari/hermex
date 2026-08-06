@@ -25,7 +25,7 @@ struct ToolCallCardView: View {
             } label: {
                 header(statusDisplay: statusDisplay)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.chatTactile(.card))
             .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
@@ -38,7 +38,7 @@ struct ToolCallCardView: View {
         .padding(.vertical, isExpanded ? 8 : 7)
         .chatTimelineAccessorySurface(
             fallbackMaterial: .thinMaterial,
-            cornerRadius: 10
+            cornerRadius: 12
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         // Tool-call bodies are commands, JSON, file paths, and results — code-like
@@ -71,10 +71,19 @@ struct ToolCallCardView: View {
 
     private func header(statusDisplay: ToolCallStatusDisplay) -> some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image(systemName: statusIcon)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(statusColor)
+            if isRunning {
+                ThinkingOrbView(
+                    state: ThinkingOrbState.forTool(name: toolCall.name),
+                    size: 22,
+                    color: .secondary
+                )
                 .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: statusIcon)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(statusColor)
+                    .frame(width: 18, height: 18)
+            }
 
             if usesStackedHeader {
                 VStack(alignment: .leading, spacing: 3) {
@@ -114,6 +123,10 @@ struct ToolCallCardView: View {
         }
 
         return toolCall.isCompleted ? "checkmark.circle.fill" : "wrench.and.screwdriver.fill"
+    }
+
+    private var isRunning: Bool {
+        toolCall.isError != true && !toolCall.isCompleted
     }
 
     private var statusColor: Color {
@@ -166,7 +179,7 @@ struct ToolCallCardView: View {
 
             Text(result.text)
                 .font(result.isMonospaced ? AppFont.mono(style: .caption) : AppFont.caption())
-                .foregroundStyle(.primary)
+                .foregroundStyle(.secondary)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(7)
@@ -202,7 +215,7 @@ struct ToolCallCardView: View {
     private func argumentValue(_ value: String) -> some View {
         Text(value)
             .font(AppFont.mono(style: .caption))
-            .foregroundStyle(.primary)
+            .foregroundStyle(.secondary)
             .textSelection(.enabled)
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReasoningBlockView: View {
     let text: String
+    var isStreaming: Bool = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -56,11 +57,16 @@ struct ReasoningBlockView: View {
 
     private func header(summary: String) -> some View {
         HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            Image("LucideBrain")
-                .resizable()
-                .scaledToFit()
-                .foregroundStyle(.secondary)
-                .frame(width: 18, height: 18)
+            if isStreaming {
+                ThinkingOrbView(state: .working, size: 22, color: .secondary)
+                    .frame(width: 18, height: 18)
+            } else {
+                Image("LucideBrain")
+                    .resizable()
+                    .scaledToFit()
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18, height: 18)
+            }
 
             if usesStackedHeader {
                 VStack(alignment: .leading, spacing: 1) {
