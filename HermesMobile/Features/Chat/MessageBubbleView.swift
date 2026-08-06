@@ -71,7 +71,14 @@ struct MessageBubbleView: View {
             // attachment grid shows.
             if hasVisibleUserBubbleText || hasLinkPreview {
                 HStack(alignment: .bottom, spacing: 0) {
+                    // Proportional leading gutter: caps the bubble at roughly
+                    // 78% of the transcript width so user turns read as a
+                    // distinct right-hand column instead of near-full-width
+                    // slabs. Accessibility type sizes get most of the width back.
                     Spacer(minLength: userBubbleLeadingGutter)
+                        .containerRelativeFrame(.horizontal) { length, _ in
+                            length * userBubbleGutterFraction
+                        }
                     VStack(alignment: .trailing, spacing: 8) {
                         if hasVisibleUserBubbleText {
                             userBubble
@@ -138,12 +145,12 @@ struct MessageBubbleView: View {
 
             if let time = assistantTurnTimeText {
                 Text(time)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(chatPalette.textTertiary)
             }
 
             if let speed = assistantResponseSpeedText {
                 Text(speed)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(chatPalette.textTertiary)
             }
         }
         .font(AppFont.footnote())
@@ -230,7 +237,7 @@ struct MessageBubbleView: View {
             .textSelection(.enabled)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .background(userBubbleBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             .foregroundStyle(userBubbleForeground)
     }
 
@@ -370,6 +377,13 @@ struct MessageBubbleView: View {
 
     private var userBubbleLeadingGutter: CGFloat {
         dynamicTypeSize.isAccessibilitySize ? 20 : 32
+    }
+
+    /// Fraction of the transcript viewport reserved as a leading gutter next to
+    /// user bubbles (bubble max width ≈ 1 − fraction). Accessibility sizes keep
+    /// almost the full width so large type doesn't over-wrap.
+    private var userBubbleGutterFraction: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 0.10 : 0.22
     }
 
     private var userBubbleBackground: Color {

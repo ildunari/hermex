@@ -65,6 +65,8 @@ struct MessageComposerView: View {
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @ScaledMetric(relativeTo: .footnote) private var actionIconSize: CGFloat = 13
     @ScaledMetric(relativeTo: .footnote) private var actionButtonSize: CGFloat = 30
     @ScaledMetric(relativeTo: .title3) private var plusIconSize: CGFloat = 24
@@ -362,12 +364,23 @@ struct MessageComposerView: View {
                         }
                         .buttonStyle(.chatTactile(.icon))
                         .disabled(isActionButtonDisabled)
+                        // Smooth the idle → ready → stop transitions (fill,
+                        // glyph, enabled state) instead of snapping.
+                        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsStopButton)
+                        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: isActionButtonDisabled)
                         .accessibilityLabel(showsStopButton ? "Stop response" : "Send")
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
                     .padding(.bottom, 8)
                 }
+                // Warm palette underlay beneath the glass so the composer sits
+                // on the same temperature-aware surface family as the timeline
+                // accessories instead of a raw system material tint.
+                .background(
+                    composerSurfaceUnderlay,
+                    in: RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous)
+                )
                 .adaptiveGlass(
                     .regular,
                     isInteractive: true,
@@ -375,6 +388,16 @@ struct MessageComposerView: View {
                     in: RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous))
+                .overlay(
+                    // Hairline definition so the composer separates softly from
+                    // the transcript on same-temperature ground.
+                    RoundedRectangle(cornerRadius: composerCornerRadius, style: .continuous)
+                        .strokeBorder(
+                            Color.primary.opacity(colorScheme == .dark ? 0.07 : 0.05),
+                            lineWidth: 0.5
+                        )
+                        .allowsHitTesting(false)
+                )
                 .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.28 : 0.12), radius: 14, y: 6)
                 .padding(.horizontal)
 
@@ -993,6 +1016,24 @@ struct MessageComposerView: View {
         }
 
         return colorScheme == .dark ? .black : .white
+    }
+
+    /// Temperature-aware wash drawn beneath the composer's glass/material so
+    /// the field inherits the Warm/Standard chat surface tone instead of a raw
+    /// system-gray material. Kept translucent so glass highlights read through.
+    private var composerSurfaceUnderlay: Color {
+        composerPalette.surface.opacity(colorScheme == .dark ? 0.42 : 0.55)
+    }
+
+    /// AppStorage-driven palette (matches MessageBubbleView / accessory-surface
+    /// resolution) so the composer re-renders live when the user flips the
+    /// Warm/Standard or background-style toggles in Settings.
+    private var composerPalette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
     }
 
     private var isComposerExpanded: Bool {
