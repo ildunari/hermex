@@ -61,6 +61,7 @@ struct SettingsView: View {
     @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var chatPaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
+    @AppStorage(ActivityBeamStyle.storageKey) private var activityBeamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
@@ -158,7 +159,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    SettingsFootnote(String(localized: "Warm is the default. Black uses a pure-black chat canvas in dark mode only."))
+                    SettingsFootnote(String(localized: "Applies in dark mode only. Black switches the chat canvas to pure black; Warm keeps the palette’s warm charcoal."))
 
                     SettingsDivider()
 
@@ -169,6 +170,20 @@ struct SettingsView: View {
                     )
 
                     SettingsFootnote(String(localized: "Uses Apple’s New York serif for assistant prose. System font remains the default."))
+
+                    SettingsDivider()
+
+                    SettingsPickerRow(
+                        title: String(localized: "Activity Beam"),
+                        systemImage: "sparkles",
+                        selection: $activityBeamStyleRawValue
+                    ) {
+                        ForEach(ActivityBeamStyle.allCases) { style in
+                            Text(style.title).tag(style.rawValue)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Traveling glow around thinking and tool activity while they run. Ink is monochrome; Ember and Aurora are more vivid."))
 
                     SettingsDivider()
 

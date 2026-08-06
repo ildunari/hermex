@@ -17,6 +17,11 @@ struct ChatTranscriptView: View {
     let completedToolCallGroupsForAnchor: (String?) -> [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// True only while reasoning tokens are actively arriving (with a short
+    /// decay window) — not for the whole open turn. Drives the thinking orb /
+    /// beam so they pause between reasoning phases. Sourced from
+    /// `ChatViewModel.reasoningActivity.isActive`.
+    let isReasoningActive: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -236,6 +241,7 @@ struct ChatTranscriptView: View {
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
                     reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
+                    isReasoningActive: isReasoningAnchor && isReasoningActive,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
@@ -357,7 +363,7 @@ struct ChatTranscriptView: View {
             if showsThinkingAndToolCards {
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText, isStreaming: true)
+                    ReasoningBlockView(text: liveReasoningText, isStreaming: isReasoningActive)
                 }
 
                 if !liveToolCalls.isEmpty,
@@ -466,6 +472,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let toolCallGroups: [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// See `ChatTranscriptView.isReasoningActive` — scoped to the anchor row.
+    let isReasoningActive: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -506,6 +514,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.toolCallGroups == rhs.toolCallGroups &&
             lhs.liveReasoningText == rhs.liveReasoningText &&
             lhs.reasoningAnchorMessageID == rhs.reasoningAnchorMessageID &&
+            lhs.isReasoningActive == rhs.isReasoningActive &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
@@ -576,7 +585,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText, isStreaming: true)
+            ReasoningBlockView(text: liveReasoningText, isStreaming: isReasoningActive)
         }
     }
 

@@ -256,6 +256,158 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 }
 
+/// Reasoning/tool activity signal (session-view polish): the thinking orb and
+/// border beam animate only while streamed deltas actually arrive, decaying
+/// after a short silence window instead of running for the whole open turn.
+final class StreamActivitySignalTests: XCTestCase {
+    @MainActor
+    func testBumpActivatesImmediatelyAndDecaysAfterSilence() async throws {
+        let signal = StreamActivitySignal(decayInterval: 0.1)
+        XCTAssertFalse(signal.isActive)
+
+        signal.bump()
+        XCTAssertTrue(signal.isActive, "rising edge must have no debounce")
+
+        try await waitFor(timeoutNanoseconds: 2_000_000_000) { signal.isActive == false }
+        XCTAssertFalse(signal.isActive, "signal must decay after the silence window")
+    }
+
+    @MainActor
+    func testRepeatedBumpsExtendTheDeadline() async throws {
+        let signal = StreamActivitySignal(decayInterval: 0.15)
+
+        signal.bump()
+        // Keep bumping at intervals shorter than the decay window; the signal
+        // must stay active the whole time (single coalesced expiry task).
+        for _ in 0..<4 {
+            try await Task.sleep(nanoseconds: 60_000_000)
+            XCTAssertTrue(signal.isActive, "activity within the window must keep the signal alive")
+            signal.bump()
+        }
+
+        try await waitFor(timeoutNanoseconds: 2_000_000_000) { signal.isActive == false }
+        XCTAssertFalse(signal.isActive)
+    }
+
+    @MainActor
+    func testResetDeactivatesImmediately() async throws {
+        let signal = StreamActivitySignal(decayInterval: 60)
+
+        signal.bump()
+        XCTAssertTrue(signal.isActive)
+
+        signal.reset()
+        XCTAssertFalse(signal.isActive, "reset must not wait for the decay window")
+
+        // Reactivation after reset works (fresh expiry task).
+        signal.bump()
+        XCTAssertTrue(signal.isActive)
+        signal.reset()
+        XCTAssertFalse(signal.isActive)
+    }
+
+    @MainActor
+    func testViewModelBumpsOnlyForContributingReasoningDeltas() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think about it")
+        XCTAssertTrue(didStart)
+        XCTAssertFalse(viewModel.reasoningActivity.isActive, "turn start alone must not activate the orb")
+
+        streamClient.emit(.reasoning("Considering the request"))
+        XCTAssertTrue(viewModel.reasoningActivity.isActive, "a live reasoning delta must activate the signal")
+
+        // Tool activity is independent of reasoning activity.
+        XCTAssertFalse(viewModel.toolActivity.isActive)
+    }
+
+    @MainActor
+    func testViewModelToolEventsBumpToolActivity() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Run a tool")
+        XCTAssertTrue(didStart)
+        XCTAssertFalse(viewModel.toolActivity.isActive)
+
+        streamClient.emit(
+            .toolStarted(
+                ToolStreamEvent(
+                    eventType: "tool_started",
+                    name: "exec",
+                    preview: "ls",
+                    args: nil,
+                    duration: nil,
+                    isError: nil
+                )
+            )
+        )
+        XCTAssertTrue(viewModel.toolActivity.isActive, "tool start must activate the tool signal")
+    }
+
+    @MainActor
+    private func makeActivityViewModel(
+        streamClient: PacingSpySSEStreamingClient
+    ) throws -> ChatViewModel {
+        MockURLProtocol.requestHandler = { request in
+            switch request.url?.path {
+            case "/api/chat/start":
+                return apiTestJSONResponse(
+                    #"{"session_id": "session-abc", "stream_id": "stream-123"}"#,
+                    for: request
+                )
+            default:
+                return apiTestJSONResponse(
+                    #"{"session": {"session_id": "session-abc", "title": "Activity", "messages": []}}"#,
+                    for: request
+                )
+            }
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let urlSession = URLSession(configuration: configuration)
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = APIClient(baseURL: server, session: urlSession)
+
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let summary = try decoder.decode(
+            SessionSummary.self,
+            from: Data(
+                #"{"session_id": "session-abc", "title": "Activity", "workspace": "/tmp/workspace"}"#.utf8
+            )
+        )
+
+        return ChatViewModel(
+            session: summary,
+            server: server,
+            client: client,
+            streamClient: streamClient,
+            approvalStreamClient: PacingSpySSEStreamingClient(),
+            clarifyStreamClient: PacingSpySSEStreamingClient()
+        )
+    }
+
+    @MainActor
+    private func waitFor(
+        timeoutNanoseconds: UInt64,
+        file: StaticString = #filePath,
+        line: UInt = #line,
+        condition: () -> Bool
+    ) async throws {
+        let pollNanoseconds: UInt64 = 10_000_000
+        var elapsed: UInt64 = 0
+        while elapsed <= timeoutNanoseconds {
+            if condition() { return }
+            try await Task.sleep(nanoseconds: pollNanoseconds)
+            elapsed += pollNanoseconds
+        }
+        XCTFail("timed out waiting for condition", file: file, line: line)
+    }
+}
+
 /// Issue #214: the streaming bottom-follow scroll and active-row growth share
 /// one short cadence-synced animation, disabled entirely under Reduce Motion.
 final class ChatStreamingMotionTests: XCTestCase {

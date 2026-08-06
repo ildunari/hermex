@@ -32,6 +32,36 @@ struct SurfaceGalleryView: View {
                     )
                 }
 
+                section("Activity capsules") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ActivityCapsuleView(
+                            orbState: .working,
+                            label: "Thinking…",
+                            isActive: true
+                        )
+                        ActivityCapsuleView(
+                            orbState: .searching,
+                            label: "Reading ChatPalette.swift",
+                            isActive: true
+                        )
+                        ActivityCapsuleView(
+                            orbState: .connecting,
+                            label: "Connecting · hermes-webui",
+                            isActive: true
+                        )
+                        ActivityCapsuleView(
+                            orbState: .working,
+                            label: "Thinking…",
+                            isActive: false,
+                            completedIcon: "brain",
+                            completedLabel: "Thought for 12s"
+                        )
+                        ForEach(ActivityBeamStyle.allCases) { style in
+                            beamStyleRow(style)
+                        }
+                    }
+                }
+
                 section("Status pills") {
                     HStack(spacing: 10) {
                         TranscriptStatusPill(text: "Running", color: .secondary)
@@ -134,6 +164,37 @@ struct SurfaceGalleryView: View {
 
     private var galleryPalette: ChatPalette {
         ChatPalette.appChrome(colorScheme: colorScheme)
+    }
+
+    /// One live capsule per beam style so palette review can eyeball every
+    /// option in light+dark. `ActivityCapsuleView` reads the user's stored
+    /// beam preference, so these rows compose the same capsule primitives
+    /// directly with each style pinned.
+    private func beamStyleRow(_ style: ActivityBeamStyle) -> some View {
+        let beam = style.resolved(
+            palette: galleryPalette,
+            colorScheme: colorScheme,
+            accent: HeaderLogoColor.color(
+                for: UserDefaults.standard.string(forKey: HeaderLogoColor.storageKey)
+                    ?? HeaderLogoColor.defaultHex
+            )
+        )
+        return HStack(spacing: 8) {
+            ThinkingOrbView(state: .working, size: 20, color: .secondary)
+            Text("Beam · \(style.title)")
+                .font(AppFont.subheadline())
+                .foregroundStyle(galleryPalette.textSecondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(Capsule().fill(galleryPalette.surface.opacity(0.8)))
+        .overlay(Capsule().strokeBorder(galleryPalette.tableRule, lineWidth: 1))
+        .borderBeam(
+            style: BeamStyle(resolved: beam),
+            shape: Capsule(),
+            active: beam.isVisible
+        )
     }
 
     @ViewBuilder

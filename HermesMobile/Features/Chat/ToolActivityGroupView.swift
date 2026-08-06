@@ -3,7 +3,6 @@ import SwiftUI
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
 
@@ -16,14 +15,19 @@ struct ToolActivityGroupView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-            Button {
+            ActivityCapsuleView(
+                orbState: runningOrbState,
+                label: capsuleLabel,
+                isActive: isRunning,
+                completedIcon: activityIcon,
+                completedIconColor: group.hasFailedTool ? .red : nil,
+                completedLabel: completedCapsuleLabel,
+                accessory: AnyView(chevron)
+            ) {
                 withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                     userToggledExpansion = !isExpanded
                 }
-            } label: {
-                header
             }
-            .buttonStyle(.plain)
             .accessibilityLabel(activityAccessibilityLabel)
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
@@ -36,71 +40,43 @@ struct ToolActivityGroupView: View {
                 .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 9)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .thinMaterial,
-            cornerRadius: 10
-        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
     }
 
-    private var usesStackedHeader: Bool {
-        dynamicTypeSize.isAccessibilitySize
-    }
-
-    private var header: some View {
-        HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            if isRunning {
-                ThinkingOrbView(state: runningOrbState, size: 22, color: .secondary)
-                    .frame(width: 18, height: 18)
-            } else {
-                Image(systemName: activityIcon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(activityColor)
-                    .frame(width: 18, height: 18)
-            }
-
-            if usesStackedHeader {
-                VStack(alignment: .leading, spacing: 3) {
-                    titleText
-                    summaryTextView(lineLimit: 2)
-                    if let collapsedStateText {
-                        TranscriptStatusPill(text: collapsedStateText, color: activityColor)
-                    }
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    titleText
-                    summaryTextView(lineLimit: 1)
-                    if let collapsedStateText {
-                        TranscriptStatusPill(text: collapsedStateText, color: activityColor)
-                    }
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var titleText: some View {
-        Text(group.activityTitle)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-    }
-
-    private func summaryTextView(lineLimit: Int) -> some View {
-        Text(summaryText)
-            .font(AppFont.caption())
+    private var chevron: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
-            .lineLimit(lineLimit)
+    }
+
+    /// Live label: verb from the active tool plus the group count, e.g.
+    /// "Reading files · 3". Single-tool groups just use the verb phrase.
+    private var capsuleLabel: String {
+        let verb = activityVerb
+        guard group.toolCalls.count > 1 else { return verb }
+        return "\(verb) · \(group.toolCalls.count)"
+    }
+
+    private var completedCapsuleLabel: String {
+        if group.hasFailedTool {
+            return String(localized: "Tool failed")
+        }
+        let count = group.toolCalls.count
+        return count == 1
+            ? String(localized: "Ran 1 tool")
+            : String(localized: "Ran \(count) tools")
+    }
+
+    private var activityVerb: String {
+        switch runningOrbState {
+        case .searching:
+            String(localized: "Reading")
+        case .connecting:
+            String(localized: "Connecting")
+        case .working:
+            String(localized: "Working")
+        }
     }
 
     private var activityIcon: String {
@@ -118,22 +94,6 @@ struct ToolActivityGroupView: View {
     private var runningOrbState: ThinkingOrbState {
         let activeTool = group.toolCalls.first { !$0.isCompleted } ?? group.toolCalls.last
         return ThinkingOrbState.forTool(name: activeTool?.name)
-    }
-
-    private var activityColor: Color {
-        if group.hasFailedTool {
-            return .red
-        }
-
-        return .secondary
-    }
-
-    private var collapsedStateText: String? {
-        if group.hasFailedTool {
-            return String(localized: "Failed")
-        }
-
-        return group.isComplete ? nil : String(localized: "Running")
     }
 
     private var activityAccessibilityLabel: String {

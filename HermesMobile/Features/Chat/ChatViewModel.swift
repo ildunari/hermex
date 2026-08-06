@@ -195,6 +195,75 @@ enum ActiveStreamRecoveryState: Equatable {
     case reconnecting
 }
 
+/// Tracks whether a streamed signal (reasoning tokens, tool events) is
+/// "actively receiving": `isActive` flips true immediately on `bump()` and
+/// decays back to false after `decayInterval` seconds of silence.
+///
+/// Coalesced by design: one expiry task sleeps until the current deadline and
+/// loops if a later `bump()` pushed the deadline forward — no per-token timers.
+/// The rising edge has no debounce; activity resumes instantly.
+@MainActor
+@Observable
+final class StreamActivitySignal {
+    /// Silence window before the signal decays to inactive. 1.5s keeps the
+    /// orb alive across ordinary inter-chunk gaps while letting it settle
+    /// promptly once a reasoning/tool phase actually ends.
+    static let defaultDecayInterval: TimeInterval = 1.5
+
+    private(set) var isActive = false
+    private(set) var lastActivityAt: Date?
+
+    private let decayInterval: TimeInterval
+    private var deadline: ContinuousClock.Instant?
+    private var expiryTask: Task<Void, Never>?
+
+    init(decayInterval: TimeInterval = StreamActivitySignal.defaultDecayInterval) {
+        self.decayInterval = decayInterval
+    }
+
+    /// Records fresh activity: activates immediately and pushes the decay
+    /// deadline forward. Cheap enough to call for every streamed delta.
+    func bump(now: Date = Date()) {
+        lastActivityAt = now
+        deadline = .now + .seconds(decayInterval)
+        if !isActive {
+            isActive = true
+        }
+        scheduleExpiryIfNeeded()
+    }
+
+    /// Immediately deactivates and cancels any pending decay (stream ended,
+    /// cancelled, or live state was cleared).
+    func reset() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        deadline = nil
+        if isActive {
+            isActive = false
+        }
+    }
+
+    private func scheduleExpiryIfNeeded() {
+        guard expiryTask == nil else { return }
+
+        expiryTask = Task { [weak self] in
+            // Single task per active burst: sleep until the deadline; if a bump
+            // moved the deadline while sleeping, loop and sleep again.
+            while !Task.isCancelled {
+                guard let deadline = self?.deadline else { break }
+                if ContinuousClock.now >= deadline { break }
+                try? await Task.sleep(until: deadline, clock: .continuous)
+            }
+            guard !Task.isCancelled, let self else { return }
+            self.expiryTask = nil
+            self.deadline = nil
+            if self.isActive {
+                self.isActive = false
+            }
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class ChatViewModel {
@@ -308,6 +377,14 @@ final class ChatViewModel {
     }
     private(set) var liveToolCalls: [ToolCall] = []
     private(set) var liveReasoningText = ""
+    /// True only while reasoning deltas are actively arriving on the live
+    /// (non-replay) stream; decays after brief silence so the thinking orb
+    /// pauses between reasoning phases instead of animating for the whole turn.
+    let reasoningActivity = StreamActivitySignal()
+    /// Tool-call activity: bumped when a tool starts or completes on the live
+    /// stream. Tool output does not stream incrementally over SSE, so state
+    /// transitions are the activity granularity we have.
+    let toolActivity = StreamActivitySignal()
     private(set) var streamingAssistantMessageID: String?
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
@@ -2093,6 +2170,8 @@ final class ChatViewModel {
         archiveLiveToolCallsIfNeeded()
         liveReasoningText = ""
         liveToolCalls = []
+        reasoningActivity.reset()
+        toolActivity.reset()
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -4975,6 +5054,8 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
         responseCompletionNeedsTranscriptRefresh = false
+        reasoningActivity.reset()
+        toolActivity.reset()
     }
 
     func streamCoordinatorDidReceiveErrorMessage(_ message: String) {
@@ -5014,17 +5095,32 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorAppendReasoning(_ text: String) -> Bool {
-        appendReasoning(text)
+        let didAppendNewContent = appendReasoning(text)
+        // Bump only when the delta contributed genuinely new content: replayed
+        // duplicates (reconnect journal catch-up) return false above, so the
+        // orb stays paused through replay and resumes at the live frontier.
+        if didAppendNewContent {
+            reasoningActivity.bump()
+        }
+        return didAppendNewContent
     }
 
     @discardableResult
     func streamCoordinatorAppendToolCall(_ payload: ToolStreamEvent) -> Bool {
-        appendToolCall(payload)
+        let didAppendNewContent = appendToolCall(payload)
+        if didAppendNewContent {
+            toolActivity.bump()
+        }
+        return didAppendNewContent
     }
 
     @discardableResult
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool {
-        completeToolCall(payload)
+        let didCompleteNewContent = completeToolCall(payload)
+        if didCompleteNewContent {
+            toolActivity.bump()
+        }
+        return didCompleteNewContent
     }
 
     @discardableResult

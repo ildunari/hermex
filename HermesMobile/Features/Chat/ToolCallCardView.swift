@@ -18,33 +18,65 @@ struct ToolCallCardView: View {
         let statusDisplay = ToolCallStatusDisplay(toolCall: toolCall)
 
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-            Button {
+            ActivityCapsuleView(
+                orbState: ThinkingOrbState.forTool(name: toolCall.name),
+                label: capsuleLabel,
+                isActive: isRunning,
+                completedIcon: statusIcon,
+                completedIconColor: toolCall.isError == true ? .red : nil,
+                completedLabel: capsuleLabel,
+                accessory: AnyView(chevron)
+            ) {
                 withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
                     userToggledExpansion = !isExpanded
                 }
-            } label: {
-                header(statusDisplay: statusDisplay)
             }
-            .buttonStyle(.chatTactile(.card))
             .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
                 expandedContent(statusDisplay: statusDisplay)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 8)
+                    .chatTimelineAccessorySurface(
+                        fallbackMaterial: .thinMaterial,
+                        cornerRadius: 12
+                    )
+                    // Tool-call bodies are commands, JSON, file paths, and
+                    // results — code-like content that must stay left-to-right
+                    // inside an RTL message (#259).
+                    .forcedLeftToRight()
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, isExpanded ? 8 : 7)
-        .chatTimelineAccessorySurface(
-            fallbackMaterial: .thinMaterial,
-            cornerRadius: 12
-        )
         .frame(maxWidth: .infinity, alignment: .leading)
-        // Tool-call bodies are commands, JSON, file paths, and results — code-like
-        // content that must stay left-to-right inside an RTL message (#259). The
-        // group's summary header above (ToolActivityGroupView) still mirrors.
-        .forcedLeftToRight()
+    }
+
+    private var chevron: some View {
+        Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(.secondary)
+    }
+
+    /// Short activity title in "Reading ChatPalette.swift" style: the tool's
+    /// display name plus the most path-like argument, middle-truncated by the
+    /// capsule's label line.
+    private var capsuleLabel: String {
+        let rows = ToolCallDisplayFormatter.argumentRows(from: toolCall.args)
+        let pathKeys = ["path", "file_path", "filepath", "file", "cmd", "command", "query", "url"]
+        let subject = pathKeys
+            .compactMap { key in rows.first { $0.key.lowercased() == key }?.value }
+            .first
+
+        guard let subject, !subject.isEmpty else {
+            return toolCall.displayName
+        }
+
+        // Prefer the last path component for file-ish values.
+        let trimmed = subject.contains("/") && !subject.contains(" ")
+            ? String(subject.split(separator: "/").last ?? Substring(subject))
+            : subject
+        return "\(toolCall.displayName) \(trimmed)"
     }
 
     private func expandedContent(statusDisplay: ToolCallStatusDisplay) -> some View {
@@ -67,54 +99,6 @@ struct ToolCallCardView: View {
 
     private var usesStackedHeader: Bool {
         dynamicTypeSize.isAccessibilitySize
-    }
-
-    private func header(statusDisplay: ToolCallStatusDisplay) -> some View {
-        HStack(alignment: usesStackedHeader ? .top : .center, spacing: 8) {
-            if isRunning {
-                ThinkingOrbView(
-                    state: ThinkingOrbState.forTool(name: toolCall.name),
-                    size: 22,
-                    color: .secondary
-                )
-                .frame(width: 18, height: 18)
-            } else {
-                Image(systemName: statusIcon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(statusColor)
-                    .frame(width: 18, height: 18)
-            }
-
-            if usesStackedHeader {
-                VStack(alignment: .leading, spacing: 3) {
-                    titleText
-                    if let collapsedText = statusDisplay.collapsedText {
-                        TranscriptStatusPill(text: collapsedText, color: statusColor)
-                    }
-                }
-            } else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    titleText
-                    if let collapsedText = statusDisplay.collapsedText {
-                        TranscriptStatusPill(text: collapsedText, color: statusColor)
-                    }
-                }
-            }
-
-            Spacer(minLength: 6)
-
-            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private var titleText: some View {
-        Text(toolCall.displayName)
-            .font(AppFont.caption(weight: .semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
     }
 
     private var statusIcon: String {

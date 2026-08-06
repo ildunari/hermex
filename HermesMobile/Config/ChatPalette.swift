@@ -72,6 +72,131 @@ enum ResponseFontStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// Resolved beam appearance handed to the border-beam renderer. `colors` are
+/// the visible gradient stops of the traveling segment (the renderer fades the
+/// segment's head/tail itself), `strength` scales overall opacity, and
+/// `cycleDuration` is one full trip around the card in seconds.
+struct ResolvedBeam {
+    let colors: [Color]
+    let strength: Double
+    let cycleDuration: Double
+
+    static let none = ResolvedBeam(colors: [], strength: 0, cycleDuration: 0)
+
+    var isVisible: Bool { strength > 0 && !colors.isEmpty }
+}
+
+/// User-selectable style for the traveling glow around live thinking and tool
+/// activity. Hues are tuned to sit on both the warm (#232220 / #FAF9F7) and
+/// standard (#1C1C1E / #FFFFFF) canvases: brightness carries the effect in
+/// dark mode, saturation carries it in light mode, and no stop is pure neon.
+enum ActivityBeamStyle: String, CaseIterable, Identifiable {
+    case off
+    case ink
+    case accent
+    case ember
+    case aurora
+
+    static let storageKey = "activityBeamStyle"
+    static let defaultValue = ActivityBeamStyle.ink
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .off:
+            String(localized: "Off")
+        case .ink:
+            String(localized: "Ink")
+        case .accent:
+            String(localized: "Accent")
+        case .ember:
+            String(localized: "Ember")
+        case .aurora:
+            String(localized: "Aurora")
+        }
+    }
+
+    static func storedValue(_ rawValue: String?) -> ActivityBeamStyle {
+        rawValue.flatMap(ActivityBeamStyle.init(rawValue:)) ?? defaultValue
+    }
+
+    /// Resolves the beam gradient for the current palette and scheme.
+    ///
+    /// `accent` is passed by the caller (typically
+    /// `HeaderLogoColor.color(for:)` read via `@AppStorage`) rather than read
+    /// from storage here, so this type stays a pure appearance mapping and the
+    /// view owning the beam re-renders when the header color changes.
+    func resolved(
+        palette: ChatPalette,
+        colorScheme: ColorScheme,
+        accent: Color
+    ) -> ResolvedBeam {
+        let isDark = colorScheme == .dark
+        switch self {
+        case .off:
+            return .none
+        case .ink:
+            // Monochrome sweep derived from the palette's own text color so it
+            // matches all four palette/scheme combos without extra tuning:
+            // white-leaning and bright in dark mode, deep and restrained in
+            // light mode.
+            let peak = palette.textPrimary.opacity(isDark ? 0.9 : 0.35)
+            let shoulder = palette.textPrimary.opacity(isDark ? 0.45 : 0.18)
+            return ResolvedBeam(
+                colors: [shoulder, peak, shoulder],
+                strength: 0.55,
+                cycleDuration: 2.6
+            )
+        case .accent:
+            // Single-hue sweep in the user's chosen header accent.
+            let peak = accent.opacity(isDark ? 0.95 : 0.8)
+            let shoulder = accent.opacity(isDark ? 0.4 : 0.3)
+            return ResolvedBeam(
+                colors: [shoulder, peak, shoulder],
+                strength: 0.7,
+                cycleDuration: 2.6
+            )
+        case .ember:
+            // Dramatic warm gradient. Dark mode leans on brightness; light
+            // mode swaps to deeper, slightly desaturated embers so it doesn't
+            // scream on white/ivory canvases.
+            let stops: [Color] = isDark
+                ? [
+                    Self.color("#E8853D"),  // orange
+                    Self.color("#F2B441"),  // amber
+                    Self.color("#D96A55")   // soft red
+                ]
+                : [
+                    Self.color("#C2691F").opacity(0.75),
+                    Self.color("#C98F1B").opacity(0.75),
+                    Self.color("#B14A38").opacity(0.75)
+                ]
+            return ResolvedBeam(colors: stops, strength: 0.8, cycleDuration: 2.2)
+        case .aurora:
+            // Dramatic cool gradient with extra stops for a hue-drifting feel.
+            let stops: [Color] = isDark
+                ? [
+                    Self.color("#3FBFAE"),  // teal
+                    Self.color("#5B8CE8"),  // blue
+                    Self.color("#8E6BD9"),  // violet
+                    Self.color("#4A9ED9")   // back toward blue
+                ]
+                : [
+                    Self.color("#1F8C7D").opacity(0.72),
+                    Self.color("#3B63C4").opacity(0.72),
+                    Self.color("#6E4BB8").opacity(0.72),
+                    Self.color("#2F7CB3").opacity(0.72)
+                ]
+            return ResolvedBeam(colors: stops, strength: 0.8, cycleDuration: 3.0)
+        }
+    }
+
+    private static func color(_ hex: String) -> Color {
+        Color(hexRGB: hex) ?? .primary
+    }
+}
+
 /// Semantic transcript colors shared by markdown, bubbles, and the chat canvas.
 /// Dark surfaces stay deliberately warm; light mode always uses warm ivory.
 struct ChatPalette {
