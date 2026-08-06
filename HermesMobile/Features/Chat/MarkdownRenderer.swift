@@ -1143,7 +1143,31 @@ private final class StableHighlightrStore {
     private init() {}
 
     func highlight(_ code: String, language: String, colorScheme: ColorScheme) -> NSAttributedString? {
-        return highlightr(for: colorScheme)?.highlight(code, as: language, fastRender: true)
+        guard let highlighted = highlightr(for: colorScheme)?.highlight(code, as: language, fastRender: true) else {
+            return nil
+        }
+        return Self.strippingBackgroundAttributes(from: highlighted)
+    }
+
+    /// Highlightr themes declare a canvas background of their own; if any run in
+    /// the attributed output carries `.backgroundColor`, it would paint hard
+    /// rectangles over our `palette.codeSlab` surface. Strip them so the slab
+    /// always shows through cleanly.
+    private static func strippingBackgroundAttributes(from attributed: NSAttributedString) -> NSAttributedString {
+        let fullRange = NSRange(location: 0, length: attributed.length)
+        var hasBackground = false
+        attributed.enumerateAttribute(.backgroundColor, in: fullRange) { value, _, stop in
+            if value != nil {
+                hasBackground = true
+                stop.pointee = true
+            }
+        }
+
+        guard hasBackground else { return attributed }
+
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        mutable.removeAttribute(.backgroundColor, range: fullRange)
+        return mutable
     }
 
     private func highlightr(for colorScheme: ColorScheme) -> Highlightr? {
@@ -1193,15 +1217,20 @@ private extension MarkdownUI.Theme {
             .text {
                 if usesSerif {
                     FontFamily(.system(.serif))
+                    // New York runs optically smaller than SF at the same
+                    // point size; nudge the body up so both faces read equally.
+                    FontSize(.em(1.02))
+                } else {
+                    FontSize(.em(1.0))
                 }
-                FontSize(.em(1.0))
                 ForegroundColor(palette.textPrimary)
                 BackgroundColor(nil)
             }
             .code {
                 FontFamilyVariant(.monospaced)
                 FontSize(.em(0.9))
-                BackgroundColor(palette.inlineCodeFill)
+                FontWeight(.medium)
+                ForegroundColor(palette.inlineCodeText)
             }
             .strong {
                 FontWeight(.semibold)
@@ -1212,33 +1241,33 @@ private extension MarkdownUI.Theme {
             .heading1 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 24, bottom: 8)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.25))
+                        FontSize(.em(1.45))
                     }
             }
             .heading2 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 24, bottom: 8)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.15))
+                        FontSize(.em(1.25))
                     }
             }
             .heading3 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 20, bottom: 6)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.05))
+                        FontSize(.em(1.1))
                     }
             }
             .heading4 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 16, bottom: 4)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))
@@ -1246,18 +1275,20 @@ private extension MarkdownUI.Theme {
             }
             .heading5 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 16, bottom: 4)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))
+                        ForegroundColor(palette.textSecondary)
                     }
             }
             .heading6 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 8)
+                    .markdownMargin(top: 16, bottom: 4)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))
+                        ForegroundColor(palette.textSecondary)
                     }
             }
             .paragraph { configuration in
@@ -1268,7 +1299,7 @@ private extension MarkdownUI.Theme {
             }
             .blockquote { configuration in
                 HStack(alignment: .top, spacing: 12) {
-                    Rectangle()
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                         .fill(accentColor)
                         .frame(width: 3)
 
@@ -1276,6 +1307,12 @@ private extension MarkdownUI.Theme {
                         .markdownTextStyle {
                             ForegroundColor(palette.textSecondary)
                         }
+                        .padding(.vertical, 2)
+                        .padding(.trailing, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                .fill(palette.quoteWash)
+                        )
                 }
                 .fixedSize(horizontal: false, vertical: true)
                 .markdownMargin(top: 4, bottom: 12)
@@ -1319,8 +1356,15 @@ private extension MarkdownUI.Theme {
                     .markdownMargin(top: .em(0.25))
             }
             .thematicBreak {
-                Divider()
-                    .overlay(palette.tableRule)
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.clear, palette.tableRule, .clear],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 1)
                     .markdownMargin(top: 16, bottom: 16)
             }
     }

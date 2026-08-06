@@ -85,6 +85,11 @@ struct ChatPalette {
     let textTertiary: Color
     let tableRule: Color
     let inlineCodeFill: Color
+    /// Foreground for inline code spans; typographic emphasis replaces the old
+    /// gray slab background (which produced hard rectangles on wrapped spans).
+    let inlineCodeText: Color
+    /// Faint background wash behind blockquote content.
+    let quoteWash: Color
 
     init(
         colorScheme: ColorScheme,
@@ -109,6 +114,8 @@ struct ChatPalette {
             textTertiary = textPrimary.opacity(0.38)
             tableRule = textPrimary.opacity(0.14)
             inlineCodeFill = Color.white.opacity(0.09)
+            inlineCodeText = (isWarm ? Self.color("#F6F1E7") : textPrimary).opacity(0.92)
+            quoteWash = Color.white.opacity(0.04)
         } else {
             chatBackground = Self.color(isWarm ? "#FAF9F7" : "#FFFFFF")
             surface = Self.color(isWarm ? "#F1EFEA" : "#F2F2F7")
@@ -120,6 +127,8 @@ struct ChatPalette {
             textTertiary = textPrimary.opacity(0.35)
             tableRule = textPrimary.opacity(0.14)
             inlineCodeFill = Color.black.opacity(0.07)
+            inlineCodeText = textPrimary.opacity(0.85)
+            quoteWash = Color.black.opacity(0.03)
         }
     }
 
