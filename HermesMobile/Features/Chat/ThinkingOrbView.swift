@@ -3,20 +3,30 @@ import SwiftUI
 // ThinkingOrbView is a SwiftUI/Canvas port of the "thinking orbs" dotted
 // 3D spinners by Jakub Antalik — https://github.com/Jakubantalik/thinking-orbs
 // (MIT License). The math (deterministic hash, tilted-orbit particles, the
-// scan-meridian globe, and the constellation web) is ported faithfully from
-// src/engine/{core,orbits,lattice,web}.ts using the size-20 inline presets
-// from src/presets.ts. See Resources/ThirdPartyNotices/NOTICE.txt.
+// scan-meridian globe, the constellation web, the three-strand braid, and
+// the undulating ribbon) is ported faithfully from
+// src/engine/{core,orbits,lattice,web,braid,ribbon}.ts using the size-20
+// inline presets from src/presets.ts. See Resources/ThirdPartyNotices/NOTICE.txt.
 
 enum ThinkingOrbState {
+    case thinking
     case working
     case searching
+    case writing
     case connecting
 
     /// Maps a tool name to the orb state that best matches the activity.
-    /// Search-like tools scan, terminal/edit tools work, network/session
-    /// tools connect. Defaults to `.working`.
+    /// Edit-like tools write, search-like tools scan, network/session
+    /// tools connect, terminal-and-everything-else works. `.thinking`
+    /// is reserved for reasoning streams and never maps from a tool.
+    /// Defaults to `.working`.
     static func forTool(name: String?) -> ThinkingOrbState {
         let name = name?.lowercased() ?? ""
+
+        let writing = ["write", "edit", "create", "apply_patch", "patch", "insert", "replace"]
+        if writing.contains(where: { name.contains($0) }) {
+            return .writing
+        }
 
         let searching = ["search", "read", "grep", "list", "web", "find", "glob", "fetch", "view"]
         if searching.contains(where: { name.contains($0) }) {
@@ -43,8 +53,17 @@ struct ThinkingOrbView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Fixed timestamp used for the static Reduce Motion frame.
-    private static let staticTime: Double = 1.7
+    /// Fixed timestamp used for the static Reduce Motion frame. Per mode:
+    /// mid-phase frames chosen by eye in the surface gallery so the frozen
+    /// pose is not degenerate (braid strands mid-plait, ribbon mid-wave).
+    private static func staticTime(for state: ThinkingOrbState) -> Double {
+        switch state {
+        case .thinking, .writing:
+            2.6
+        case .working, .searching, .connecting:
+            1.7
+        }
+    }
 
     var body: some View {
         Group {
@@ -54,7 +73,7 @@ struct ThinkingOrbView: View {
                         context: context,
                         size: min(canvasSize.width, canvasSize.height),
                         state: state,
-                        time: Self.staticTime,
+                        time: Self.staticTime(for: state),
                         color: color
                     )
                 }
@@ -214,13 +233,173 @@ struct ThinkingOrbView: View {
         color: Color
     ) {
         switch state {
+        case .thinking:
+            drawBraid(context: context, size: size, time: time, color: color)
         case .working:
             drawOrbits(context: context, size: size, time: time, color: color)
         case .searching:
             drawGlobe(context: context, size: size, time: time, color: color)
+        case .writing:
+            drawRibbon(context: context, size: size, time: time, color: color)
         case .connecting:
             drawWeb(context: context, size: size, time: time, color: color)
         }
+    }
+
+    // MARK: - Thinking: three-strand plait (port of engine/braid.ts, size-20 preset)
+
+    private static func drawBraid(
+        context: GraphicsContext,
+        size: Double,
+        time: Double,
+        color: Color
+    ) {
+        // Size-20 preset: speed 2.75, count ×0.1125, radius ×1.36.
+        let t = time * 2.75
+        let strandN = 6       // round(52 × 0.1125)
+        let ghostN = 17       // round(150 × 0.1125)
+        let turns = 3.0
+        let rBase = 1.2 * 1.36
+        let rDepth = 1.8 * 1.36
+
+        let cx = size / 2
+        let cy = size / 2
+        let bigR = (size / 2) * 0.76
+        let pt = makeProj(yaw: t * 0.4, tilt: 0.3, cx: cx, cy: cy, scale: 1)
+        let rs = radiusScale(size: size, pow: 0.6)
+
+        var dots: [Dot] = []
+        dots.reserveCapacity(ghostN + 3 * strandN)
+
+        // Faint fibonacci ghost sphere behind the plait.
+        for i in 0..<ghostN {
+            let d = fibDir(i, ghostN)
+            let (px, py, z) = pt(d.0 * bigR, d.1 * bigR, d.2 * bigR)
+            let depth = (z / bigR + 1) / 2
+            dots.append(Dot(
+                x: px,
+                y: py,
+                z: z,
+                r: 0.8 * rs,
+                opacity: (0.1 + 0.22 * depth) * (1 - 0.78)
+            ))
+        }
+
+        // Each strand runs pole to pole on a helix; a radial breathing term
+        // makes them trade places, reading as the over/under of a plait.
+        for s in 0..<3 {
+            let phase = (Double(s) / 3) * 2 * .pi
+            for i in 0..<strandN {
+                // u walks pole to pole; the frac() drift slides the whole
+                // strand along.
+                let u = (frac(Double(i) / Double(strandN) + t * 0.045) * 2 - 1) * 0.96
+                let surf = max(0, 1 - u * u).squareRoot()
+                let endFade = min(1, (1 - abs(u)) / 0.1)
+                let a = u * .pi * turns + phase
+                // Radial breathing: strands trade places — the over/under.
+                let weave = 1 + 0.075 * sin(u * .pi * turns * 2 + phase * 2 + t * 0.8)
+                let rr = surf * bigR * weave
+                let (px, py, zr) = pt(cos(a) * rr, u * bigR * weave, sin(a) * rr)
+                let depth = (zr / bigR + 1) / 2
+                dots.append(Dot(
+                    x: px,
+                    y: py,
+                    z: zr,
+                    r: (rBase + rDepth * depth) * rs,
+                    opacity: endFade * (0.45 + 0.55 * depth) * (1 - (0.55 - 0.45 * depth))
+                ))
+            }
+        }
+
+        paint(context: context, dots: dots, color: color)
+    }
+
+    // MARK: - Writing: undulating sash (port of engine/ribbon.ts, size-20 preset)
+
+    private static func drawRibbon(
+        context: GraphicsContext,
+        size: Double,
+        time: Double,
+        color: Color
+    ) {
+        // Size-20 preset: speed 3.12, count ×0.051 (√-split across the
+        // lanes/segs pair), radius ×1.073, extras spin 0 / bandMul 4.94 /
+        // wobMul 1. spin 0 freezes the band's 3D tumble, leaving only the
+        // traveling undulation. Only the ribbon path is ported (faceOn 0);
+        // the ring variant is a separate mode upstream.
+        let t = time * 3.12
+        let lanes = 10        // max(1, round(max(2, round(5 × √0.051)) × 4.94))
+        let segs = 20         // max(2, round(88 × √0.051))
+        let ghostN = 8        // round(150 × 0.051)
+        let rBase = 1.1 * 1.073
+        let rDepth = 1.7 * 1.073
+        let wobMul = 1.0
+        let spin = 0.0
+
+        let cx = size / 2
+        let cy = size / 2
+        let bigR = (size / 2) * 0.78
+        let camTilt = 0.3
+        let pt = makeProj(yaw: t * 0.1 * spin, tilt: camTilt, cx: cx, cy: cy, scale: 1)
+        let rs = radiusScale(size: size, pow: 0.6)
+
+        var dots: [Dot] = []
+        dots.reserveCapacity(ghostN + lanes * segs)
+
+        // Faint fibonacci ghost sphere behind the sash.
+        for i in 0..<ghostN {
+            let d = fibDir(i, ghostN)
+            let (px, py, z) = pt(d.0 * bigR, d.1 * bigR, d.2 * bigR)
+            let depth = (z / bigR + 1) / 2
+            dots.append(Dot(
+                x: px,
+                y: py,
+                z: z,
+                r: 0.8 * rs,
+                opacity: (0.1 + 0.22 * depth) * (1 - 0.78)
+            ))
+        }
+
+        // The band plane, precessing (frozen while spin = 0).
+        let ya = t * 0.24 * spin
+        let ta = 0.55 + 0.3 * sin(t * 0.18) * spin
+        let ux = cos(ya)
+        let uy = 0.0
+        let uz = sin(ya)
+        let vx = -uz * sin(ta)
+        let vy = cos(ta)
+        let vz = ux * sin(ta)
+        // Plane normal n = u × v.
+        let nx = uy * vz - uz * vy
+        let ny = uz * vx - ux * vz
+        let nz = ux * vy - uy * vx
+
+        for w in 0..<lanes {
+            let laneOff = (Double(w) - Double(lanes - 1) / 2) * 0.075
+            let edge = abs(Double(w) - Double(lanes - 1) / 2) / max(1, Double(lanes - 1) / 2)
+            for k in 0..<segs {
+                let a = (Double(k) / Double(segs)) * 2 * .pi
+                // The undulation: two traveling waves along the band.
+                let wob = (0.16 * sin(a * 3 - t * 1.7 + Double(w) * 0.22)
+                    + 0.07 * sin(a * 5 + t * 1.1)) * wobMul
+                let off = laneOff + wob
+                let x = ux * cos(a) + vx * sin(a) + nx * off
+                let y = uy * cos(a) + vy * sin(a) + ny * off
+                let z = uz * cos(a) + vz * sin(a) + nz * off
+                let l = (x * x + y * y + z * z).squareRoot()
+                let (px, py, zr) = pt(x / l * bigR, y / l * bigR, z / l * bigR)
+                let depth = (zr / bigR + 1) / 2
+                dots.append(Dot(
+                    x: px,
+                    y: py,
+                    z: zr,
+                    r: (rBase + rDepth * depth) * (1 - 0.25 * edge) * rs,
+                    opacity: (0.4 + 0.6 * depth) * (1 - (0.52 - 0.44 * depth + 0.18 * edge))
+                ))
+            }
+        }
+
+        paint(context: context, dots: dots, color: color)
     }
 
     // MARK: - Working: tilted orbits (port of engine/orbits.ts, size-20 preset)
@@ -480,12 +659,20 @@ struct ThinkingOrbView: View {
 #Preview("Thinking orb states") {
     HStack(spacing: 24) {
         VStack(spacing: 8) {
+            ThinkingOrbView(state: .thinking, size: 22)
+            Text("thinking").font(.caption2)
+        }
+        VStack(spacing: 8) {
             ThinkingOrbView(state: .working, size: 22)
             Text("working").font(.caption2)
         }
         VStack(spacing: 8) {
             ThinkingOrbView(state: .searching, size: 22)
             Text("searching").font(.caption2)
+        }
+        VStack(spacing: 8) {
+            ThinkingOrbView(state: .writing, size: 22)
+            Text("writing").font(.caption2)
         }
         VStack(spacing: 8) {
             ThinkingOrbView(state: .connecting, size: 22)

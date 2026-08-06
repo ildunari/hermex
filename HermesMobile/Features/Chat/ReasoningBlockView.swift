@@ -18,12 +18,13 @@ struct ReasoningBlockView: View {
     var body: some View {
         if let trimmedText {
             VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-                // `isStreaming` is fed from `ChatViewModel.reasoningActivity`
-                // at the live call sites (ChatTranscriptView), so the orb/beam
-                // animate only while reasoning tokens actually flow and pause
-                // after ~1.5s of silence (StreamActivitySignal decay).
+                // `isStreaming` is fed from `ChatViewModel.isReasoningPhaseActive`
+                // at the live call sites (ChatTranscriptView): the orb/beam
+                // animate for the entire reasoning *step* — including long
+                // pauses between reasoning deltas — and settle only when the
+                // turn semantically moves on (tool call, answer text, or end).
                 ActivityCapsuleView(
-                    orbState: .working,
+                    orbState: .thinking,
                     label: String(localized: "Thinking…"),
                     isActive: isStreaming,
                     completedIcon: "brain",

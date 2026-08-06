@@ -195,6 +195,34 @@ enum ActiveStreamRecoveryState: Equatable {
     case reconnecting
 }
 
+/// Coarse phase of the live turn, derived from SSE event *kinds* rather than
+/// token arrival timing. Unlike `StreamActivitySignal` (micro-liveness with a
+/// 1.5s decay window), the phase only changes when the stream semantically
+/// moves on: a reasoning step stays `.reasoning` across long intra-step token
+/// pauses, and while the model is composing a tool call server-side (no SSE
+/// events arrive during that window — the backend has no argument-streaming
+/// event; `tool` lands fully formed, see `SSEEventDecoder`). This is what the
+/// activity capsules key off so "Thinking" animates for the whole thinking
+/// step instead of flickering off between deltas.
+///
+/// No time-based decay on purpose: while the turn is genuinely open the
+/// capsule should keep animating even through long silences (the model *is*
+/// still working); transport errors, cancellation, and stream end all route
+/// through `streamCoordinatorDidFinishStream`/`applyDone`, which reset to
+/// `.idle`.
+enum TurnPhase: Equatable {
+    case idle
+    /// Reasoning deltas (or interim assistant prose, which renders in the
+    /// same reasoning block) are the most recent semantic activity.
+    case reasoning
+    /// A tool has started and no later event has moved the phase on. Persists
+    /// across `tool_complete` — the model usually follows with reasoning or
+    /// text, which then advances the phase.
+    case toolCalling
+    /// Final assistant answer tokens are streaming.
+    case respondingText
+}
+
 /// Tracks whether a streamed signal (reasoning tokens, tool events) is
 /// "actively receiving": `isActive` flips true immediately on `bump()` and
 /// decays back to false after `decayInterval` seconds of silence.
@@ -377,14 +405,29 @@ final class ChatViewModel {
     }
     private(set) var liveToolCalls: [ToolCall] = []
     private(set) var liveReasoningText = ""
-    /// True only while reasoning deltas are actively arriving on the live
-    /// (non-replay) stream; decays after brief silence so the thinking orb
-    /// pauses between reasoning phases instead of animating for the whole turn.
+    /// Semantic phase of the open turn; see `TurnPhase`. Advanced by the
+    /// stream-coordinator delegate callbacks below, reset to `.idle` when the
+    /// stream finishes, errors, is cancelled, or live state is cleared.
+    private(set) var turnPhase: TurnPhase = .idle
+    /// Micro-liveness of reasoning deltas (1.5s decay). Kept for surfaces that
+    /// want token-arrival granularity (e.g. future per-token effects), but the
+    /// thinking capsule is driven by `isReasoningPhaseActive`, which holds for
+    /// the whole reasoning step regardless of intra-step pauses.
     let reasoningActivity = StreamActivitySignal()
     /// Tool-call activity: bumped when a tool starts or completes on the live
     /// stream. Tool output does not stream incrementally over SSE, so state
     /// transitions are the activity granularity we have.
     let toolActivity = StreamActivitySignal()
+
+    /// Capsule-facing: the reasoning step is in progress. True from the first
+    /// reasoning/interim delta until the stream semantically moves on (tool
+    /// start or final answer tokens) — long thinking pauses stay active.
+    var isReasoningPhaseActive: Bool { turnPhase == .reasoning }
+    /// Capsule-facing: the live tool group should animate. True while a tool
+    /// is executing server-side *and* through the composing window after
+    /// reasoning hands off to a tool call (phase stays `.toolCalling` until a
+    /// later event advances it).
+    var isToolPhaseActive: Bool { turnPhase == .toolCalling }
     private(set) var streamingAssistantMessageID: String?
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
@@ -2170,6 +2213,7 @@ final class ChatViewModel {
         archiveLiveToolCallsIfNeeded()
         liveReasoningText = ""
         liveToolCalls = []
+        turnPhase = .idle
         reasoningActivity.reset()
         toolActivity.reset()
         reasoningAnchorMessageID = nil
@@ -2373,6 +2417,9 @@ final class ChatViewModel {
         completedReasoningGroups = []
         liveToolCalls = []
         liveReasoningText = ""
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
         pinnedLocalNotices = []
         streamingAssistantMessageID = nil
         toolCallAnchorMessageID = nil
@@ -3138,6 +3185,9 @@ final class ChatViewModel {
         archiveLiveToolCallsIfNeeded()
         liveReasoningText = ""
         liveToolCalls = []
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -5054,6 +5104,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
         responseCompletionNeedsTranscriptRefresh = false
+        turnPhase = .idle
         reasoningActivity.reset()
         toolActivity.reset()
     }
@@ -5085,20 +5136,31 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorAppendToken(_ text: String) -> Bool {
-        appendAssistantToken(text)
+        // Final answer prose is streaming — the reasoning/tool steps are over.
+        turnPhase = .respondingText
+        return appendAssistantToken(text)
     }
 
     @discardableResult
     func streamCoordinatorAppendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool {
-        appendInterimAssistant(payload)
+        // Interim assistant prose renders in the reasoning block, so it keeps
+        // (or starts) the thinking step for capsule purposes.
+        turnPhase = .reasoning
+        return appendInterimAssistant(payload)
     }
 
     @discardableResult
     func streamCoordinatorAppendReasoning(_ text: String) -> Bool {
+        // Phase advances on the event *kind*, deliberately including replayed
+        // duplicates: during reconnect catch-up the phase races through the
+        // journal and lands on the live frontier's step, which is the correct
+        // capsule state for an open turn.
+        turnPhase = .reasoning
         let didAppendNewContent = appendReasoning(text)
         // Bump only when the delta contributed genuinely new content: replayed
         // duplicates (reconnect journal catch-up) return false above, so the
-        // orb stays paused through replay and resumes at the live frontier.
+        // micro-liveness signal stays paused through replay and resumes at the
+        // live frontier.
         if didAppendNewContent {
             reasoningActivity.bump()
         }
@@ -5107,6 +5169,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorAppendToolCall(_ payload: ToolStreamEvent) -> Bool {
+        turnPhase = .toolCalling
         let didAppendNewContent = appendToolCall(payload)
         if didAppendNewContent {
             toolActivity.bump()
@@ -5116,6 +5179,10 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool {
+        // Stay in `.toolCalling`: completion of one tool doesn't mean the tool
+        // step ended — sibling tools may still run, and the model's next
+        // reasoning/text event is what semantically moves the turn on.
+        turnPhase = .toolCalling
         let didCompleteNewContent = completeToolCall(payload)
         if didCompleteNewContent {
             toolActivity.bump()
@@ -5131,6 +5198,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     @discardableResult
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {
         flushPendingStreamingContent()
+        // The turn is semantically complete on `done` even if the transport
+        // lingers until `streamEnd`; stop the capsules now.
+        turnPhase = .idle
+        reasoningActivity.reset()
+        toolActivity.reset()
         let currentStreamingAssistantID = streamingAssistantMessageID
         let hasCompletedTranscript = payload.session?.messages?.isEmpty == false
         if let completedSession = payload.session {

@@ -35,7 +35,7 @@ struct SurfaceGalleryView: View {
                 section("Activity capsules") {
                     VStack(alignment: .leading, spacing: 10) {
                         ActivityCapsuleView(
-                            orbState: .working,
+                            orbState: .thinking,
                             label: "Thinking…",
                             isActive: true
                         )
@@ -45,12 +45,22 @@ struct SurfaceGalleryView: View {
                             isActive: true
                         )
                         ActivityCapsuleView(
+                            orbState: .working,
+                            label: "Working · xcodebuild",
+                            isActive: true
+                        )
+                        ActivityCapsuleView(
+                            orbState: .writing,
+                            label: "Writing MarkdownRenderer.swift",
+                            isActive: true
+                        )
+                        ActivityCapsuleView(
                             orbState: .connecting,
                             label: "Connecting · hermes-webui",
                             isActive: true
                         )
                         ActivityCapsuleView(
-                            orbState: .working,
+                            orbState: .thinking,
                             label: "Thinking…",
                             isActive: false,
                             completedIcon: "brain",

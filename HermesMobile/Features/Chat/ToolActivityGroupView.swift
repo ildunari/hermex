@@ -2,6 +2,13 @@ import SwiftUI
 
 struct ToolActivityGroupView: View {
     let group: ToolCallGroup
+    /// Live-phase override fed from `ChatViewModel.isToolPhaseActive` at the
+    /// live call sites (defaults false for completed/historical groups). Keeps
+    /// the capsule animating through the "composing the next tool call"
+    /// window: every call in the live group may already be complete while the
+    /// turn is still semantically in its tool step (the backend emits no
+    /// argument-streaming events, so that window is otherwise silent).
+    var isPhaseActive: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
@@ -70,8 +77,12 @@ struct ToolActivityGroupView: View {
 
     private var activityVerb: String {
         switch runningOrbState {
+        case .thinking:
+            String(localized: "Thinking")
         case .searching:
             String(localized: "Reading")
+        case .writing:
+            String(localized: "Writing")
         case .connecting:
             String(localized: "Connecting")
         case .working:
@@ -88,7 +99,7 @@ struct ToolActivityGroupView: View {
     }
 
     private var isRunning: Bool {
-        !group.hasFailedTool && !group.isComplete
+        !group.hasFailedTool && (!group.isComplete || isPhaseActive)
     }
 
     private var runningOrbState: ThinkingOrbState {

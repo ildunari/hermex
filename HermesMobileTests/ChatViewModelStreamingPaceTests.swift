@@ -256,9 +256,11 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 }
 
-/// Reasoning/tool activity signal (session-view polish): the thinking orb and
-/// border beam animate only while streamed deltas actually arrive, decaying
-/// after a short silence window instead of running for the whole open turn.
+/// Reasoning/tool activity (session-view polish). Two layers under test:
+/// `StreamActivitySignal` is micro-liveness (bump + decay after silence), and
+/// `TurnPhase` is the semantic step model that actually drives the capsules —
+/// "Thinking" holds through intra-step token pauses and only settles when the
+/// stream moves on to a tool call or the final answer.
 final class StreamActivitySignalTests: XCTestCase {
     @MainActor
     func testBumpActivatesImmediatelyAndDecaysAfterSilence() async throws {
@@ -344,6 +346,128 @@ final class StreamActivitySignalTests: XCTestCase {
             )
         )
         XCTAssertTrue(viewModel.toolActivity.isActive, "tool start must activate the tool signal")
+    }
+
+    // MARK: - Turn phase model
+
+    @MainActor
+    func testTurnPhaseFollowsReasoningToolTextAndDoneTransitions() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        XCTAssertEqual(viewModel.turnPhase, .idle)
+
+        let didStart = await viewModel.sendMessage("Think, then act")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.turnPhase, .idle, "turn start alone must not enter a phase")
+
+        streamClient.emit(.reasoning("Considering"))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+        XCTAssertTrue(viewModel.isReasoningPhaseActive)
+
+        let tool = ToolStreamEvent(
+            eventType: "tool_started",
+            name: "exec",
+            preview: "ls",
+            args: nil,
+            duration: nil,
+            isError: nil,
+            stableID: "tool-1"
+        )
+        streamClient.emit(.toolStarted(tool))
+        XCTAssertEqual(viewModel.turnPhase, .toolCalling)
+        XCTAssertFalse(viewModel.isReasoningPhaseActive, "tool start ends the thinking step")
+        XCTAssertTrue(viewModel.isToolPhaseActive)
+
+        // Completing the tool keeps the tool step open — the model composes
+        // its next move in silence, and the capsule must not stall out.
+        streamClient.emit(
+            .toolCompleted(
+                ToolStreamEvent(
+                    eventType: "tool_completed",
+                    name: "exec",
+                    preview: "ls",
+                    args: nil,
+                    duration: 0.2,
+                    isError: false,
+                    stableID: "tool-1"
+                )
+            )
+        )
+        XCTAssertEqual(viewModel.turnPhase, .toolCalling)
+        XCTAssertTrue(viewModel.isToolPhaseActive)
+
+        streamClient.emit(.token("The answer"))
+        XCTAssertEqual(viewModel.turnPhase, .respondingText)
+        XCTAssertFalse(viewModel.isToolPhaseActive)
+
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(viewModel.turnPhase, .idle, "done must settle every capsule")
+    }
+
+    @MainActor
+    func testReasoningPhaseHoldsAcrossTokenSilence() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think hard")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.reasoning("Step one"))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+
+        // 3s of silence — twice the StreamActivitySignal decay window. The
+        // micro-liveness signal decays but the semantic phase (which drives
+        // the capsule) must hold: the thinking step has not ended.
+        try await Task.sleep(nanoseconds: 3_000_000_000)
+        XCTAssertFalse(
+            viewModel.reasoningActivity.isActive,
+            "micro-liveness decays after the silence window (unchanged behavior)"
+        )
+        XCTAssertEqual(viewModel.turnPhase, .reasoning, "the thinking step is still open")
+        XCTAssertTrue(
+            viewModel.isReasoningPhaseActive,
+            "the capsule keeps animating through intra-step pauses"
+        )
+
+        // Resumed reasoning keeps the same phase; the final answer ends it.
+        streamClient.emit(.reasoning(" and step two"))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+        streamClient.emit(.token("Answer"))
+        XCTAssertEqual(viewModel.turnPhase, .respondingText)
+        XCTAssertFalse(viewModel.isReasoningPhaseActive)
+    }
+
+    @MainActor
+    func testInterimAssistantEntersReasoningPhase() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Narrate your work")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(
+            .interimAssistant(InterimAssistantStreamEvent(text: "Looking at the repo", alreadyStreamed: nil))
+        )
+        XCTAssertEqual(
+            viewModel.turnPhase, .reasoning,
+            "interim prose renders in the reasoning block, so it opens the thinking step"
+        )
+    }
+
+    @MainActor
+    func testStreamEndResetsPhaseWithoutDoneEvent() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("Working on it"))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+
+        // Errors / cancels route through stream end without a `done` payload.
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(viewModel.turnPhase, .idle, "stream end must settle the capsules")
     }
 
     @MainActor
