@@ -470,6 +470,144 @@ final class StreamActivitySignalTests: XCTestCase {
         XCTAssertEqual(viewModel.turnPhase, .idle, "stream end must settle the capsules")
     }
 
+    // MARK: - Reasoning stint durations
+
+    @MainActor
+    func testReasoningDurationRecordedWhenStintClosesAndOverwrittenByNextStint() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think, act, think again")
+        XCTAssertTrue(didStart)
+        XCTAssertNil(viewModel.lastReasoningDuration, "no stint has closed yet")
+
+        // Stint 1: a contributing delta starts the clock; it stays open (nil)
+        // until the turn semantically moves on.
+        streamClient.emit(.reasoning("Considering"))
+        XCTAssertNil(viewModel.lastReasoningDuration, "an open stint has no duration yet")
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+        streamClient.emit(
+            .toolStarted(
+                ToolStreamEvent(
+                    eventType: "tool_started",
+                    name: "exec",
+                    preview: "ls",
+                    args: nil,
+                    duration: nil,
+                    isError: nil,
+                    stableID: "tool-1"
+                )
+            )
+        )
+        let firstDuration = try XCTUnwrap(viewModel.lastReasoningDuration)
+        XCTAssertGreaterThanOrEqual(firstDuration, 0.25, "stint 1 spanned the 300ms sleep")
+
+        // Stint 2 closes almost immediately: the recorded value must be the
+        // *second* stint's duration (overwrite), not an accumulation.
+        streamClient.emit(.reasoning("Deciding next step"))
+        streamClient.emit(.token("The answer"))
+        let secondDuration = try XCTUnwrap(viewModel.lastReasoningDuration)
+        XCTAssertLessThan(secondDuration, 0.25, "each stint overwrites — no accumulation across stints")
+
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(viewModel.turnPhase, .idle)
+    }
+
+    @MainActor
+    func testNonContributingReasoningDeltaDoesNotStartTheStintClock() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think")
+        XCTAssertTrue(didStart)
+
+        // Empty deltas take the same `didAppendNewContent == false` path as
+        // replayed duplicates during reconnect catch-up: the phase may advance
+        // but the stint clock must not start.
+        streamClient.emit(.reasoning(""))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning, "phase advances on event kind")
+
+        streamClient.emit(.token("Answer"))
+        XCTAssertNil(
+            viewModel.lastReasoningDuration,
+            "a stint that never received contributing content records no duration"
+        )
+    }
+
+    @MainActor
+    func testStreamEndWithoutDoneAbandonsTheOpenStint() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Think")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("Working"))
+
+        // Error / cancel route through stream end without `done`: the open
+        // stint is abandoned, not recorded.
+        streamClient.emit(.streamEnd)
+        XCTAssertNil(viewModel.lastReasoningDuration)
+    }
+
+    // MARK: - Completed-duration label formatting
+
+    func testActivityDurationFormatUsesOneDecimalUnderTenSecondsAndWholeSecondsAbove() {
+        XCTAssertEqual(ActivityDurationFormat.string(3.44), "3.4s")
+        XCTAssertEqual(ActivityDurationFormat.string(0.06), "0.1s")
+        XCTAssertEqual(ActivityDurationFormat.string(9.99), "10.0s")
+        XCTAssertEqual(ActivityDurationFormat.string(12.4), "12s")
+        XCTAssertEqual(ActivityDurationFormat.string(59.6), "60s")
+    }
+
+    // MARK: - Turn-complete haptic decision
+
+    // ChatHaptics itself is fire-and-forget UIKit; the testable seam is the
+    // view model's completion trigger, which ChatView observes and converts
+    // into exactly one `.success` haptic per increment (gated on the haptics
+    // AppStorage key). Success-only firing therefore reduces to: the trigger
+    // bumps on the `done` path and never on error/cancel/stream-end paths.
+
+    @MainActor
+    func testCompletionHapticTriggerBumpsExactlyOnceOnDone() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Do the thing")
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 0)
+
+        streamClient.emit(.reasoning("Thinking"))
+        streamClient.emit(.token("Answer"))
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 0, "streaming alone must not fire")
+
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1, "done fires exactly once")
+
+        // The transport lingering to streamEnd after done must not re-fire.
+        streamClient.emit(.streamEnd)
+        XCTAssertEqual(viewModel.responseCompletionHapticTrigger, 1)
+    }
+
+    @MainActor
+    func testCompletionHapticTriggerDoesNotBumpOnErrorCancelOrBareStreamEnd() async throws {
+        for terminal in [SSEEvent.error("boom"), .cancelled, .streamEnd] {
+            let streamClient = PacingSpySSEStreamingClient()
+            let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+            let didStart = await viewModel.sendMessage("Do the thing")
+            XCTAssertTrue(didStart)
+            streamClient.emit(.reasoning("Thinking"))
+
+            streamClient.emit(terminal)
+            XCTAssertEqual(
+                viewModel.responseCompletionHapticTrigger, 0,
+                "terminal event \(terminal) must not fire the turn-complete haptic"
+            )
+            XCTAssertEqual(viewModel.turnPhase, .idle)
+        }
+    }
+
     @MainActor
     private func makeActivityViewModel(
         streamClient: PacingSpySSEStreamingClient

@@ -598,6 +598,7 @@ struct SessionInteractiveRow: View {
 
 struct ScheduledSessionsDisclosure: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
     let viewModel: SessionListViewModel
     let sessions: [SessionSummary]
     let totalCount: Int
@@ -625,7 +626,7 @@ struct ScheduledSessionsDisclosure: View {
         } accessory: {
             Text("\(totalCount)")
                 .font(.footnote.weight(.semibold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 2)
                 .background(.thinMaterial, in: Capsule())
@@ -1186,10 +1187,10 @@ struct SidebarSubrowSelectionStyle: ViewModifier {
             .padding(.trailing, 10)
             .background {
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .fill(Color.accentColor.opacity(0.10))
                         .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(Color.accentColor.opacity(0.20), lineWidth: 1)
                         }
                 }
@@ -1204,6 +1205,7 @@ extension View {
 }
 
 struct ActiveProfilePickerRow: View {
+    @Environment(\.colorScheme) private var colorScheme
     let profile: ProfileSummary
     let isSelected: Bool
     let isSwitching: Bool
@@ -1225,7 +1227,7 @@ struct ActiveProfilePickerRow: View {
 
                     Text(defaultModelTitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
                         .lineLimit(1)
                 }
 
@@ -1262,6 +1264,7 @@ struct ActiveProfilePickerRow: View {
 }
 
 struct ProjectFilterRow: View {
+    @Environment(\.colorScheme) private var colorScheme
     let project: ProjectSummary
     let isSelected: Bool
     let count: Int
@@ -1289,7 +1292,9 @@ struct ProjectFilterRow: View {
                         if count > 0 {
                             Text("\(count)")
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(
+                                    ChatPalette.appChrome(colorScheme: colorScheme).textTertiary
+                                )
                         }
 
                         if isSelected {
@@ -1334,10 +1339,10 @@ struct ProjectFilterRow: View {
         }
         .background {
             if isSelected {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
                     .fill(Color.accentColor.opacity(0.10))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(Color.accentColor.opacity(0.20), lineWidth: 1)
                     }
             }
@@ -1477,6 +1482,7 @@ private struct SessionListStatusRow: View {
 
 struct SessionRowSkeletonView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .body) private var verticalPadding: CGFloat = 8
 
     let configuration: SessionRowSkeletonConfiguration
@@ -1490,7 +1496,7 @@ struct SessionRowSkeletonView: View {
             if let metadataLabel {
                 Text(verbatim: metadataLabel)
                     .font(AppFont.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
                     .lineLimit(metadataLineLimit)
             }
         }
@@ -1531,7 +1537,7 @@ struct SessionRowSkeletonView: View {
     private var relativeDateText: some View {
         Text(verbatim: configuration.relativeDate)
             .font(AppFont.caption())
-            .foregroundStyle(.secondary)
+            .foregroundStyle(ChatPalette.appChrome(colorScheme: colorScheme).textTertiary)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
     }

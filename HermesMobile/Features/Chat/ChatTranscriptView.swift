@@ -22,6 +22,11 @@ struct ChatTranscriptView: View {
     /// or answer text arrives). Drives the thinking orb / beam. Sourced from
     /// `ChatViewModel.isReasoningPhaseActive`.
     let isReasoningActive: Bool
+    /// Duration of the most recently completed reasoning stint in the open
+    /// turn ("Thought for Ns" on the live block once it settles). Historical
+    /// blocks always render nil. Sourced from
+    /// `ChatViewModel.lastReasoningDuration`.
+    let lastReasoningDuration: TimeInterval?
     /// True while the turn is semantically in its tool step; keeps the live
     /// tool capsule animating between a tool completing and the next event.
     /// Sourced from `ChatViewModel.isToolPhaseActive`.
@@ -246,6 +251,7 @@ struct ChatTranscriptView: View {
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
                     reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
                     isReasoningActive: isReasoningAnchor && isReasoningActive,
+                    lastReasoningDuration: isReasoningAnchor ? lastReasoningDuration : nil,
                     isToolPhaseActive: isToolCallAnchor && isToolPhaseActive,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
@@ -368,7 +374,11 @@ struct ChatTranscriptView: View {
             if showsThinkingAndToolCards {
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText, isStreaming: isReasoningActive)
+                    ReasoningBlockView(
+                        text: liveReasoningText,
+                        isStreaming: isReasoningActive,
+                        completedDuration: lastReasoningDuration
+                    )
                 }
 
                 if !liveToolCalls.isEmpty,
@@ -480,6 +490,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let reasoningAnchorMessageID: String?
     /// See `ChatTranscriptView.isReasoningActive` — scoped to the anchor row.
     let isReasoningActive: Bool
+    /// See `ChatTranscriptView.lastReasoningDuration` — scoped to the anchor row.
+    let lastReasoningDuration: TimeInterval?
     /// See `ChatTranscriptView.isToolPhaseActive` — scoped to the anchor row.
     let isToolPhaseActive: Bool
     let liveToolCalls: [ToolCall]
@@ -523,6 +535,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.liveReasoningText == rhs.liveReasoningText &&
             lhs.reasoningAnchorMessageID == rhs.reasoningAnchorMessageID &&
             lhs.isReasoningActive == rhs.isReasoningActive &&
+            lhs.lastReasoningDuration == rhs.lastReasoningDuration &&
             lhs.isToolPhaseActive == rhs.isToolPhaseActive &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
@@ -594,7 +607,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText, isStreaming: isReasoningActive)
+            ReasoningBlockView(
+                text: liveReasoningText,
+                isStreaming: isReasoningActive,
+                completedDuration: lastReasoningDuration
+            )
         }
     }
 

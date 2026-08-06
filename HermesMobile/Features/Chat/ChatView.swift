@@ -1087,6 +1087,7 @@ struct ChatView: View {
             liveReasoningText: viewModel.liveReasoningText,
             reasoningAnchorMessageID: viewModel.reasoningAnchorMessageID,
             isReasoningActive: viewModel.isReasoningPhaseActive,
+            lastReasoningDuration: viewModel.lastReasoningDuration,
             isToolPhaseActive: viewModel.isToolPhaseActive,
             liveToolCalls: viewModel.liveToolCalls,
             toolCallAnchorMessageID: viewModel.toolCallAnchorMessageID,

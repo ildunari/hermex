@@ -179,6 +179,7 @@
 		1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */; };
 		C7C300000000000000000001 /* ThinkingOrbView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C300000000000000000002 /* ThinkingOrbView.swift */; };
 		C7C400000000000000000001 /* ActivityCapsuleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000002 /* ActivityCapsuleView.swift */; };
+		C7C500000000000000000001 /* ActivityHistoryRailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C500000000000000000002 /* ActivityHistoryRailView.swift */; };
 		C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000004 /* BorderBeamModifier.swift */; };
 		1A2B3C4D5E6F7000000000E4 /* FileBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */; };
 		1A2B3C4D5E6F7000000000E6 /* FileBrowserViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */; };
@@ -523,6 +524,7 @@
 		1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReasoningBlockView.swift; sourceTree = "<group>"; };
 		C7C300000000000000000002 /* ThinkingOrbView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingOrbView.swift; sourceTree = "<group>"; };
 		C7C400000000000000000002 /* ActivityCapsuleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCapsuleView.swift; sourceTree = "<group>"; };
+		C7C500000000000000000002 /* ActivityHistoryRailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityHistoryRailView.swift; sourceTree = "<group>"; };
 		C7C400000000000000000004 /* BorderBeamModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderBeamModifier.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E5 /* FileBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000E7 /* FileBrowserViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FileBrowserViewModel.swift; sourceTree = "<group>"; };
@@ -1039,6 +1041,7 @@
 				1A2B3C4D5E6F7000000000E3 /* ReasoningBlockView.swift */,
 				C7C300000000000000000002 /* ThinkingOrbView.swift */,
 				C7C400000000000000000002 /* ActivityCapsuleView.swift */,
+				C7C500000000000000000002 /* ActivityHistoryRailView.swift */,
 				C7C400000000000000000004 /* BorderBeamModifier.swift */,
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
 				B5A220000000000000000004 /* MarkerMessageCardView.swift */,
@@ -1554,6 +1557,7 @@
 				1A2B3C4D5E6F7000000000E2 /* ReasoningBlockView.swift in Sources */,
 				C7C300000000000000000001 /* ThinkingOrbView.swift in Sources */,
 				C7C400000000000000000001 /* ActivityCapsuleView.swift in Sources */,
+				C7C500000000000000000001 /* ActivityHistoryRailView.swift in Sources */,
 				C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */,
 				B5A220000000000000000001 /* ChatMarkerMessageClassifier.swift in Sources */,
 				B5A220000000000000000003 /* MarkerMessageCardView.swift in Sources */,

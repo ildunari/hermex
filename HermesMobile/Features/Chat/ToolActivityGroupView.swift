@@ -41,9 +41,10 @@ struct ToolActivityGroupView: View {
             if isExpanded {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(group.toolCalls) { toolCall in
-                        ToolCallCardView(toolCall: toolCall)
+                        ToolCallCardView(toolCall: toolCall, isNestedInGroup: true)
                     }
                 }
+                .padding(.leading, 8)
                 .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
@@ -70,9 +71,16 @@ struct ToolActivityGroupView: View {
             return String(localized: "Tool failed")
         }
         let count = group.toolCalls.count
-        return count == 1
+        let base = count == 1
             ? String(localized: "Ran 1 tool")
             : String(localized: "Ran \(count) tools")
+
+        // Sum reported durations for a "Ran 3 tools in 8s" summary; if no
+        // call reported one, keep the plain count label.
+        let durations = group.toolCalls.compactMap(\.duration)
+        guard !durations.isEmpty else { return base }
+        let total = durations.reduce(0, +)
+        return String(localized: "\(base) in \(ActivityDurationFormat.string(total))")
     }
 
     private var activityVerb: String {

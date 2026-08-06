@@ -80,6 +80,29 @@ struct SurfaceGalleryView: View {
                     }
                 }
 
+                section("History rail") {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ActivityHistoryRailView(
+                            steps: Self.historyRailSteps,
+                            totalDuration: 40
+                        )
+                        ActivityHistoryRailView(
+                            steps: Self.historyRailSteps,
+                            totalDuration: 40,
+                            showsEndpoints: true
+                        )
+                    }
+                }
+
+                section("Code themes") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        codeThemeCell(title: "Warm Dark", scheme: .dark, temperature: .warm)
+                        codeThemeCell(title: "Warm Light", scheme: .light, temperature: .warm)
+                        codeThemeCell(title: "Standard Dark", scheme: .dark, temperature: .standard)
+                        codeThemeCell(title: "Standard Light", scheme: .light, temperature: .standard)
+                    }
+                }
+
                 section("Voice recording bar") {
                     ComposerVoiceRecordingBar(
                         elapsed: 12,
@@ -174,6 +197,54 @@ struct SurfaceGalleryView: View {
 
     private var galleryPalette: ChatPalette {
         ChatPalette.appChrome(colorScheme: colorScheme)
+    }
+
+    /// One code-theme preview cell with the palette combo pinned explicitly.
+    /// The highlight request is constructed directly (bypassing `@AppStorage`)
+    /// so all four combos render side by side regardless of the stored
+    /// setting; the slab color comes from a palette built with the same
+    /// explicit combo.
+    private func codeThemeCell(
+        title: String,
+        scheme: ColorScheme,
+        temperature: ChatPaletteTemperature
+    ) -> some View {
+        let palette = ChatPalette(
+            colorScheme: scheme,
+            backgroundStyle: .warm,
+            temperature: temperature
+        )
+        let request = MarkdownCodeHighlightRequest(
+            code: Self.codeThemeSnippet,
+            language: "swift",
+            colorScheme: scheme,
+            temperature: temperature,
+            isStreaming: false
+        )
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(title.uppercased())
+                .font(AppFont.caption2(weight: .semibold))
+                .kerning(0.8)
+                .foregroundStyle(.secondary)
+
+            Group {
+                switch MarkdownCodeHighlighter.highlightedCode(for: request) {
+                case .highlighted(let attributed):
+                    Text(AttributedString(attributed))
+                case .plain:
+                    Text(Self.codeThemeSnippet)
+                        .foregroundStyle(palette.textPrimary)
+                }
+            }
+            .font(.system(size: 12, design: .monospaced))
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(palette.codeSlab)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .environment(\.colorScheme, scheme)
+        }
     }
 
     /// One live capsule per beam style so palette review can eyeball every
@@ -395,6 +466,22 @@ struct SurfaceGalleryView: View {
     )
 
     private static let reasoningText = "Checked each surface against the palette tokens and confirmed the roles resolve consistently."
+
+    private static let historyRailSteps: [ActivityHistoryRailView.Step] = [
+        .init(orbState: .thinking, completedLabel: "Thought for 12s", icon: "brain"),
+        .init(orbState: .searching, completedLabel: "Read 3 files", icon: "doc.text.magnifyingglass"),
+        .init(orbState: .writing, completedLabel: "Wrote patch", icon: "pencil"),
+        .init(orbState: .working, completedLabel: "Ran tests", icon: "checkmark.circle.fill")
+    ]
+
+    private static let codeThemeSnippet = """
+    struct Greeter {
+        let name: String // label
+        func greet() -> String {
+            "Hello, \\(name)! Count: \\(42)"
+        }
+    }
+    """
 
     private static let toolCall = ToolCall(
         id: "surface-gallery-tool",

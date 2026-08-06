@@ -452,6 +452,7 @@ private struct ChatCodeBlock: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatTranscriptDisplaySettings.wrapsCodeBlockLinesKey) private var wrapsCodeBlockLines = false
+    @AppStorage(ChatPaletteTemperature.storageKey) private var codePaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @State private var didCopy = false
     @State private var highlightedCode: NSAttributedString?
 
@@ -548,6 +549,7 @@ private struct ChatCodeBlock: View {
             code: content,
             language: language,
             colorScheme: colorScheme,
+            temperature: ChatPaletteTemperature.storedValue(codePaletteTemperatureRawValue),
             isStreaming: isStreaming
         )
     }
@@ -1095,6 +1097,7 @@ struct MarkdownCodeHighlightRequest: Equatable {
     let code: String
     let language: String?
     let colorScheme: ColorScheme
+    var temperature: ChatPaletteTemperature = .defaultValue
     let isStreaming: Bool
 }
 
@@ -1117,7 +1120,8 @@ enum MarkdownCodeHighlighter {
             guard let highlighted = StableHighlightrStore.shared.highlight(
                 request.code,
                 language: normalizedLanguage,
-                colorScheme: request.colorScheme
+                colorScheme: request.colorScheme,
+                temperature: request.temperature
             ) else {
                 return .plain(reason: .highlighterUnavailable, normalizedLanguage: normalizedLanguage)
             }
@@ -1133,20 +1137,46 @@ enum MarkdownCodeHighlighter {
 private final class StableHighlightrStore {
     static let shared = StableHighlightrStore()
 
-    private enum ThemeKey: Hashable {
-        case light
-        case dark
+    private struct ThemeKey: Hashable {
+        let isDark: Bool
+        let temperature: ChatPaletteTemperature
+
+        /// Highlightr CSS theme for this combo. Warm combos use the Atom One
+        /// pair (whose neutral grays take the warm post-process well);
+        /// standard combos keep the existing github-dark / xcode mapping.
+        var themeName: String {
+            switch (temperature, isDark) {
+            case (.warm, true): "atom-one-dark"
+            case (.warm, false): "atom-one-light"
+            case (.standard, true): "github-dark"
+            case (.standard, false): "xcode"
+            }
+        }
+
+        /// Theme applied when `themeName` fails to load, matching the store's
+        /// pre-palette behavior.
+        var fallbackThemeName: String {
+            isDark ? "github-dark" : "xcode"
+        }
     }
 
     private var highlightrs: [ThemeKey: Highlightr] = [:]
 
     private init() {}
 
-    func highlight(_ code: String, language: String, colorScheme: ColorScheme) -> NSAttributedString? {
-        guard let highlighted = highlightr(for: colorScheme)?.highlight(code, as: language, fastRender: true) else {
+    func highlight(
+        _ code: String,
+        language: String,
+        colorScheme: ColorScheme,
+        temperature: ChatPaletteTemperature = .defaultValue
+    ) -> NSAttributedString? {
+        let key = ThemeKey(isDark: colorScheme == .dark, temperature: temperature)
+        guard let highlighted = highlightr(for: key)?.highlight(code, as: language, fastRender: true) else {
             return nil
         }
-        return Self.strippingBackgroundAttributes(from: highlighted)
+        let stripped = Self.strippingBackgroundAttributes(from: highlighted)
+        guard temperature.usesWarmSurfaces else { return stripped }
+        return Self.warmingForegroundAttributes(from: stripped, isDark: key.isDark)
     }
 
     /// Highlightr themes declare a canvas background of their own; if any run in
@@ -1170,8 +1200,62 @@ private final class StableHighlightrStore {
         return mutable
     }
 
-    private func highlightr(for colorScheme: ColorScheme) -> Highlightr? {
-        let key: ThemeKey = colorScheme == .dark ? .dark : .light
+    /// Warm-palette post-process: near-gray token colors (saturation < 0.15)
+    /// are nudged toward a warm hue (~30°, orange) with a touch of saturation
+    /// so the code slab reads as part of the warm surface stack instead of a
+    /// cool neutral island. In warm-light, brightness is capped at 0.75 so no
+    /// token glows against the ivory slab. Colors whose HSB components can't
+    /// be extracted are left untouched.
+    private static func warmingForegroundAttributes(
+        from attributed: NSAttributedString,
+        isDark: Bool
+    ) -> NSAttributedString {
+        let fullRange = NSRange(location: 0, length: attributed.length)
+        let mutable = NSMutableAttributedString(attributedString: attributed)
+        var changed = false
+
+        attributed.enumerateAttribute(.foregroundColor, in: fullRange) { value, range, _ in
+            guard let color = value as? UIColor else { return }
+
+            var hue: CGFloat = 0
+            var saturation: CGFloat = 0
+            var brightness: CGFloat = 0
+            var alpha: CGFloat = 0
+            guard color.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+                return
+            }
+
+            var newHue = hue
+            var newSaturation = saturation
+            var newBrightness = brightness
+            var needsUpdate = false
+
+            if saturation < 0.15 {
+                // Near-gray: shift toward orange and pick up a whisper of warmth.
+                newHue = 30.0 / 360.0
+                newSaturation = min(0.12, max(0.08, saturation + 0.08))
+                needsUpdate = true
+            }
+
+            if !isDark, newBrightness > 0.75 {
+                newBrightness = 0.75
+                needsUpdate = true
+            }
+
+            guard needsUpdate else { return }
+
+            changed = true
+            mutable.addAttribute(
+                .foregroundColor,
+                value: UIColor(hue: newHue, saturation: newSaturation, brightness: newBrightness, alpha: alpha),
+                range: range
+            )
+        }
+
+        return changed ? mutable : attributed
+    }
+
+    private func highlightr(for key: ThemeKey) -> Highlightr? {
         if let highlightr = highlightrs[key] {
             return highlightr
         }
@@ -1180,7 +1264,9 @@ private final class StableHighlightrStore {
             return nil
         }
 
-        highlightr.setTheme(to: key == .dark ? "github-dark" : "xcode")
+        if !highlightr.setTheme(to: key.themeName) {
+            highlightr.setTheme(to: key.fallbackThemeName)
+        }
         highlightrs[key] = highlightr
         return highlightr
     }

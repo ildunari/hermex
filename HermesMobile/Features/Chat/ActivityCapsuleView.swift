@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// Shared "how long did that take" formatting for activity capsules:
+/// one decimal under 10 seconds ("3.4s"), whole seconds after ("12s").
+enum ActivityDurationFormat {
+    static func string(_ duration: TimeInterval) -> String {
+        if duration < 10 {
+            return String(format: "%.1fs", duration)
+        }
+        return "\(Int(duration.rounded()))s"
+    }
+}
+
 /// Collapsed chip for live reasoning/tool activity: an orb, a shimmering
 /// label, and an optional traveling border beam while work is in flight.
 /// Self-sizing — callers should not stretch it to full width. The whole
@@ -16,6 +27,7 @@ struct ActivityCapsuleView: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
@@ -25,21 +37,33 @@ struct ActivityCapsuleView: View {
     /// then settles to reduced strength while work continues.
     @State private var entranceBoost = false
 
+    /// Completion choreography: when work finishes, the orb first freezes
+    /// (cross-dissolve to its static frame), then dissolves to the completed
+    /// icon, while one final full-strength beam sweep plays and fades.
+    private enum CompletionPhase {
+        /// No choreography in flight — the leading glyph simply follows
+        /// `isActive` (historical capsules render here directly).
+        case idle
+        /// Orb is frozen at a static frame, about to become the icon.
+        case freezingOrb
+    }
+
+    @State private var completionPhase: CompletionPhase = .idle
+    /// Drives the single farewell beam sweep after completion.
+    @State private var finaleSweep = false
+
+    private var usesAccessibilityLayout: Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
     var body: some View {
         let displayLabel = isActive ? label : (completedLabel ?? label)
 
         Button {
             onTap?()
         } label: {
-            HStack(spacing: 8) {
-                if isActive {
-                    ThinkingOrbView(state: orbState, size: 20, color: .secondary)
-                } else {
-                    Image(systemName: completedIcon)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(completedIconColor ?? palette.textSecondary)
-                        .frame(width: 20, height: 20)
-                }
+            HStack(alignment: usesAccessibilityLayout ? .top : .center, spacing: 8) {
+                leadingGlyph
 
                 labelText(displayLabel)
 
@@ -49,14 +73,12 @@ struct ActivityCapsuleView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 7)
-            .background(Capsule().fill(palette.surface.opacity(0.8)))
-            .overlay(Capsule().strokeBorder(palette.tableRule, lineWidth: 1))
-            .borderBeam(
-                style: beamStyle,
-                shape: Capsule(),
-                active: isActive && beamStyle.isVisible
-            )
-            .contentShape(Capsule())
+            .modifier(CapsuleChrome(
+                palette: palette,
+                beamStyle: beamStyle,
+                beamActive: (isActive || finaleSweep) && beamStyle.isVisible,
+                usesAccessibilityLayout: usesAccessibilityLayout
+            ))
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityText(displayLabel: displayLabel))
@@ -73,6 +95,78 @@ struct ActivityCapsuleView: View {
                 entranceBoost = false
             }
         }
+        .onChange(of: isActive) { wasActive, nowActive in
+            guard wasActive, !nowActive else {
+                // Re-activation (or spurious change) cancels any finale.
+                completionPhase = .idle
+                finaleSweep = false
+                return
+            }
+            guard !reduceMotion else {
+                // Reduce Motion: instant swap, no choreography.
+                completionPhase = .idle
+                finaleSweep = false
+                return
+            }
+            runCompletionChoreography()
+        }
+    }
+
+    // MARK: - Completion choreography
+
+    /// Total ~0.35s glyph choreography: the orb holds a frozen frame briefly,
+    /// then cross-dissolves to the completed icon, while one full-strength
+    /// beam sweep plays and fades out.
+    private func runCompletionChoreography() {
+        completionPhase = .freezingOrb
+        finaleSweep = true
+        let sweepDuration = max(0.5, resolvedBeam.cycleDuration)
+
+        Task { @MainActor in
+            // Hold the frozen orb frame briefly.
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !isActive else { return }
+            // Cross-dissolve frozen orb → completed icon (0.15 + 0.20 ≈ 0.35s).
+            withAnimation(.easeInOut(duration: 0.2)) {
+                completionPhase = .idle
+            }
+            // Let the farewell sweep finish one cycle, then fade it out
+            // (the beam modifier animates its own 0.4s fade on deactivation).
+            try? await Task.sleep(nanoseconds: UInt64(sweepDuration * 1_000_000_000))
+            guard !isActive else { return }
+            finaleSweep = false
+        }
+    }
+
+    // MARK: - Leading glyph
+
+    @ViewBuilder
+    private var leadingGlyph: some View {
+        ZStack {
+            if isActive {
+                ThinkingOrbView(state: orbState, size: 20, color: .secondary)
+                    .transition(.opacity)
+            } else if completionPhase == .freezingOrb {
+                // Frozen frame of the same orb: the first beat of the
+                // completion cross-dissolve.
+                ThinkingOrbView(state: orbState, size: 20, color: .secondary, paused: true)
+                    .transition(.opacity)
+            } else {
+                Image(systemName: completedIcon)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(completedIconColor ?? palette.textSecondary)
+                    .frame(width: 20, height: 20)
+                    .transition(.opacity)
+            }
+        }
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 0.15),
+            value: isActive
+        )
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 0.2),
+            value: completionPhase == .freezingOrb
+        )
     }
 
     // MARK: - Label
@@ -81,11 +175,15 @@ struct ActivityCapsuleView: View {
     private func labelText(_ value: String) -> some View {
         let styled = Text(value).font(AppFont.subheadline())
         let base = styled
-            .lineLimit(1)
+            .lineLimit(usesAccessibilityLayout ? 2 : 1)
             .truncationMode(.middle)
+            .multilineTextAlignment(.leading)
+            .frame(maxWidth: usesAccessibilityLayout ? .infinity : nil, alignment: .leading)
             .foregroundStyle(palette.textSecondary)
+            .contentTransition(.opacity)
+            .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: value)
 
-        if isActive && !reduceMotion {
+        if isActive && !reduceMotion && !usesAccessibilityLayout {
             base.overlay {
                 TimelineView(.animation(minimumInterval: 1 / 30, paused: false)) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
@@ -144,7 +242,7 @@ struct ActivityCapsuleView: View {
 
     private var beamStyle: BeamStyle {
         var style = BeamStyle(resolved: resolvedBeam)
-        if !entranceBoost {
+        if !entranceBoost && !finaleSweep {
             style.strength *= 0.6
         }
         return style
@@ -154,6 +252,38 @@ struct ActivityCapsuleView: View {
         isActive
             ? String(localized: "\(displayLabel), in progress")
             : String(localized: "\(displayLabel), finished")
+    }
+}
+
+/// Background, hairline, beam, and hit shape for the capsule. At
+/// accessibility type sizes the pill becomes a continuous rounded rectangle
+/// so a two-line wrapped label doesn't fight the capsule geometry. Two
+/// explicit branches keep `borderBeam`'s generic `InsettableShape` parameter
+/// happy without shape erasure.
+private struct CapsuleChrome: ViewModifier {
+    let palette: ChatPalette
+    let beamStyle: BeamStyle
+    let beamActive: Bool
+    let usesAccessibilityLayout: Bool
+
+    func body(content: Content) -> some View {
+        if usesAccessibilityLayout {
+            content
+                .background(shapeAccessibility.fill(palette.surface.opacity(0.8)))
+                .overlay(shapeAccessibility.strokeBorder(palette.tableRule, lineWidth: 1))
+                .borderBeam(style: beamStyle, shape: shapeAccessibility, active: beamActive)
+                .contentShape(shapeAccessibility)
+        } else {
+            content
+                .background(Capsule().fill(palette.surface.opacity(0.8)))
+                .overlay(Capsule().strokeBorder(palette.tableRule, lineWidth: 1))
+                .borderBeam(style: beamStyle, shape: Capsule(), active: beamActive)
+                .contentShape(Capsule())
+        }
+    }
+
+    private var shapeAccessibility: RoundedRectangle {
+        RoundedRectangle(cornerRadius: 16, style: .continuous)
     }
 }
 
