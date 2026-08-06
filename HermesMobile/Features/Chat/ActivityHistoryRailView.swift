@@ -28,8 +28,8 @@ struct ActivityHistoryRailView: View {
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
-    private static let orbGlyphSize: CGFloat = 14
-    private static let orbOverlap: CGFloat = 4
+    private static let orbGlyphSize: CGFloat = 18
+    private static let orbOverlap: CGFloat = 5
     private static let maxOrbGlyphs = 4
 
     var body: some View {

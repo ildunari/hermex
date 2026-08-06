@@ -11,6 +11,16 @@ enum ActivityDurationFormat {
     }
 }
 
+/// Rendered size of the animated orb inside an activity capsule. The orb's
+/// dot presets are tuned at 20pt but scale cleanly (dot radii follow
+/// `radiusScale`), and a slightly larger mark reads far better in a live
+/// transcript — the plait/sash/scan motion is legible instead of a speck.
+enum ActivityOrbMetrics {
+    static let capsuleGlyphSize: CGFloat = 26
+    /// Completed-state SF Symbol size, matched optically to the orb.
+    static let capsuleIconPointSize: CGFloat = 16
+}
+
 /// Collapsed chip for live reasoning/tool activity: an orb, a shimmering
 /// label, and an optional traveling border beam while work is in flight.
 /// Self-sizing — callers should not stretch it to full width. The whole
@@ -144,18 +154,30 @@ struct ActivityCapsuleView: View {
     private var leadingGlyph: some View {
         ZStack {
             if isActive {
-                ThinkingOrbView(state: orbState, size: 20, color: .secondary)
+                ThinkingOrbView(
+                    state: orbState,
+                    size: ActivityOrbMetrics.capsuleGlyphSize,
+                    color: .secondary
+                )
                     .transition(.opacity)
             } else if completionPhase == .freezingOrb {
                 // Frozen frame of the same orb: the first beat of the
                 // completion cross-dissolve.
-                ThinkingOrbView(state: orbState, size: 20, color: .secondary, paused: true)
+                ThinkingOrbView(
+                    state: orbState,
+                    size: ActivityOrbMetrics.capsuleGlyphSize,
+                    color: .secondary,
+                    paused: true
+                )
                     .transition(.opacity)
             } else {
                 Image(systemName: completedIcon)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: ActivityOrbMetrics.capsuleIconPointSize, weight: .semibold))
                     .foregroundStyle(completedIconColor ?? palette.textSecondary)
-                    .frame(width: 20, height: 20)
+                    .frame(
+                        width: ActivityOrbMetrics.capsuleGlyphSize,
+                        height: ActivityOrbMetrics.capsuleGlyphSize
+                    )
                     .transition(.opacity)
             }
         }

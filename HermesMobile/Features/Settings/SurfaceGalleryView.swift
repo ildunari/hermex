@@ -261,7 +261,11 @@ struct SurfaceGalleryView: View {
             )
         )
         return HStack(spacing: 8) {
-            ThinkingOrbView(state: .working, size: 20, color: .secondary)
+            ThinkingOrbView(
+                state: .working,
+                size: ActivityOrbMetrics.capsuleGlyphSize,
+                color: .secondary
+            )
             Text("Beam · \(style.title)")
                 .font(AppFont.subheadline())
                 .foregroundStyle(galleryPalette.textSecondary)
