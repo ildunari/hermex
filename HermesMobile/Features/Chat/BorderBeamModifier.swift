@@ -74,10 +74,9 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
                     lineWidth: Self.lineWidth
                 )
         } else if active {
-            // Match the orb's capped cadence: an unbounded `.animation`
-            // schedule redraws the gradient strokes at the display's maximum
-            // rate, which is wasted work for a slow traveling glow.
-            TimelineView(.animation(minimumInterval: ThinkingOrbView.frameInterval)) { timeline in
+            // Share the orbs' 30 fps clock so every animating capsule redraws
+            // on the same tick instead of each running its own scheduler.
+            TimelineView(ThinkingOrbView.sharedSchedule) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: 86_400)
                 let phase = (t / style.cycleDuration)

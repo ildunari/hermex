@@ -58,6 +58,15 @@ struct ThinkingOrbView: View {
     /// keeps several simultaneous orbs from saturating the CPU.
     static let frameInterval: Double = 1.0 / 30.0
 
+    /// Shared 30 fps schedule for every animating orb and beam. One periodic
+    /// timeline for all of them lets the system coalesce their redraws into
+    /// the same frame instead of running an independent scheduler per view —
+    /// which matters once a group of parallel tool calls is expanded.
+    static let sharedSchedule = PeriodicTimelineSchedule(
+        from: .init(timeIntervalSinceReferenceDate: 0),
+        by: frameInterval
+    )
+
     /// Fixed timestamp used for the static Reduce Motion frame. Per mode:
     /// mid-phase frames chosen by eye in the surface gallery so the frozen
     /// pose is not degenerate (braid strands mid-plait, ribbon mid-wave).
@@ -72,7 +81,7 @@ struct ThinkingOrbView: View {
 
     var body: some View {
         Group {
-            if reduceMotion {
+            if reduceMotion || paused {
                 Canvas { context, canvasSize in
                     Self.draw(
                         context: context,
@@ -88,7 +97,7 @@ struct ThinkingOrbView: View {
                 // solve plus a Canvas pass. These orbs are ambient marks, not
                 // gameplay: 30 fps is visually identical here and roughly
                 // quarters the per-orb CPU cost when several animate at once.
-                TimelineView(.animation(minimumInterval: Self.frameInterval, paused: paused)) { timeline in
+                TimelineView(Self.sharedSchedule) { timeline in
                     Canvas { context, canvasSize in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                             .truncatingRemainder(dividingBy: 86_400)

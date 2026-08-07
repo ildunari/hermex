@@ -207,7 +207,8 @@ struct ActivityCapsuleView: View {
 
         if isActive && !reduceMotion && !usesAccessibilityLayout {
             base.overlay {
-                TimelineView(.animation(minimumInterval: 1 / 30, paused: false)) { timeline in
+                // Same shared 30 fps clock as the orbs and beam.
+                TimelineView(ThinkingOrbView.sharedSchedule) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
                     let phase = (t / 2).truncatingRemainder(dividingBy: 1)
