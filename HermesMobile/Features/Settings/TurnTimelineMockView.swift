@@ -81,6 +81,13 @@ struct TurnTimelineMockView: View {
             panel("FAILED", note: "The failure is attributed to its own row.") {
                 ToolActivityGroupView(group: Self.failedGroup)
             }
+            panel("THINKING — EXPANDED", note: "Opens into the thought inside one container, matching the tool block.") {
+                ReasoningBlockView(
+                    text: Self.thinkingText,
+                    isStreaming: false,
+                    completedDuration: 12
+                )
+            }
             panel("COLLAPSED SUMMARY", note: "What the blocks fold into once the answer starts.") {
                 TurnActivitySummaryRow(
                     reasoningDuration: 12,

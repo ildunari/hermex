@@ -36,38 +36,40 @@ struct ReasoningBlockView: View {
                     isActive: isStreaming,
                     completedIcon: "brain",
                     completedLabel: completedLabelText,
-                    accessory: AnyView(chevron)
-                ) {
-                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                        userToggledExpansion = !isExpanded
-                    }
-                }
+                    accessory: AnyView(chevron),
+                    onTap: {
+                        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                            userToggledExpansion = !isExpanded
+                        }
+                    },
+                    // Expanded, the block itself is the bordered container, so
+                    // the header must not draw a competing pill inside it.
+                    chrome: isExpanded ? .none : .pill
+                )
                 .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
                 if isExpanded {
-                    // Blockquote treatment: a soft rail plus a faint wash,
-                    // reading as quoted thought rather than a boxed card.
-                    HStack(alignment: .top, spacing: 10) {
-                        RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                            .fill(palette.textTertiary)
-                            .frame(width: 3)
+                    // Quiet indented body: a thin rail with the thought hanging
+                    // off it, matching the expanded tool block rather than
+                    // nesting a washed slab inside a card.
+                    HStack(alignment: .top, spacing: 12) {
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(palette.tableRule)
+                            .frame(width: 2)
 
                         Text(trimmedText)
                             .font(AppFont.caption())
                             .foregroundStyle(palette.textSecondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 9)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                    .fill(palette.quoteWash)
-                            )
                     }
                     .padding(.leading, 4)
                     .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
                 }
             }
+            // One container for the whole block when open — same treatment the
+            // tool block uses, so thinking and tools read as one family.
+            .modifier(ReasoningBlockChrome(palette: palette, isEnabled: isExpanded))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
@@ -96,5 +98,37 @@ struct ReasoningBlockView: View {
     private var trimmedText: String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Shared container geometry for expanded activity blocks (thinking + tools).
+///
+/// 10pt continuous matches `MarkerMessageCardView` and the timeline accessory
+/// surface, so an expanded block reads as the same family of card as the rest
+/// of the transcript instead of an oversized pill.
+enum ActivityBlockChrome {
+    static let cornerRadius: CGFloat = 10
+
+    static func shape() -> RoundedRectangle {
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+    }
+}
+
+/// One border for an expanded thinking block. Collapsed, the header capsule
+/// keeps its own pill chrome and this does nothing.
+private struct ReasoningBlockChrome: ViewModifier {
+    let palette: ChatPalette
+    let isEnabled: Bool
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.8)))
+                .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
+        } else {
+            content
+        }
     }
 }

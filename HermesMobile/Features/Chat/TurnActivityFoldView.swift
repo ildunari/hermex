@@ -14,10 +14,14 @@ import SwiftUI
 ///
 /// **Why not `matchedGeometryEffect`.** It has no N-sources-to-one-target
 /// mode, interpolates frames rather than content (text and the composited beam
-/// layer smear), and flickers on insertion inside eager stacks. Instead both
-/// trees stay mounted and only container height plus opacity animate, with the
-/// container top-anchored and clipped so the blocks visually fold up into the
-/// summary row.
+/// layer smear), and flickers on insertion inside eager stacks.
+///
+/// **Why the blocks tree unmounts when folded.** An earlier version kept both
+/// trees mounted and cross-faded opacity inside a clipped, fixed-height
+/// container. That made every settled turn keep its full block list alive —
+/// for a 70-tool turn, seventy rows laying out behind a 40pt window — which
+/// made expanding and collapsing visibly janky. Folded now renders the summary
+/// row *only*; the blocks mount on expand and the height animates naturally.
 struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
     /// Drives the fold. Set true when the first answer token lands.
     let isCollapsed: Bool
@@ -33,8 +37,10 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
     @ViewBuilder let summary: (Bool, @escaping () -> Void) -> Summary
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var foldProgress: Double
     @State private var didAppear = false
+    /// Bumped to carry an explicit animation transaction when the automatic
+    /// fold flips; `isFolded` is derived, so it needs a driver to animate.
+    @State private var foldTick = 0
     /// User override. `nil` follows the automatic fold; set explicitly once the
     /// reader taps the summary (open) or the block header (re-collapse), so a
     /// settled turn's details stay reachable rather than being sealed shut.
@@ -52,9 +58,6 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
         self.animatesFold = animatesFold
         self.blocks = blocks
         self.summary = summary
-        // Seed the state directly rather than correcting it in `onAppear`,
-        // which flashes one expanded frame when a historical row mounts.
-        _foldProgress = State(initialValue: (initiallyCollapsed || isCollapsed) ? 1 : 0)
     }
 
     /// Whether the fold is currently showing the summary row.
@@ -63,69 +66,61 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
     }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            summary(false) { setUserExpanded(true) }
-                .opacity(foldProgress)
-                .accessibilityHidden(foldProgress < 0.5)
-
-            blocks()
-                .opacity(1 - foldProgress)
-                .accessibilityHidden(foldProgress >= 0.5)
-                // Re-collapse affordance while expanded, so the fold is a
-                // real two-way disclosure rather than a one-shot.
-                .overlay(alignment: .topTrailing) {
-                    if userExpanded == true {
-                        Button {
-                            setUserExpanded(false)
-                        } label: {
-                            Image(systemName: "chevron.up")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .padding(6)
-                                .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 0) {
+            if isFolded {
+                summary(false) { setUserExpanded(true) }
+                    .transition(.opacity)
+            } else {
+                blocks()
+                    .transition(.opacity)
+                    // Re-collapse affordance while expanded, so the fold is a
+                    // real two-way disclosure rather than a one-shot.
+                    .overlay(alignment: .topTrailing) {
+                        if userExpanded == true {
+                            Button {
+                                setUserExpanded(false)
+                            } label: {
+                                Image(systemName: "chevron.up")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .padding(6)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(localized: "Collapse activity"))
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(String(localized: "Collapse activity"))
                     }
-                }
+            }
         }
-        .frame(height: foldProgress >= 1 ? summaryHeight : nil, alignment: .top)
-        .clipped()
-        .onAppear {
-            didAppear = true
-        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .onAppear { didAppear = true }
         .onChange(of: isCollapsed) { _, collapsed in
             // An explicit user choice outranks the automatic fold.
-            guard userExpanded == nil else { return }
-            guard didAppear else {
-                foldProgress = collapsed ? 1 : 0
-                return
-            }
-            guard animatesFold, !reduceMotion else {
-                foldProgress = collapsed ? 1 : 0
-                return
-            }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-                foldProgress = collapsed ? 1 : 0
+            guard userExpanded == nil, didAppear else { return }
+            guard animatesFold, !reduceMotion else { return }
+            // The fold itself is driven by `isFolded`; animate the swap.
+            withAnimation(foldAnimation) {
+                foldTick += 1
             }
         }
     }
 
     private func setUserExpanded(_ expanded: Bool) {
-        userExpanded = expanded
         guard !reduceMotion else {
-            foldProgress = expanded ? 0 : 1
+            userExpanded = expanded
             return
         }
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-            foldProgress = expanded ? 0 : 1
+        withAnimation(foldAnimation) {
+            userExpanded = expanded
         }
     }
 
-    /// Deterministic one-line height; measuring at runtime would introduce a
-    /// layout pass mid-animation, which is exactly what makes this pop. Scaled
-    /// with the type size so accessibility sizes don't clip the row.
-    @ScaledMetric(relativeTo: .footnote) private var scaledSummaryHeight: CGFloat = 40
+    /// Matches the transcript's disclosure curve so opening a turn's activity
+    /// feels like opening any other card in the timeline.
+    private var foldAnimation: Animation { TurnActivityFoldAnimation.curve }
+}
 
-    private var summaryHeight: CGFloat { scaledSummaryHeight }
+/// Non-generic holder: static stored properties aren't allowed in generic types.
+enum TurnActivityFoldAnimation {
+    static let curve: Animation = .spring(response: 0.32, dampingFraction: 0.9)
 }

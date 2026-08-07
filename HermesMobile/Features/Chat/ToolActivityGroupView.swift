@@ -272,9 +272,6 @@ private struct ToolBlockChrome: ViewModifier {
     @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
-    /// Smaller than the composer's 22: an identical radius on a smaller shape
-    /// reads rounder, and this container is inset inside a message row.
-    private static let cornerRadius: CGFloat = 20
 
     func body(content: Content) -> some View {
         if isEnabled {
@@ -289,8 +286,9 @@ private struct ToolBlockChrome: ViewModifier {
         }
     }
 
+    /// Shared with the thinking block so both read as the same card family.
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+        ActivityBlockChrome.shape()
     }
 
     private var beamStyle: BeamStyle {

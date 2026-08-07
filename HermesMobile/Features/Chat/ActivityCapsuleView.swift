@@ -339,16 +339,24 @@ private struct CapsuleChrome: ViewModifier {
                 .borderBeam(style: beamStyle, shape: shapeAccessibility, active: beamActive)
                 .contentShape(shapeAccessibility)
         } else {
+            // 10pt continuous rather than a pill: the capsule sits in the same
+            // timeline as `MarkerMessageCardView` and the accessory surface,
+            // both of which are 10pt, and a lozenge read as foreign next to
+            // them. `shapeAccessibility` stays wider for wrapped labels.
             content
-                .background(Capsule().fill(palette.surface.opacity(0.8)))
-                .overlay(Capsule().strokeBorder(palette.tableRule, lineWidth: 1))
-                .borderBeam(style: beamStyle, shape: Capsule(), active: beamActive)
-                .contentShape(Capsule())
+                .background(shapeStandard.fill(palette.surface.opacity(0.8)))
+                .overlay(shapeStandard.strokeBorder(palette.tableRule, lineWidth: 1))
+                .borderBeam(style: beamStyle, shape: shapeStandard, active: beamActive)
+                .contentShape(shapeStandard)
         }
     }
 
+    private var shapeStandard: RoundedRectangle {
+        ActivityBlockChrome.shape()
+    }
+
     private var shapeAccessibility: RoundedRectangle {
-        RoundedRectangle(cornerRadius: 16, style: .continuous)
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
     }
 }
 

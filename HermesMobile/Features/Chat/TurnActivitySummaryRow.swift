@@ -2,9 +2,10 @@ import SwiftUI
 
 /// The collapsed one-line stand-in for a turn's thinking and tool blocks.
 ///
-/// Deliberately a `Capsule()`: at ~40pt tall any radius at or above ~20 renders
-/// as a pill anyway, so this keeps the shape the transcript already uses while
-/// the taller multi-row blocks carry the smaller explicit radius.
+/// Uses the shared 10pt block radius rather than a pill. A capsule read as an
+/// oversized lozenge next to the transcript's other cards (`MarkerMessageCardView`
+/// and the timeline accessory surface are both 10pt continuous), so the summary
+/// now matches the block it stands in for.
 ///
 /// Live turns pass durations and per-tool result dots. Reconstructed history
 /// passes neither, because the server persists only name, snippet, tool id,
@@ -53,9 +54,9 @@ struct TurnActivitySummaryRow: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 11)
-            .background(Capsule().fill(palette.surface.opacity(0.8)))
-            .overlay(Capsule().strokeBorder(palette.tableRule, lineWidth: 1))
-            .contentShape(Capsule())
+            .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.8)))
+            .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
+            .contentShape(ActivityBlockChrome.shape())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(summaryText)
