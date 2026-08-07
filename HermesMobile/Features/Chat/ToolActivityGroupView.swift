@@ -10,8 +10,19 @@ struct ToolActivityGroupView: View {
     /// argument-streaming events, so that window is otherwise silent).
     var isPhaseActive: Bool = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
+
+    private var palette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle(rawValue: backgroundStyleRawValue) ?? .defaultValue,
+            temperature: ChatPaletteTemperature(rawValue: paletteTemperatureRawValue) ?? .defaultValue
+        )
+    }
 
     private var isExpanded: Bool {
         ChatTranscriptDisplaySettings.isCardExpanded(
@@ -29,27 +40,122 @@ struct ToolActivityGroupView: View {
                 completedIcon: activityIcon,
                 completedIconColor: group.hasFailedTool ? .red : nil,
                 completedLabel: completedCapsuleLabel,
-                accessory: AnyView(chevron)
-            ) {
-                withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                    userToggledExpansion = !isExpanded
-                }
-            }
+                accessory: AnyView(headerTrailing),
+                onTap: {
+                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                        userToggledExpansion = !isExpanded
+                    }
+                },
+                chrome: isExpanded ? .none : .pill
+            )
             .accessibilityLabel(activityAccessibilityLabel)
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 6) {
-                    ForEach(group.toolCalls) { toolCall in
-                        ToolCallCardView(toolCall: toolCall, isNestedInGroup: true)
-                    }
-                }
-                .padding(.leading, 8)
-                .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                runsList
+                    .padding(.leading, 8)
+                    .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
             }
         }
+        // Expanded, the block is one bordered container carrying one beam;
+        // collapsed, the capsule keeps its own pill chrome. Radius 20 rather
+        // than the composer's 22: the same value on a smaller shape reads
+        // rounder, and the collapsed row stays a true capsule regardless.
+        .modifier(
+            ToolBlockChrome(
+                palette: palette,
+                isEnabled: isExpanded,
+                isActive: isRunning
+            )
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
+    }
+
+    /// Live counts plus the disclosure chevron. "2 running · 2 waiting" is the
+    /// one genuinely new piece of information the old capsule never surfaced —
+    /// it reports mid-turn state instead of only a post-hoc summary.
+    private var headerTrailing: some View {
+        HStack(spacing: 8) {
+            if let counts = liveCountsText {
+                Text(counts)
+                    .font(AppFont.caption())
+                    .foregroundStyle(palette.textTertiary)
+                    .lineLimit(1)
+            }
+            chevron
+        }
+    }
+
+    private var liveCountsText: String? {
+        guard isRunning else { return nil }
+        let running = group.toolCalls.filter { !$0.isCompleted }.count
+        guard running > 0 else { return nil }
+        let done = group.toolCalls.count - running
+        guard done > 0 else {
+            return String(localized: "\(running) running")
+        }
+        return String(localized: "\(running) running · \(done) done")
+    }
+
+    /// Expanded body: sequential calls at the base level, parallel batches
+    /// indented once behind a rail. Exactly one extra level, ever — the
+    /// agent's batches are flat (announce-all-then-run), so clusters cannot
+    /// nest. Every running row's indicator is painted by the single overlay
+    /// applied here, not per row.
+    private var runsList: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(group.runs.enumerated()), id: \.element.id) { runOffset, run in
+                if run.isParallel {
+                    parallelCluster(run, rowOffset: rowOffset(before: runOffset))
+                } else if let toolCall = run.toolCalls.first {
+                    ToolCallCardView(
+                        toolCall: toolCall,
+                        isNestedInGroup: true,
+                        indicatorRowIndex: rowOffset(before: runOffset),
+                        isBlockActive: isRunning
+                    )
+                }
+            }
+        }
+        .toolRunIndicatorOverlay()
+    }
+
+    /// Running count of rows before a run, so every row in the block gets a
+    /// distinct stagger index. Using the run offset alone made a cluster's
+    /// second row and the next sequential row pulse in lockstep.
+    private func rowOffset(before runIndex: Int) -> Int {
+        group.runs.prefix(runIndex).reduce(0) { $0 + $1.toolCalls.count }
+    }
+
+    private func parallelCluster(_ run: ToolCallRun, rowOffset: Int) -> some View {
+        // Rail idiom rather than a computed Path: the rail stretches to the
+        // VStack's height by layout, so it survives wrapped labels and
+        // accessibility sizes with no geometry math.
+        HStack(alignment: .top, spacing: 10) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(palette.tableRule)
+                .frame(width: 1.5)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Parallel · \(run.toolCalls.count)")
+                    .font(AppFont.caption2(weight: .semibold))
+                    .kerning(0.5)
+                    .foregroundStyle(palette.textTertiary)
+
+                ForEach(Array(run.toolCalls.enumerated()), id: \.element.id) { index, toolCall in
+                    ToolCallCardView(
+                        toolCall: toolCall,
+                        isNestedInGroup: true,
+                        indicatorRowIndex: rowOffset + index,
+                        isBlockActive: isRunning
+                    )
+                }
+            }
+        }
+        .padding(.leading, 10)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "\(run.toolCalls.count) tools running in parallel"))
     }
 
     private var chevron: some View {
@@ -148,5 +254,52 @@ struct ToolActivityGroupView: View {
         }
 
         return "\(visibleSummary), +\(remainingCount)"
+    }
+}
+
+/// One border and one beam for an expanded tool block.
+///
+/// Collapsed, the header capsule keeps its own pill chrome and this does
+/// nothing. Expanded, the block becomes the single bordered container — the
+/// header's chrome is switched off — so exactly one border and at most one
+/// beam animate per turn step regardless of how many tools are inside.
+private struct ToolBlockChrome: ViewModifier {
+    let palette: ChatPalette
+    let isEnabled: Bool
+    let isActive: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
+
+    /// Smaller than the composer's 22: an identical radius on a smaller shape
+    /// reads rounder, and this container is inset inside a message row.
+    private static let cornerRadius: CGFloat = 20
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(shape.fill(palette.surface.opacity(0.8)))
+                .overlay(shape.strokeBorder(palette.tableRule, lineWidth: 1))
+                .borderBeam(style: beamStyle, shape: shape, active: isActive)
+        } else {
+            content
+        }
+    }
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
+    }
+
+    private var beamStyle: BeamStyle {
+        BeamStyle(
+            resolved: ActivityBeamStyle.storedValue(beamStyleRawValue).resolved(
+                palette: palette,
+                colorScheme: colorScheme,
+                accent: HeaderLogoColor.color(for: headerLogoColorHex)
+            )
+        )
     }
 }
