@@ -80,6 +80,12 @@ struct SurfaceGalleryView: View {
                     }
                 }
 
+                }
+
+                // Page 4 isolates the review surfaces that otherwise sit below
+                // the fold on page 2, so screen recordings frame them without
+                // depending on scroll position.
+                if page == nil || page == 4 {
                 section("History rail") {
                     VStack(alignment: .leading, spacing: 18) {
                         ActivityHistoryRailView(

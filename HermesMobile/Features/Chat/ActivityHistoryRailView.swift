@@ -28,9 +28,12 @@ struct ActivityHistoryRailView: View {
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
-    private static let orbGlyphSize: CGFloat = 18
-    private static let orbOverlap: CGFloat = 5
-    private static let maxOrbGlyphs = 4
+    // Dotted orbs need room to read as distinct marks: heavy overlap at small
+    // sizes smears them into a single speckle. Three larger, barely-overlapping
+    // glyphs stay legible while still reading as a stack.
+    private static let orbGlyphSize: CGFloat = 22
+    private static let orbOverlap: CGFloat = 2
+    private static let maxOrbGlyphs = 3
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
