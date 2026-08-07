@@ -61,6 +61,10 @@ struct ActivityCapsuleView: View {
     @State private var completionPhase: CompletionPhase = .idle
     /// Drives the single farewell beam sweep after completion.
     @State private var finaleSweep = false
+    /// Handle for the in-flight completion choreography so a re-activation
+    /// can cancel it; without this a stale task's later stage could clear the
+    /// finale of a subsequent activation.
+    @State private var completionTask: Task<Void, Never>?
 
     private var usesAccessibilityLayout: Bool {
         dynamicTypeSize.isAccessibilitySize
@@ -108,17 +112,25 @@ struct ActivityCapsuleView: View {
         .onChange(of: isActive) { wasActive, nowActive in
             guard wasActive, !nowActive else {
                 // Re-activation (or spurious change) cancels any finale.
+                completionTask?.cancel()
+                completionTask = nil
                 completionPhase = .idle
                 finaleSweep = false
                 return
             }
             guard !reduceMotion else {
                 // Reduce Motion: instant swap, no choreography.
+                completionTask?.cancel()
+                completionTask = nil
                 completionPhase = .idle
                 finaleSweep = false
                 return
             }
             runCompletionChoreography()
+        }
+        .onDisappear {
+            completionTask?.cancel()
+            completionTask = nil
         }
     }
 
@@ -128,21 +140,32 @@ struct ActivityCapsuleView: View {
     /// then cross-dissolves to the completed icon, while one full-strength
     /// beam sweep plays and fades out.
     private func runCompletionChoreography() {
+        completionTask?.cancel()
         completionPhase = .freezingOrb
         finaleSweep = true
         let sweepDuration = max(0.5, resolvedBeam.cycleDuration)
 
-        Task { @MainActor in
-            // Hold the frozen orb frame briefly.
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard !isActive else { return }
+        completionTask = Task { @MainActor in
+            // Hold the frozen orb frame briefly. A cancelled sleep throws, so
+            // bail out instead of racing a newer activation's choreography.
+            do {
+                try await Task.sleep(nanoseconds: 150_000_000)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled, !isActive else { return }
             // Cross-dissolve frozen orb → completed icon (0.15 + 0.20 ≈ 0.35s).
             withAnimation(.easeInOut(duration: 0.2)) {
                 completionPhase = .idle
             }
             // Let the farewell sweep finish one cycle, then fade it out
             // (the beam modifier animates its own 0.4s fade on deactivation).
-            try? await Task.sleep(nanoseconds: UInt64(sweepDuration * 1_000_000_000))
+            do {
+                try await Task.sleep(nanoseconds: UInt64(sweepDuration * 1_000_000_000))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
             guard !isActive else { return }
             finaleSweep = false
         }
@@ -207,8 +230,8 @@ struct ActivityCapsuleView: View {
 
         if isActive && !reduceMotion && !usesAccessibilityLayout {
             base.overlay {
-                // Same shared 30 fps clock as the orbs and beam.
-                TimelineView(ThinkingOrbView.sharedSchedule) { timeline in
+                // Same capped cadence as the orbs and beam.
+                TimelineView(ThinkingOrbView.schedule()) { timeline in
                     let t = timeline.date.timeIntervalSinceReferenceDate
                         .truncatingRemainder(dividingBy: 86_400)
                     let phase = (t / 2).truncatingRemainder(dividingBy: 1)

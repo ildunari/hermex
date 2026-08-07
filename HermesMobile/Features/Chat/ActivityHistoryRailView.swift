@@ -91,7 +91,7 @@ struct ActivityHistoryRailView: View {
 
     // MARK: - Orb stack
 
-    /// Up to four distinct step kinds, in order of first appearance,
+    /// Up to `maxOrbGlyphs` distinct step kinds, in order of first appearance,
     /// overlapping like an avatar stack. Orbs are drawn paused so the rail
     /// stays visually quiet in history.
     private var orbStack: some View {

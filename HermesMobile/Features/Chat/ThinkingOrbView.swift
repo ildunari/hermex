@@ -43,8 +43,9 @@ enum ThinkingOrbState {
 }
 
 /// An animated, monochrome dotted-3D orb used in reasoning/tool activity
-/// headers while work is in flight. Renders with `TimelineView(.animation)`
-/// plus `Canvas`; honors Reduce Motion by drawing a single static frame.
+/// headers while work is in flight. Renders with a 30 fps `TimelineView`
+/// animation schedule plus `Canvas`; honors Reduce Motion by drawing a
+/// single static frame.
 struct ThinkingOrbView: View {
     let state: ThinkingOrbState
     var size: CGFloat = 20
@@ -58,14 +59,18 @@ struct ThinkingOrbView: View {
     /// keeps several simultaneous orbs from saturating the CPU.
     static let frameInterval: Double = 1.0 / 30.0
 
-    /// Shared 30 fps schedule for every animating orb and beam. One periodic
-    /// timeline for all of them lets the system coalesce their redraws into
-    /// the same frame instead of running an independent scheduler per view —
-    /// which matters once a group of parallel tool calls is expanded.
-    static let sharedSchedule = PeriodicTimelineSchedule(
-        from: .init(timeIntervalSinceReferenceDate: 0),
-        by: frameInterval
-    )
+    /// Shared cadence for every animating orb, beam, and shimmer.
+    ///
+    /// This is deliberately `.animation(minimumInterval:paused:)` and not a
+    /// `PeriodicTimelineSchedule`: only the animation schedule responds to
+    /// SwiftUI's low-frequency mode, so it stops producing updates when the
+    /// view isn't being drawn. The transcript stacks rows eagerly, so an
+    /// active reasoning/tool capsule stays alive after it scrolls away — a
+    /// periodic schedule keeps ticking for those, trading a small on-screen
+    /// CPU win for off-screen battery drain in long sessions.
+    static func schedule(paused: Bool = false) -> AnimationTimelineSchedule {
+        .animation(minimumInterval: frameInterval, paused: paused)
+    }
 
     /// Fixed timestamp used for the static Reduce Motion frame. Per mode:
     /// mid-phase frames chosen by eye in the surface gallery so the frozen
@@ -81,7 +86,7 @@ struct ThinkingOrbView: View {
 
     var body: some View {
         Group {
-            if reduceMotion || paused {
+            if reduceMotion {
                 Canvas { context, canvasSize in
                     Self.draw(
                         context: context,
@@ -92,12 +97,13 @@ struct ThinkingOrbView: View {
                     )
                 }
             } else {
-                // `minimumInterval: nil` asks for the display's maximum rate —
-                // 120 Hz on ProMotion — and each tick re-runs the full dot
-                // solve plus a Canvas pass. These orbs are ambient marks, not
-                // gameplay: 30 fps is visually identical here and roughly
-                // quarters the per-orb CPU cost when several animate at once.
-                TimelineView(Self.sharedSchedule) { timeline in
+                // Capping at 30 fps keeps several simultaneous orbs from
+                // saturating the CPU; an uncapped schedule would redraw the
+                // full dot solve at the display's rate (120 Hz on ProMotion).
+                // `paused` freezes on the last drawn frame rather than jumping
+                // to a canned pose, which keeps the completion cross-dissolve
+                // continuous.
+                TimelineView(Self.schedule(paused: paused)) { timeline in
                     Canvas { context, canvasSize in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                             .truncatingRemainder(dividingBy: 86_400)
@@ -225,10 +231,10 @@ struct ThinkingOrbView: View {
         // `sorted(by:)` allocates every frame.
         visible.sort { $0.z < $1.z }
 
-        // Dots are painted as a shaded circle at varying opacity. Quantizing
-        // opacity into buckets lets runs of dots share one resolved Color and
-        // one Path, cutting per-dot allocation without a visible change: the
-        // depth gradient still reads smoothly at 64 steps.
+        // Quantizing opacity keeps the set of distinct colors handed to the
+        // renderer small (64 instead of one per dot), which is cheaper to
+        // resolve. Each dot is still filled individually — batching by bucket
+        // would reorder draws and break the far-to-near depth stacking.
         for dot in visible {
             let r = max(rMin, dot.r)
             let rect = CGRect(x: dot.x - r, y: dot.y - r, width: r * 2, height: r * 2)

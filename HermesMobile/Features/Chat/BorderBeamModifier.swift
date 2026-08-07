@@ -3,9 +3,10 @@ import SwiftUI
 // BorderBeamModifier is a SwiftUI port of the traveling-beam family of the
 // "border-beam" React component by Jakub Antalik —
 // https://github.com/Jakubantalik/border-beam (MIT License). The traveling
-// glow (an angular-gradient stroke whose bright segment rotates around the
-// shape, over a blurred copy for bloom) mirrors the upstream `rotate` presets;
-// the pulse family is intentionally not ported. Like upstream's
+// glow — an angular-gradient stroke whose bright segment rotates around the
+// shape — mirrors the upstream `rotate` presets; the pulse family is
+// intentionally not ported, and upstream's blurred bloom pass was dropped
+// because it cost an offscreen render per capsule per frame. Like upstream's
 // "relies on the element's own border" behavior, the resting state draws
 // nothing — the wrapped view's own hairline remains the idle edge.
 // See Resources/ThirdPartyNotices/NOTICE.txt.
@@ -74,9 +75,9 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
                     lineWidth: Self.lineWidth
                 )
         } else if active {
-            // Share the orbs' 30 fps clock so every animating capsule redraws
-            // on the same tick instead of each running its own scheduler.
-            TimelineView(ThinkingOrbView.sharedSchedule) { timeline in
+            // Same capped cadence as the orbs. Uses the animation schedule so
+            // the beam stops updating when the capsule isn't being drawn.
+            TimelineView(ThinkingOrbView.schedule()) { timeline in
                 let t = timeline.date.timeIntervalSinceReferenceDate
                     .truncatingRemainder(dividingBy: 86_400)
                 let phase = (t / style.cycleDuration)
@@ -95,9 +96,13 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
         let gradient = beamGradient(phase: phase)
         // Each angular-gradient stroke is a full shaded pass, so the number of
         // strokes — not the blur — dominates cost when many capsules animate.
-        // A single slightly-wider stroke carries the glow readably; the whole
-        // beam is composited once via `drawingGroup` so the animating overlay
-        // is a single flattened layer per frame instead of several.
+        // A single slightly-wider stroke carries the glow readably.
+        //
+        // `drawingGroup` is load-bearing despite there being one child layer:
+        // it rasterizes the animating gradient once per frame instead of
+        // re-shading it through the overlay/opacity chain. Measured on the
+        // gallery's 10-capsule page, removing it costs 14.1% -> 28.1% CPU.
+        // Do not delete it as redundant without re-measuring.
         return shape
             .strokeBorder(gradient, lineWidth: Self.lineWidth + 1)
             .opacity(style.strength)

@@ -108,7 +108,9 @@ struct SurfaceGalleryView: View {
                         codeThemeCell(title: "Standard Light", scheme: .light, temperature: .standard)
                     }
                 }
+                }
 
+                if page == nil || page == 2 {
                 section("Voice recording bar") {
                     ComposerVoiceRecordingBar(
                         elapsed: 12,
