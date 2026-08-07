@@ -31,6 +31,9 @@ struct ChatTranscriptView: View {
     /// tool capsule animating between a tool completing and the next event.
     /// Sourced from `ChatViewModel.isToolPhaseActive`.
     let isToolPhaseActive: Bool
+    /// True once the assistant's answer text has begun streaming for this turn
+    /// (`ChatViewModel.isAnswerPhaseActive`). Drives the activity fold.
+    let isAnswerStreaming: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -253,6 +256,8 @@ struct ChatTranscriptView: View {
                     isReasoningActive: isReasoningAnchor && isReasoningActive,
                     lastReasoningDuration: isReasoningAnchor ? lastReasoningDuration : nil,
                     isToolPhaseActive: isToolCallAnchor && isToolPhaseActive,
+                    isAnswerStreaming: (isToolCallAnchor || isReasoningAnchor) && isAnswerStreaming,
+                    isScrolledNearBottom: isScrolledNearBottom,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
@@ -372,25 +377,7 @@ struct ChatTranscriptView: View {
     private var liveResponseBlocks: some View {
         if activeStreamID != nil {
             if showsThinkingAndToolCards {
-                if hasLiveReasoningText,
-                   !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(
-                        text: liveReasoningText,
-                        isStreaming: isReasoningActive,
-                        completedDuration: lastReasoningDuration
-                    )
-                }
-
-                if !liveToolCalls.isEmpty,
-                   !hasDisplayedTranscriptMessage(anchorID: toolCallAnchorMessageID) {
-                    ToolActivityGroupView(
-                        group: ToolCallGroup.live(
-                            anchorMessageID: toolCallAnchorMessageID,
-                            toolCalls: liveToolCalls
-                        ),
-                        isPhaseActive: isToolPhaseActive
-                    )
-                }
+                liveActivityFold
             }
 
             if activeStreamRecoveryState != .idle {
@@ -398,6 +385,52 @@ struct ChatTranscriptView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityHidden(hidesRunStatusAccessibility)
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+    }
+
+    /// Live thinking + tool blocks, folding into one summary row when the
+    /// answer starts streaming. See `TurnActivityFoldView` for why the fold is
+    /// keyed on the first answer token rather than on turn end.
+    @ViewBuilder
+    private var liveActivityFold: some View {
+        let showsReasoning = hasLiveReasoningText
+            && !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID)
+        let showsTools = !liveToolCalls.isEmpty
+            && !hasDisplayedTranscriptMessage(anchorID: toolCallAnchorMessageID)
+
+        if showsReasoning || showsTools {
+            TurnActivityFoldView(
+                isCollapsed: isAnswerStreaming,
+                animatesFold: isScrolledNearBottom
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if showsReasoning {
+                        ReasoningBlockView(
+                            text: liveReasoningText,
+                            isStreaming: isReasoningActive,
+                            completedDuration: lastReasoningDuration
+                        )
+                    }
+
+                    if showsTools {
+                        ToolActivityGroupView(
+                            group: ToolCallGroup.live(
+                                anchorMessageID: toolCallAnchorMessageID,
+                                toolCalls: liveToolCalls
+                            ),
+                            isPhaseActive: isToolPhaseActive
+                        )
+                    }
+                }
+            } summary: { isExpanded, toggle in
+                TurnActivitySummaryRow(
+                    reasoningDuration: lastReasoningDuration,
+                    toolCalls: liveToolCalls,
+                    hasReasoning: showsReasoning,
+                    isExpanded: isExpanded,
+                    onTap: toggle
+                )
             }
         }
     }
@@ -494,6 +527,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let lastReasoningDuration: TimeInterval?
     /// See `ChatTranscriptView.isToolPhaseActive` — scoped to the anchor row.
     let isToolPhaseActive: Bool
+    /// See `ChatTranscriptView.isAnswerStreaming` — scoped to the anchor row.
+    let isAnswerStreaming: Bool
+    /// See `ChatTranscriptView.isScrolledNearBottom`; gates the fold animation
+    /// so a collapse the reader cannot see is applied instantly instead.
+    let isScrolledNearBottom: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -537,6 +575,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.isReasoningActive == rhs.isReasoningActive &&
             lhs.lastReasoningDuration == rhs.lastReasoningDuration &&
             lhs.isToolPhaseActive == rhs.isToolPhaseActive &&
+            lhs.isAnswerStreaming == rhs.isAnswerStreaming &&
+            lhs.isScrolledNearBottom == rhs.isScrolledNearBottom &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
@@ -553,10 +593,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
-            reasoningBlocks
-            liveReasoningBlock
-            toolActivityGroups
-            liveToolActivityGroup
+            activityFold
 
             if shouldRenderMessageRow(transcriptMessage.message) {
                 ChatTranscriptMessageRow(
@@ -593,6 +630,69 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 )
             }
         }
+    }
+
+    /// The turn's thinking and tool activity, folded into one summary row once
+    /// the answer starts streaming. Reconciled/historical rows mount already
+    /// collapsed so the post-stream rebuild is invisible — see
+    /// `TurnActivityFoldView`.
+    @ViewBuilder
+    private var activityFold: some View {
+        if hasAnyActivity {
+            TurnActivityFoldView(
+                isCollapsed: isHistorical || isAnswerStreaming,
+                initiallyCollapsed: isHistorical,
+                animatesFold: !isHistorical && isScrolledNearBottom
+            ) {
+                VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
+                    reasoningBlocks
+                    liveReasoningBlock
+                    toolActivityGroups
+                    liveToolActivityGroup
+                }
+            } summary: { isExpanded, toggle in
+                TurnActivitySummaryRow(
+                    reasoningDuration: lastReasoningDuration,
+                    toolCalls: summaryToolCalls,
+                    hasReasoning: hasAnyReasoning,
+                    isExpanded: isExpanded,
+                    onTap: toggle
+                )
+            }
+        }
+    }
+
+    /// A settled turn: this row is not the one the live stream is feeding, so
+    /// its activity is reconstructed and must mount already folded.
+    ///
+    /// Deliberately per-row, not `!hasActiveStream`: that flag is global, so a
+    /// session-wide "a stream is running" would un-fold *every* past turn the
+    /// moment a new message is sent, then snap them all shut at `done`.
+    private var isHistorical: Bool {
+        !isLiveTurnRow
+    }
+
+    /// Whether the live stream is currently attached to this row.
+    private var isLiveTurnRow: Bool {
+        hasActiveStream
+            && (reasoningAnchorMessageID == transcriptMessage.anchorID
+                || toolCallAnchorMessageID == transcriptMessage.anchorID
+                || streamingAssistantMessageID != nil)
+    }
+
+    private var hasAnyReasoning: Bool {
+        shouldRenderLiveReasoningBlock
+            || (showsThinkingAndToolCards
+                && reasoningGroups.contains { $0.anchorMessageID == transcriptMessage.anchorID })
+    }
+
+    private var summaryToolCalls: [ToolCall] {
+        if shouldRenderLiveToolActivityGroup { return liveToolCalls }
+        return toolCallGroups.flatMap(\.toolCalls)
+    }
+
+    private var hasAnyActivity: Bool {
+        hasAnyReasoning || !summaryToolCalls.isEmpty
     }
 
     @ViewBuilder

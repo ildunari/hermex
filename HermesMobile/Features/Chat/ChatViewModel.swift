@@ -349,7 +349,46 @@ final class ChatViewModel {
         )
     }
     func completedToolCallGroupsForAnchor(_ anchorMessageID: String?) -> [ToolCallGroup] {
-        completedToolCallGroupLookup.groups(anchorMessageID: anchorMessageID)
+        // Re-apply the live batch map: reconcile rebuilds groups from persisted
+        // data, which stores no grouping, so without this the parallel cluster
+        // would flatten seconds after the turn ends (it is still expected to
+        // flatten after a relaunch, when the map is gone).
+        completedToolCallGroupLookup
+            .groups(anchorMessageID: anchorMessageID)
+            .map(applyingRememberedBatchIndexes)
+    }
+
+    /// Rebuilds batch bookkeeping after restoring a live stream snapshot.
+    ///
+    /// The counter resumes past the highest restored batch and the boundary
+    /// flag is forced, so the next announcement can only ever open a *new*
+    /// batch — never join one whose tools already ran.
+    private func restoreToolBatchState(from restoredCalls: [ToolCall]) {
+        let indexes = restoredCalls.compactMap(\.batchIndex)
+        currentToolBatchIndex = indexes.max() ?? 0
+        didCompleteToolSinceBatchStart = true
+        for call in restoredCalls {
+            guard let batchIndex = call.batchIndex else { continue }
+            toolBatchIndexesByID[call.id] = batchIndex
+        }
+    }
+
+    /// Restores `batchIndex` on a rebuilt group from this session's live map.
+    private func applyingRememberedBatchIndexes(_ group: ToolCallGroup) -> ToolCallGroup {
+        guard !toolBatchIndexesByID.isEmpty else { return group }
+        guard group.toolCalls.contains(where: { toolBatchIndexesByID[$0.id] != nil }) else {
+            return group
+        }
+        return ToolCallGroup(
+            id: group.id,
+            anchorMessageID: group.anchorMessageID,
+            toolCalls: group.toolCalls.map { toolCall in
+                guard let batchIndex = toolBatchIndexesByID[toolCall.id] else { return toolCall }
+                var restored = toolCall
+                restored.batchIndex = batchIndex
+                return restored
+            }
+        )
     }
 
     /// Tool calls for the latest assistant turn, driving the in-chat "file changes" recap
@@ -439,9 +478,24 @@ final class ChatViewModel {
     /// reasoning hands off to a tool call (phase stays `.toolCalling` until a
     /// later event advances it).
     var isToolPhaseActive: Bool { turnPhase == .toolCalling }
+    /// True once the turn has started emitting answer text. Drives the
+    /// activity fold: blocks collapse when the answer begins, which is early
+    /// enough that the motion finishes before the post-stream reconcile
+    /// rebuilds these views with new identities.
+    var isAnswerPhaseActive: Bool { turnPhase == .respondingText }
     private(set) var streamingAssistantMessageID: String?
     private(set) var toolCallAnchorMessageID: String?
     private(set) var reasoningAnchorMessageID: String?
+    /// Monotonic id for the current parallel dispatch batch, and whether any
+    /// tool has completed since that batch opened. Together these turn stream
+    /// arrival order into `ToolCall.batchIndex` — see `appendToolCall`.
+    private var currentToolBatchIndex = 0
+    private var didCompleteToolSinceBatchStart = false
+    /// Live-session batch memory, keyed by tool id. Reconcile rebuilds groups
+    /// from persisted data (which carries no grouping), so without this the
+    /// parallel cluster the user just watched would visibly flatten seconds
+    /// after the turn ends. Cleared with the rest of the live state.
+    private var toolBatchIndexesByID: [String: Int] = [:]
     private(set) var messagesOffset = 0 {
         didSet { recomputeDisplayedTranscriptMessages() }
     }
@@ -2229,6 +2283,8 @@ final class ChatViewModel {
         toolActivity.reset()
         reasoningPhaseStartedAt = nil
         lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -2435,6 +2491,9 @@ final class ChatViewModel {
         toolActivity.reset()
         reasoningPhaseStartedAt = nil
         lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
+        toolBatchIndexesByID = [:]
         pinnedLocalNotices = []
         streamingAssistantMessageID = nil
         toolCallAnchorMessageID = nil
@@ -3205,6 +3264,8 @@ final class ChatViewModel {
         toolActivity.reset()
         reasoningPhaseStartedAt = nil
         lastReasoningDuration = nil
+        currentToolBatchIndex = 0
+        didCompleteToolSinceBatchStart = false
         reasoningAnchorMessageID = nil
         toolCallAnchorMessageID = nil
         streamCoordinator.prepareForNewResponse()
@@ -3891,6 +3952,12 @@ final class ChatViewModel {
         setCompletedToolCallGroups(snapshot.completedToolCallGroups)
         completedReasoningGroups = snapshot.completedReasoningGroups
         liveToolCalls = snapshot.liveToolCalls
+        // Rebuild batch state from the restored calls. Without this a fresh
+        // view model re-entering a live stream starts the counter at 0, so the
+        // next genuinely new tool can be merged into a finished batch and
+        // render a false "Parallel · 2"; and the empty id map would let
+        // reconcile flatten the clusters this guards.
+        restoreToolBatchState(from: snapshot.liveToolCalls)
         liveReasoningText = snapshot.liveReasoningText
         streamingAssistantMessageID = merge.streamingAssistantMessageID ?? snapshot.streamingAssistantMessageID
         toolCallAnchorMessageID = Self.remappedAnchorMessageID(
@@ -4328,14 +4395,29 @@ final class ChatViewModel {
             return false
         }
 
+        // Batch detection from arrival order. The agent announces every tool in
+        // a parallel batch before running any of them; a sequential call is
+        // announced, run, and only then is the next one announced. So a `tool`
+        // event arriving while no earlier call has completed since the last
+        // batch boundary belongs to the same batch. Any completion closes the
+        // current batch, so the next start opens a new one.
+        if didCompleteToolSinceBatchStart {
+            currentToolBatchIndex += 1
+            didCompleteToolSinceBatchStart = false
+        }
+
         liveToolCalls.append(
             ToolCall(
                 id: payload.stableID ?? "live-tool-\(UUID().uuidString)",
                 name: payload.name,
                 preview: payload.preview,
-                args: payload.args
+                args: payload.args,
+                batchIndex: currentToolBatchIndex
             )
         )
+        if let appended = liveToolCalls.last {
+            toolBatchIndexesByID[appended.id] = currentToolBatchIndex
+        }
         scheduleStreamingScrollTrigger()
         return true
     }
@@ -4346,6 +4428,11 @@ final class ChatViewModel {
         if toolCallAnchorMessageID == nil {
             toolCallAnchorMessageID = messageID
         }
+
+        // Any completion closes the current dispatch batch: the agent only
+        // announces the next tool after the previous one returned unless the
+        // whole batch was announced up front. See `appendToolCall`.
+        didCompleteToolSinceBatchStart = true
 
         if let duplicateReplayIndex = duplicateReplayToolCompletionIndex(for: payload) {
             let wasAlreadyCompleted = liveToolCalls[duplicateReplayIndex].isCompleted
@@ -4362,6 +4449,9 @@ final class ChatViewModel {
         activeStreamReplayPendingToolMatchIndex = nil
 
         guard let index = liveToolCallCompletionIndex(for: payload) else {
+            // A completion with no matching start: treat it as its own run
+            // rather than folding it into whichever batch happens to be open.
+            currentToolBatchIndex += 1
             liveToolCalls.append(
                 ToolCall(
                     id: payload.stableID ?? "live-tool-\(UUID().uuidString)",
@@ -4370,9 +4460,13 @@ final class ChatViewModel {
                     args: payload.args,
                     duration: payload.duration,
                     isError: payload.isError,
-                    isCompleted: true
+                    isCompleted: true,
+                    batchIndex: currentToolBatchIndex
                 )
             )
+            if let appended = liveToolCalls.last {
+                toolBatchIndexesByID[appended.id] = currentToolBatchIndex
+            }
             scheduleStreamingScrollTrigger()
             return true
         }
@@ -5828,7 +5922,10 @@ private extension ToolCall {
             duration: payload.duration,
             isError: payload.isError,
             isCompleted: true,
-            startedAt: startedAt
+            startedAt: startedAt,
+            // Completion rebuilds the value; carry the dispatch batch through
+            // or the parallel cluster collapses the moment its tools finish.
+            batchIndex: batchIndex
         )
     }
 }

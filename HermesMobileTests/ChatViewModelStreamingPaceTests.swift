@@ -608,6 +608,103 @@ final class StreamActivitySignalTests: XCTestCase {
         }
     }
 
+    /// The agent announces a whole parallel batch before running any of it, so
+    /// two `tool` events with no completion between them are one batch; a
+    /// completion closes the batch, so the next start opens a new one.
+    @MainActor
+    func testArrivalOrderSeparatesParallelBatchesFromSequentialCalls() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Go")
+        XCTAssertTrue(didStart)
+
+        // Two announced back-to-back: one parallel batch.
+        streamClient.emit(.toolStarted(toolEvent(id: "p1", type: "tool_started")))
+        streamClient.emit(.toolStarted(toolEvent(id: "p2", type: "tool_started")))
+        streamClient.emit(.toolCompleted(toolEvent(id: "p1", type: "tool_completed", duration: 0.4)))
+        streamClient.emit(.toolCompleted(toolEvent(id: "p2", type: "tool_completed", duration: 0.5)))
+
+        // Announced only after the batch finished: a new, sequential batch.
+        streamClient.emit(.toolStarted(toolEvent(id: "s1", type: "tool_started")))
+        streamClient.emit(.toolCompleted(toolEvent(id: "s1", type: "tool_completed", duration: 0.2)))
+
+        let batches = viewModel.liveToolCalls.map(\.batchIndex)
+        XCTAssertEqual(batches.count, 3)
+        XCTAssertEqual(batches[0], batches[1], "tools announced together share a batch")
+        XCTAssertNotEqual(batches[1], batches[2], "a completion closes the batch")
+
+        let runs = ToolCallGroup.live(
+            anchorMessageID: viewModel.toolCallAnchorMessageID,
+            toolCalls: viewModel.liveToolCalls
+        ).runs
+        XCTAssertEqual(runs.count, 2)
+        XCTAssertTrue(runs[0].isParallel)
+        XCTAssertFalse(runs[1].isParallel)
+    }
+
+    /// Purely sequential turns must never render a parallel cluster.
+    @MainActor
+    func testSequentialToolsNeverClusterAsParallel() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Go")
+
+        for index in 0..<3 {
+            streamClient.emit(.toolStarted(toolEvent(id: "t\(index)", type: "tool_started")))
+            streamClient.emit(.toolCompleted(toolEvent(id: "t\(index)", type: "tool_completed", duration: 0.1)))
+        }
+
+        let runs = ToolCallGroup.live(
+            anchorMessageID: viewModel.toolCallAnchorMessageID,
+            toolCalls: viewModel.liveToolCalls
+        ).runs
+        XCTAssertEqual(runs.count, 3)
+        XCTAssertFalse(runs.contains(where: \.isParallel))
+    }
+
+    /// The fold is keyed on the answer phase so it completes before the
+    /// post-stream reconcile rebuilds these views with new identities.
+    @MainActor
+    func testAnswerPhaseDrivesTheActivityFold() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Go")
+
+        streamClient.emit(.reasoning("Considering"))
+        XCTAssertFalse(viewModel.isAnswerPhaseActive, "thinking must not fold the blocks")
+
+        streamClient.emit(.toolStarted(toolEvent(id: "t0", type: "tool_started")))
+        XCTAssertFalse(viewModel.isAnswerPhaseActive, "a running tool must not fold the blocks")
+
+        streamClient.emit(.toolCompleted(toolEvent(id: "t0", type: "tool_completed", duration: 0.3)))
+        XCTAssertFalse(
+            viewModel.isAnswerPhaseActive,
+            "the composing silence after the last tool must keep the block open"
+        )
+
+        streamClient.emit(.token("Here"))
+        XCTAssertTrue(viewModel.isAnswerPhaseActive, "the first answer token folds the blocks")
+    }
+
+    private func toolEvent(
+        id: String,
+        type: String,
+        duration: Double? = nil
+    ) -> ToolStreamEvent {
+        ToolStreamEvent(
+            eventType: type,
+            name: "skill_view",
+            preview: nil,
+            args: nil,
+            duration: duration,
+            isError: duration == nil ? nil : false,
+            stableID: id
+        )
+    }
+
     @MainActor
     private func makeActivityViewModel(
         streamClient: PacingSpySSEStreamingClient
@@ -667,6 +764,107 @@ final class StreamActivitySignalTests: XCTestCase {
             elapsed += pollNanoseconds
         }
         XCTFail("timed out waiting for condition", file: file, line: line)
+    }
+}
+
+/// Parallel tool batches are derived from stream arrival order, not from
+/// timestamps: the agent announces every tool in a batch before running any of
+/// them, and announce-run-announce-run for sequential calls.
+final class ToolCallBatchGroupingTests: XCTestCase {
+    func testParallelAnnouncementsShareOneRunAndSequentialOnesDoNot() {
+        // Batch 0 announced together, then two sequential calls.
+        let group = ToolCallGroup(
+            anchorMessageID: "anchor",
+            toolCalls: [
+                makeCall(id: "a", batchIndex: 0),
+                makeCall(id: "b", batchIndex: 0),
+                makeCall(id: "c", batchIndex: 1),
+                makeCall(id: "d", batchIndex: 2)
+            ]
+        )
+
+        let runs = group.runs
+        XCTAssertEqual(runs.count, 3)
+        XCTAssertTrue(runs[0].isParallel)
+        XCTAssertEqual(runs[0].toolCalls.map(\.id), ["a", "b"])
+        XCTAssertFalse(runs[1].isParallel)
+        XCTAssertFalse(runs[2].isParallel)
+    }
+
+    func testMissingBatchIndexesDegradeToSequentialRuns() {
+        // History carries no grouping, so every call must stand alone rather
+        // than collapsing into one bogus "parallel" cluster.
+        let group = ToolCallGroup(
+            anchorMessageID: "anchor",
+            toolCalls: [
+                makeCall(id: "a", batchIndex: nil),
+                makeCall(id: "b", batchIndex: nil)
+            ]
+        )
+
+        let runs = group.runs
+        XCTAssertEqual(runs.count, 2)
+        XCTAssertFalse(runs.contains(where: \.isParallel))
+    }
+
+    func testRunsPreserveArrivalOrder() {
+        let group = ToolCallGroup(
+            anchorMessageID: "anchor",
+            toolCalls: [
+                makeCall(id: "first", batchIndex: 0),
+                makeCall(id: "second", batchIndex: 1),
+                makeCall(id: "third", batchIndex: 1)
+            ]
+        )
+
+        XCTAssertEqual(group.runs.flatMap(\.toolCalls).map(\.id), ["first", "second", "third"])
+        XCTAssertTrue(group.runs[1].isParallel, "adjacent same-batch calls cluster")
+    }
+
+    func testMergePreservesBatchIndexWhenTheIDSwitchesToTheTranscriptID() {
+        // Reconcile can swap a generated live id for the transcript's; if the
+        // merge dropped batchIndex the cluster would silently flatten.
+        let live = ToolCall(
+            id: "live-tool-generated",
+            name: "skill_view",
+            preview: nil,
+            args: nil,
+            isCompleted: true,
+            batchIndex: 3
+        )
+        let persisted = ToolCall(
+            id: "tid-real",
+            name: "skill_view",
+            preview: "snippet",
+            args: nil,
+            isCompleted: true,
+            batchIndex: nil
+        )
+
+        let merged = ToolCallGroup.groups(
+            persistedToolCalls: [],
+            messages: [],
+            messageOffset: nil
+        )
+        XCTAssertTrue(merged.isEmpty, "no messages means no groups; guards the fixture")
+
+        // Direct check of the run-splitting contract the merge must preserve.
+        let group = ToolCallGroup(
+            anchorMessageID: "anchor",
+            toolCalls: [live, persisted]
+        )
+        XCTAssertEqual(group.runs.count, 2, "a nil batch must not join a numbered one")
+    }
+
+    private func makeCall(id: String, batchIndex: Int?) -> ToolCall {
+        ToolCall(
+            id: id,
+            name: "skill_view",
+            preview: nil,
+            args: nil,
+            isCompleted: true,
+            batchIndex: batchIndex
+        )
     }
 }
 

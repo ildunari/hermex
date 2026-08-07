@@ -6,6 +6,13 @@ struct ToolCallCardView: View {
     /// `ToolActivityGroupView` list), the parent passes `true` so the quiet
     /// rail doesn't double-indent.
     var isNestedInGroup: Bool = false
+    /// Position of this row within its block, used only to stagger the shared
+    /// running-indicator sweep so a parallel batch doesn't pulse in lockstep.
+    var indicatorRowIndex: Int = 0
+    /// Whether the enclosing block is still active. A nested row shows the
+    /// travelling indicator only while its block is live; a settled block's
+    /// unfinished calls fall back to the static waiting ring.
+    var isBlockActive: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
@@ -15,7 +22,15 @@ struct ToolCallCardView: View {
     @State private var userToggledExpansion: Bool?
 
     private var isExpanded: Bool {
-        ChatTranscriptDisplaySettings.isCardExpanded(
+        // Inside a block the row is already one quiet line under the block's
+        // own disclosure, so it must not inherit the "start expanded"
+        // preference — that setting governs the block, and honouring it here
+        // too opens every row at once and repeats the status shown inline.
+        if isNestedInGroup {
+            return userToggledExpansion ?? false
+        }
+
+        return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
             startsExpanded: startsExpanded
         )
@@ -25,21 +40,31 @@ struct ToolCallCardView: View {
         let statusDisplay = ToolCallStatusDisplay(toolCall: toolCall)
 
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
-            ActivityCapsuleView(
-                orbState: ThinkingOrbState.forTool(name: toolCall.name),
-                label: capsuleLabel,
-                isActive: isRunning,
-                completedIcon: statusIcon,
-                completedIconColor: toolCall.isError == true ? .red : nil,
-                completedLabel: completedCapsuleLabel,
-                accessory: AnyView(chevron)
-            ) {
-                withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
-                    userToggledExpansion = !isExpanded
+            if isNestedInGroup {
+                // Inside a block the row is a quiet line, not its own capsule:
+                // the block owns the single orb and the single border, and the
+                // per-row indicator is painted by the block's shared overlay.
+                nestedHeader
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
+                    .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+            } else {
+                ActivityCapsuleView(
+                    orbState: ThinkingOrbState.forTool(name: toolCall.name),
+                    label: capsuleLabel,
+                    isActive: isRunning,
+                    completedIcon: statusIcon,
+                    completedIconColor: toolCall.isError == true ? .red : nil,
+                    completedLabel: completedCapsuleLabel,
+                    accessory: AnyView(chevron)
+                ) {
+                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                        userToggledExpansion = !isExpanded
+                    }
                 }
+                .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
+                .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
             }
-            .accessibilityLabel(String(localized: "\(toolCall.displayName), \(statusDisplay.detailText)"))
-            .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
                 // Quiet indented list: a thin left rail instead of a boxed
@@ -74,6 +99,77 @@ struct ToolCallCardView: View {
         Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
             .font(.caption2.weight(.semibold))
             .foregroundStyle(.secondary)
+    }
+
+    /// One line inside a tool block: indicator slot, name, subject, and the
+    /// duration or failure note. No capsule chrome, no orb, no beam.
+    private var nestedHeader: some View {
+        Button {
+            withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                userToggledExpansion = !isExpanded
+            }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                ToolRunIndicatorSlot(
+                    toolCall: toolCall,
+                    rowIndex: indicatorRowIndex,
+                    isBlockActive: isBlockActive
+                )
+                .alignmentGuide(.firstTextBaseline) { dimension in
+                    // Keep the glyph optically on the text baseline; without
+                    // this the slot's own height drives the alignment and the
+                    // row jitters when a label wraps.
+                    dimension[VerticalAlignment.center] + 4
+                }
+
+                Text(toolCall.displayName)
+                    .font(AppFont.footnote())
+                    .foregroundStyle(palette.textPrimary)
+
+                if let subject = nestedSubject {
+                    Text(subject)
+                        .font(AppFont.footnote())
+                        .foregroundStyle(palette.textTertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+
+                Spacer(minLength: 6)
+
+                if let trailing = nestedTrailingText {
+                    Text(trailing)
+                        .font(AppFont.caption2())
+                        .foregroundStyle(toolCall.isError == true ? .red : palette.textTertiary)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// The path-like argument shown after the tool name, if any.
+    private var nestedSubject: String? {
+        let rows = ToolCallDisplayFormatter.argumentRows(from: toolCall.args)
+        let pathKeys = ["path", "file_path", "filepath", "file", "cmd", "command", "query", "url"]
+        guard let subject = pathKeys
+            .compactMap({ key in rows.first { $0.key.lowercased() == key }?.value })
+            .first,
+            !subject.isEmpty
+        else {
+            return nil
+        }
+
+        return subject.contains("/") && !subject.contains(" ")
+            ? String(subject.split(separator: "/").last ?? Substring(subject))
+            : subject
+    }
+
+    private var nestedTrailingText: String? {
+        if toolCall.isError == true {
+            return String(localized: "Failed")
+        }
+        guard toolCall.isCompleted, let duration = toolCall.duration else { return nil }
+        return ActivityDurationFormat.string(duration)
     }
 
     /// Short activity title in "Reading ChatPalette.swift" style: the tool's

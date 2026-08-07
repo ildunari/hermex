@@ -34,6 +34,12 @@ struct ActivityCapsuleView: View {
     var completedLabel: String?
     var accessory: AnyView?
     var onTap: (() -> Void)?
+    /// Corner treatment for the capsule's own chrome.
+    ///
+    /// `.pill` is the standalone transcript chip. `.none` is used when the
+    /// capsule is the header of a bordered block: the block owns the single
+    /// border and the single beam, so the header must not draw a second one.
+    var chrome: ActivityCapsuleChrome = .pill
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -91,7 +97,8 @@ struct ActivityCapsuleView: View {
                 palette: palette,
                 beamStyle: beamStyle,
                 beamActive: (isActive || finaleSweep) && beamStyle.isVisible,
-                usesAccessibilityLayout: usesAccessibilityLayout
+                usesAccessibilityLayout: usesAccessibilityLayout,
+                chrome: chrome
             ))
         }
         .buttonStyle(.plain)
@@ -301,6 +308,15 @@ struct ActivityCapsuleView: View {
     }
 }
 
+/// How an `ActivityCapsuleView` draws its own background, hairline, and beam.
+enum ActivityCapsuleChrome {
+    /// Standalone transcript chip: pill background, hairline, and beam.
+    case pill
+    /// Header of a bordered block. Draws nothing — the block owns the border
+    /// and the beam, so exactly one of each animates per turn step.
+    case none
+}
+
 /// Background, hairline, beam, and hit shape for the capsule. At
 /// accessibility type sizes the pill becomes a continuous rounded rectangle
 /// so a two-line wrapped label doesn't fight the capsule geometry. Two
@@ -311,9 +327,12 @@ private struct CapsuleChrome: ViewModifier {
     let beamStyle: BeamStyle
     let beamActive: Bool
     let usesAccessibilityLayout: Bool
+    var chrome: ActivityCapsuleChrome = .pill
 
     func body(content: Content) -> some View {
-        if usesAccessibilityLayout {
+        if chrome == .none {
+            content.contentShape(Rectangle())
+        } else if usesAccessibilityLayout {
             content
                 .background(shapeAccessibility.fill(palette.surface.opacity(0.8)))
                 .overlay(shapeAccessibility.strokeBorder(palette.tableRule, lineWidth: 1))

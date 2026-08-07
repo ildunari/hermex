@@ -1089,6 +1089,7 @@ struct ChatView: View {
             isReasoningActive: viewModel.isReasoningPhaseActive,
             lastReasoningDuration: viewModel.lastReasoningDuration,
             isToolPhaseActive: viewModel.isToolPhaseActive,
+            isAnswerStreaming: viewModel.isAnswerPhaseActive,
             liveToolCalls: viewModel.liveToolCalls,
             toolCallAnchorMessageID: viewModel.toolCallAnchorMessageID,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,

@@ -10,6 +10,16 @@ import SwiftUI
 /// rather than a mock-up.
 struct SurfaceGalleryView: View {
     var body: some View {
+        // Page 5 is the standalone turn-timeline design mock-up; it owns its
+        // own scroll view and padding, so it short-circuits the shared stack.
+        if let page, (5...9).contains(page) {
+            TurnTimelineMockView(page: page)
+        } else {
+            galleryBody
+        }
+    }
+
+    private var galleryBody: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 if page == nil || page == 1 {
