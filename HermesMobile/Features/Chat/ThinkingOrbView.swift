@@ -53,6 +53,11 @@ struct ThinkingOrbView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Animation cadence for the live orb. Ambient status marks read the same
+    /// at 30 fps as at the display's native rate, and capping the interval
+    /// keeps several simultaneous orbs from saturating the CPU.
+    static let frameInterval: Double = 1.0 / 30.0
+
     /// Fixed timestamp used for the static Reduce Motion frame. Per mode:
     /// mid-phase frames chosen by eye in the surface gallery so the frozen
     /// pose is not degenerate (braid strands mid-plait, ribbon mid-wave).
@@ -78,7 +83,12 @@ struct ThinkingOrbView: View {
                     )
                 }
             } else {
-                TimelineView(.animation(minimumInterval: nil, paused: paused)) { timeline in
+                // `minimumInterval: nil` asks for the display's maximum rate —
+                // 120 Hz on ProMotion — and each tick re-runs the full dot
+                // solve plus a Canvas pass. These orbs are ambient marks, not
+                // gameplay: 30 fps is visually identical here and roughly
+                // quarters the per-orb CPU cost when several animate at once.
+                TimelineView(.animation(minimumInterval: Self.frameInterval, paused: paused)) { timeline in
                     Canvas { context, canvasSize in
                         let t = timeline.date.timeIntervalSinceReferenceDate
                             .truncatingRemainder(dividingBy: 86_400)
