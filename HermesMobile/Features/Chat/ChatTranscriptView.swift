@@ -4,6 +4,9 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let isLoading: Bool
     let errorMessage: String?
@@ -14,6 +17,20 @@ struct ChatTranscriptView: View {
     let completedToolCallGroupsForAnchor: (String?) -> [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// True while the turn is semantically in its reasoning step (phase
+    /// model — holds across intra-step token pauses, settles when a tool call
+    /// or answer text arrives). Drives the thinking orb / beam. Sourced from
+    /// `ChatViewModel.isReasoningPhaseActive`.
+    let isReasoningActive: Bool
+    /// Duration of the most recently completed reasoning stint in the open
+    /// turn ("Thought for Ns" on the live block once it settles). Historical
+    /// blocks always render nil. Sourced from
+    /// `ChatViewModel.lastReasoningDuration`.
+    let lastReasoningDuration: TimeInterval?
+    /// True while the turn is semantically in its tool step; keeps the live
+    /// tool capsule animating between a tool completing and the next event.
+    /// Sourced from `ChatViewModel.isToolPhaseActive`.
+    let isToolPhaseActive: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -79,32 +96,35 @@ struct ChatTranscriptView: View {
     var onOpenTurnFileDiff: (GitFile) -> Void = { _ in }
 
     var body: some View {
-        if isLoading && messages.isEmpty && clarificationPrompt == nil {
-            ChatTranscriptLoadingSkeletonView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
-            ContentUnavailableView {
-                Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await onLoadMessages() }
+        Group {
+            if isLoading && messages.isEmpty && clarificationPrompt == nil {
+                ChatTranscriptLoadingSkeletonView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await onLoadMessages() }
+                    }
                 }
+            } else if messages.isEmpty && clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                } description: {
+                    Text("Send a message to start the conversation.")
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismissKeyboard()
+                }
+            } else {
+                transcriptScrollView
             }
-        } else if messages.isEmpty && clarificationPrompt == nil {
-            ContentUnavailableView {
-                Image(systemName: "bubble.left.and.bubble.right")
-            } description: {
-                Text("Send a message to start the conversation.")
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onDismissKeyboard()
-            }
-        } else {
-            transcriptScrollView
         }
+        .background(chatPalette.chatBackground)
     }
 
     private var transcriptScrollView: some View {
@@ -164,7 +184,7 @@ struct ChatTranscriptView: View {
                     }
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
-                .background(Color(.systemBackground))
+                .background(chatPalette.chatBackground)
                 .onChange(of: messages.count) {
                     guard shouldFollowLatestMessage else { return }
 
@@ -230,6 +250,9 @@ struct ChatTranscriptView: View {
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
                     reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
+                    isReasoningActive: isReasoningAnchor && isReasoningActive,
+                    lastReasoningDuration: isReasoningAnchor ? lastReasoningDuration : nil,
+                    isToolPhaseActive: isToolCallAnchor && isToolPhaseActive,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
@@ -303,6 +326,14 @@ struct ChatTranscriptView: View {
         dynamicTypeSize.isAccessibilitySize ? 20 : 16
     }
 
+    private var chatPalette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
+    }
+
     private func transcriptContentWidth(for viewportWidth: CGFloat) -> CGFloat {
         max(0, viewportWidth - (transcriptHorizontalPadding * 2))
     }
@@ -343,7 +374,11 @@ struct ChatTranscriptView: View {
             if showsThinkingAndToolCards {
                 if hasLiveReasoningText,
                    !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText)
+                    ReasoningBlockView(
+                        text: liveReasoningText,
+                        isStreaming: isReasoningActive,
+                        completedDuration: lastReasoningDuration
+                    )
                 }
 
                 if !liveToolCalls.isEmpty,
@@ -352,7 +387,8 @@ struct ChatTranscriptView: View {
                         group: ToolCallGroup.live(
                             anchorMessageID: toolCallAnchorMessageID,
                             toolCalls: liveToolCalls
-                        )
+                        ),
+                        isPhaseActive: isToolPhaseActive
                     )
                 }
             }
@@ -452,6 +488,12 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let toolCallGroups: [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// See `ChatTranscriptView.isReasoningActive` — scoped to the anchor row.
+    let isReasoningActive: Bool
+    /// See `ChatTranscriptView.lastReasoningDuration` — scoped to the anchor row.
+    let lastReasoningDuration: TimeInterval?
+    /// See `ChatTranscriptView.isToolPhaseActive` — scoped to the anchor row.
+    let isToolPhaseActive: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -492,6 +534,9 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.toolCallGroups == rhs.toolCallGroups &&
             lhs.liveReasoningText == rhs.liveReasoningText &&
             lhs.reasoningAnchorMessageID == rhs.reasoningAnchorMessageID &&
+            lhs.isReasoningActive == rhs.isReasoningActive &&
+            lhs.lastReasoningDuration == rhs.lastReasoningDuration &&
+            lhs.isToolPhaseActive == rhs.isToolPhaseActive &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
@@ -562,7 +607,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText)
+            ReasoningBlockView(
+                text: liveReasoningText,
+                isStreaming: isReasoningActive,
+                completedDuration: lastReasoningDuration
+            )
         }
     }
 
@@ -582,7 +631,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 group: ToolCallGroup.live(
                     anchorMessageID: toolCallAnchorMessageID,
                     toolCalls: liveToolCalls
-                )
+                ),
+                isPhaseActive: isToolPhaseActive
             )
         }
     }
@@ -603,6 +653,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
 }
 
 private struct ChatTranscriptMessageRow: View {
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     let message: ChatMessage
     let visibleIndex: Int
     let actionContext: MessageActionContext?
@@ -651,7 +703,10 @@ private struct ChatTranscriptMessageRow: View {
                         onRegenerate: onRegenerate,
                         onEdit: onEdit,
                         onFork: onFork,
-                        onCopy: onCopy
+                        onCopy: { context in
+                            ChatHaptics.messageCopied(isEnabled: isHapticsEnabled)
+                            onCopy(context)
+                        }
                     )
                 }
         } else {
@@ -739,10 +794,6 @@ private struct LoadOlderMessagesButton: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.regularMaterial, in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color(.separator).opacity(0.32), lineWidth: 0.5)
-            )
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isLoading)

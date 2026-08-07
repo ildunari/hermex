@@ -233,7 +233,7 @@ private struct ListenPlaybackBar: View {
                 .monospacedDigit()
                 .frame(minWidth: 36, minHeight: 30)
                 .padding(.horizontal, 6)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .appSurfaceBackground(.surface, in: Capsule())
         }
         .disabled(!isReady)
         .accessibilityLabel(String(localized: "Playback speed"))
@@ -263,6 +263,7 @@ struct ChatView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -573,6 +574,13 @@ struct ChatView: View {
         }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // Carry the transcript canvas into the navigation bar so the chat
+        // surface reads as one continuous material instead of warm content
+        // framed by cool system chrome.
+        .toolbarBackground(
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground,
+            for: .navigationBar
+        )
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .task(id: didCompleteInitialAppearance) {
             await handleInitialAppearanceTask()
@@ -1078,6 +1086,9 @@ struct ChatView: View {
             },
             liveReasoningText: viewModel.liveReasoningText,
             reasoningAnchorMessageID: viewModel.reasoningAnchorMessageID,
+            isReasoningActive: viewModel.isReasoningPhaseActive,
+            lastReasoningDuration: viewModel.lastReasoningDuration,
+            isToolPhaseActive: viewModel.isToolPhaseActive,
             liveToolCalls: viewModel.liveToolCalls,
             toolCallAnchorMessageID: viewModel.toolCallAnchorMessageID,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
@@ -2313,7 +2324,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
         } else {
             content
                 .background(
-                    Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
+                    ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
                 )
                 .adaptiveGlass(
