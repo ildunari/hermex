@@ -94,17 +94,15 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
 
     private func beamStrokes(phase: Double) -> some View {
         let gradient = beamGradient(phase: phase)
-        return ZStack {
-            // Bloom pass underneath.
-            shape
-                .strokeBorder(gradient, lineWidth: Self.lineWidth + 1.5)
-                .blur(radius: 4)
-                .opacity(0.6 * style.strength)
-            // Crisp pass on top.
-            shape
-                .strokeBorder(gradient, lineWidth: Self.lineWidth)
-                .opacity(style.strength)
-        }
+        // Each angular-gradient stroke is a full shaded pass, so the number of
+        // strokes — not the blur — dominates cost when many capsules animate.
+        // A single slightly-wider stroke carries the glow readably; the whole
+        // beam is composited once via `drawingGroup` so the animating overlay
+        // is a single flattened layer per frame instead of several.
+        return shape
+            .strokeBorder(gradient, lineWidth: Self.lineWidth + 1)
+            .opacity(style.strength)
+            .drawingGroup()
     }
 
     /// Angular gradient that is clear except for a short bright segment whose

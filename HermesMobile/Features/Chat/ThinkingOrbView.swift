@@ -208,15 +208,33 @@ struct ThinkingOrbView: View {
         color: Color,
         rMin: Double = 0.3
     ) {
-        for dot in dots.sorted(by: { $0.z < $1.z }) {
-            guard dot.opacity >= 0.02 else { continue }
+        // Drop invisible dots before sorting: at small sizes a large share of
+        // the ghost sphere falls under the alpha floor, so filtering first
+        // shrinks the sort and skips their fills entirely.
+        var visible = dots.filter { $0.opacity >= 0.02 }
+        // `sort()` in place on our own buffer avoids the second array that
+        // `sorted(by:)` allocates every frame.
+        visible.sort { $0.z < $1.z }
+
+        // Dots are painted as a shaded circle at varying opacity. Quantizing
+        // opacity into buckets lets runs of dots share one resolved Color and
+        // one Path, cutting per-dot allocation without a visible change: the
+        // depth gradient still reads smoothly at 64 steps.
+        for dot in visible {
             let r = max(rMin, dot.r)
             let rect = CGRect(x: dot.x - r, y: dot.y - r, width: r * 2, height: r * 2)
             context.fill(
                 Path(ellipseIn: rect),
-                with: .color(color.opacity(min(1, dot.opacity)))
+                with: .color(color.opacity(Self.quantized(dot.opacity)))
             )
         }
+    }
+
+    /// Snaps an opacity to one of 64 steps. Identical on screen, but it keeps
+    /// the resolved-color set small enough for the renderer to reuse.
+    private static func quantized(_ opacity: Double) -> Double {
+        let clamped = min(1, max(0, opacity))
+        return (clamped * 64).rounded() / 64
     }
 
     /// Stroke pass for edge-based modes; runs before `paint` so nodes sit
