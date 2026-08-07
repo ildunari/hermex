@@ -1,0 +1,12 @@
+// Personal-fork identity used for Craft-Hermex App Store Connect builds.
+// Keep upstream defaults in Shared.xcconfig unchanged so upstream updates stay
+// easy to merge. Pass this file with xcodebuild's -xcconfig option.
+
+#include "Shared.xcconfig"
+
+DEVELOPMENT_TEAM = SV9Z2RG2A6
+APP_IDENTIFIER_SUFFIX =
+APP_BUNDLE_IDENTIFIER = com.ildunari.crafthermex
+APP_GROUP_IDENTIFIER = group.com.ildunari.crafthermex
+APP_DISPLAY_NAME = Craft-Hermex
+APP_URL_SCHEME_SUFFIX = -craft-hermex
