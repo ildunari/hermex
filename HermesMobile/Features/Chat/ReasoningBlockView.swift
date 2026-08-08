@@ -66,21 +66,30 @@ struct ReasoningBlockView: View {
                             .fill(palette.tableRule)
                             .frame(width: 2)
 
-                        Text(trimmedText)
-                            .font(AppFont.caption())
-                            .foregroundStyle(palette.textSecondary)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            // Emerges from inside the opening card rather than
-                            // arriving with it.
-                            .opacity(isExpanded ? 1 : 0)
-                            .animation(
-                                ChatMotion.cardContent(
-                                    reduceMotion: reduceMotion,
-                                    delay: isExpanded ? ChatMotion.cardContentLeadIn : 0
-                                ),
-                                value: isExpanded
-                            )
+                        // Paragraph-by-paragraph reveal so the thought fills the
+                        // card top-down, the same way tool rows do. Each block is
+                        // laid out in its final position from frame one and only
+                        // fades up — nothing travels into place.
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(Array(paragraphs.enumerated()), id: \.offset) { index, paragraph in
+                                Text(paragraph)
+                                    .font(AppFont.caption())
+                                    .foregroundStyle(palette.textSecondary)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .opacity(isExpanded ? 1 : 0)
+                                    .animation(
+                                        ChatMotion.cardContent(
+                                            reduceMotion: reduceMotion,
+                                            delay: isExpanded
+                                                ? ChatMotion.cardContentLeadIn
+                                                    + ChatMotion.cardRowDelay(index: index, reduceMotion: reduceMotion)
+                                                : 0
+                                        ),
+                                        value: isExpanded
+                                    )
+                            }
+                        }
                     }
                     .padding(.leading, 4)
                     .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
@@ -88,9 +97,21 @@ struct ReasoningBlockView: View {
             }
             // One container for the whole block when open — same treatment the
             // tool block uses, so thinking and tools read as one family.
-            .modifier(ReasoningBlockChrome(palette: palette, isEnabled: isExpanded))
+            .modifier(ReasoningBlockChrome(palette: palette, isEnabled: isExpanded, reduceMotion: reduceMotion))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// Reasoning text split for the staggered reveal. Paragraphs, not lines:
+    /// wrapped lines are a layout artifact and would stagger unpredictably with
+    /// Dynamic Type, while paragraphs are stable and semantic.
+    private var paragraphs: [String] {
+        guard let trimmedText else { return [] }
+        let parts = trimmedText
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? [trimmedText] : parts
     }
 
     private var completedLabelText: String {
@@ -134,20 +155,35 @@ enum ActivityBlockChrome {
 }
 
 /// One border for an expanded thinking block. Collapsed, the header capsule
-/// keeps its own pill chrome and this does nothing.
+/// keeps its own pill chrome and this fades out.
+///
+/// Deliberately a **single** branch. An `if isEnabled { ... } else { content }`
+/// modifier gives SwiftUI two different view identities, so toggling it
+/// *replaces* the subtree instead of animating it — which is what produced the
+/// ghosted double-capsule during expansion. Here the chrome always wraps the
+/// same content and only its values animate.
 private struct ReasoningBlockChrome: ViewModifier {
     let palette: ChatPalette
     let isEnabled: Bool
+    /// Phase-1 curve for the chrome itself; the height rides `cardExpand`.
+    var reduceMotion: Bool = false
 
     func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.8)))
-                .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
-        } else {
-            content
-        }
+        content
+            .padding(.horizontal, isEnabled ? 12 : 0)
+            .padding(.vertical, isEnabled ? 10 : 0)
+            .background(
+                ActivityBlockChrome.shape()
+                    .fill(palette.surface.opacity(0.8))
+                    .opacity(isEnabled ? 1 : 0)
+            )
+            .overlay(
+                ActivityBlockChrome.shape()
+                    .strokeBorder(palette.tableRule, lineWidth: 1)
+                    .opacity(isEnabled ? 1 : 0)
+            )
+            // Chrome resolves on the short horizontal curve; the enclosing
+            // `withAnimation(cardExpand)` still owns the height.
+            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: isEnabled)
     }
 }

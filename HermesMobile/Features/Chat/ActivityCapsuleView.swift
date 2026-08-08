@@ -329,24 +329,29 @@ private struct CapsuleChrome: ViewModifier {
     let usesAccessibilityLayout: Bool
     var chrome: ActivityCapsuleChrome = .pill
 
+    /// Branches only on the *accessibility layout*, which does not change while
+    /// a card expands. `chrome` is applied as an opacity, not a branch: making
+    /// it a branch changes view identity, so switching `.pill` → `.none` on
+    /// expand replaced the header capsule instead of animating it — the ghosted
+    /// double-capsule visible mid-expansion.
+    ///
+    /// 10pt continuous rather than a pill: the capsule sits in the same
+    /// timeline as `MarkerMessageCardView` and the accessory surface, both of
+    /// which are 10pt. `shapeAccessibility` stays wider for wrapped labels.
     func body(content: Content) -> some View {
-        if chrome == .none {
-            content.contentShape(Rectangle())
-        } else if usesAccessibilityLayout {
+        let showsChrome = chrome != .none
+
+        if usesAccessibilityLayout {
             content
-                .background(shapeAccessibility.fill(palette.surface.opacity(0.8)))
-                .overlay(shapeAccessibility.strokeBorder(palette.tableRule, lineWidth: 1))
-                .borderBeam(style: beamStyle, shape: shapeAccessibility, active: beamActive)
+                .background(shapeAccessibility.fill(palette.surface.opacity(0.8)).opacity(showsChrome ? 1 : 0))
+                .overlay(shapeAccessibility.strokeBorder(palette.tableRule, lineWidth: 1).opacity(showsChrome ? 1 : 0))
+                .borderBeam(style: beamStyle, shape: shapeAccessibility, active: showsChrome && beamActive)
                 .contentShape(shapeAccessibility)
         } else {
-            // 10pt continuous rather than a pill: the capsule sits in the same
-            // timeline as `MarkerMessageCardView` and the accessory surface,
-            // both of which are 10pt, and a lozenge read as foreign next to
-            // them. `shapeAccessibility` stays wider for wrapped labels.
             content
-                .background(shapeStandard.fill(palette.surface.opacity(0.8)))
-                .overlay(shapeStandard.strokeBorder(palette.tableRule, lineWidth: 1))
-                .borderBeam(style: beamStyle, shape: shapeStandard, active: beamActive)
+                .background(shapeStandard.fill(palette.surface.opacity(0.8)).opacity(showsChrome ? 1 : 0))
+                .overlay(shapeStandard.strokeBorder(palette.tableRule, lineWidth: 1).opacity(showsChrome ? 1 : 0))
+                .borderBeam(style: beamStyle, shape: shapeStandard, active: showsChrome && beamActive)
                 .contentShape(shapeStandard)
         }
     }

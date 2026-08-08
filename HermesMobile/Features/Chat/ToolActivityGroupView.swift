@@ -72,6 +72,7 @@ struct ToolActivityGroupView: View {
             ToolBlockChrome(
                 palette: palette,
                 isEnabled: isExpanded,
+                reduceMotion: reduceMotion,
                 isActive: isRunning
             )
         )
@@ -287,6 +288,8 @@ struct ToolActivityGroupView: View {
 private struct ToolBlockChrome: ViewModifier {
     let palette: ChatPalette
     let isEnabled: Bool
+    /// Phase-1 curve for the chrome itself; the height rides `cardExpand`.
+    var reduceMotion: Bool = false
     let isActive: Bool
 
     @Environment(\.colorScheme) private var colorScheme
@@ -294,17 +297,23 @@ private struct ToolBlockChrome: ViewModifier {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
 
+    /// Single branch on purpose — see `ReasoningBlockChrome`. Branching on
+    /// `isEnabled` changes view identity and replaces the subtree mid-animation
+    /// instead of animating it.
     func body(content: Content) -> some View {
-        if isEnabled {
-            content
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(shape.fill(palette.surface.opacity(0.8)))
-                .overlay(shape.strokeBorder(palette.tableRule, lineWidth: 1))
-                .borderBeam(style: beamStyle, shape: shape, active: isActive)
-        } else {
-            content
-        }
+        content
+            .padding(.horizontal, isEnabled ? 12 : 0)
+            .padding(.vertical, isEnabled ? 10 : 0)
+            .background(
+                shape.fill(palette.surface.opacity(0.8))
+                    .opacity(isEnabled ? 1 : 0)
+            )
+            .overlay(
+                shape.strokeBorder(palette.tableRule, lineWidth: 1)
+                    .opacity(isEnabled ? 1 : 0)
+            )
+            .borderBeam(style: beamStyle, shape: shape, active: isEnabled && isActive)
+            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: isEnabled)
     }
 
     /// Shared with the thinking block so both read as the same card family.
