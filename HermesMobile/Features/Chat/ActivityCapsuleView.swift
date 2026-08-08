@@ -91,8 +91,11 @@ struct ActivityCapsuleView: View {
                     accessory
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
+            // As a block header the capsule sits inside a padded container, so
+            // it sheds its own inset to keep the orb and title from shifting
+            // when the card opens. See `ActivityBlockChrome`.
+            .padding(.horizontal, chrome == .none ? ActivityBlockChrome.headerCapsuleHorizontalPadding : 14)
+            .padding(.vertical, chrome == .none ? ActivityBlockChrome.headerCapsuleVerticalPadding : 7)
             .modifier(CapsuleChrome(
                 palette: palette,
                 beamStyle: beamStyle,

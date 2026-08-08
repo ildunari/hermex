@@ -17,10 +17,18 @@ import SwiftUI
 /// low-frequency mode, and the transcript stacks rows eagerly.
 enum ToolRunIndicator {
     /// Fixed slot the row reserves; the overlay draws inside it.
-    static let slotWidth: CGFloat = 22
+    ///
+    /// Sized to hold the ring *and* its stroke: the ring is stroked, so half
+    /// the line width falls outside the circle's own bounds. Drawing at
+    /// `rect.minX` therefore put 0.9pt of the ring outside the slot, which the
+    /// row's leading edge clipped. `ringInset` keeps the whole mark inside.
+    static let slotWidth: CGFloat = 26
     static let slotHeight: CGFloat = 14
 
     static let ringDiameter: CGFloat = 10
+    static let ringStroke: CGFloat = 1.8
+    /// Half the stroke, so the outer edge of the ring lands on the slot edge.
+    static var ringInset: CGFloat { ringStroke / 2 }
     static let lineCount = 3
 
     /// One traveling sweep, in seconds.
@@ -39,7 +47,7 @@ enum ToolRunIndicator {
         color: Color
     ) {
         let ringRect = CGRect(
-            x: rect.minX,
+            x: rect.minX + ringInset,
             y: rect.midY - ringDiameter / 2,
             width: ringDiameter,
             height: ringDiameter
@@ -47,7 +55,7 @@ enum ToolRunIndicator {
         context.stroke(
             Path(ellipseIn: ringRect),
             with: .color(color),
-            lineWidth: 1.8
+            lineWidth: ringStroke
         )
 
         // Three stacked lines to the right of the ring, middle longest so the

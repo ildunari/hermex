@@ -302,8 +302,9 @@ private struct ToolBlockChrome: ViewModifier {
     /// instead of animating it.
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, isEnabled ? 12 : 0)
-            .padding(.vertical, isEnabled ? 10 : 0)
+            .padding(.horizontal, isEnabled ? ActivityBlockChrome.horizontalPadding : 0)
+            .padding(.top, isEnabled ? ActivityBlockChrome.topPadding : 0)
+            .padding(.bottom, isEnabled ? ActivityBlockChrome.bottomPadding : 0)
             .background(
                 shape.fill(palette.surface.opacity(0.8))
                     .opacity(isEnabled ? 1 : 0)

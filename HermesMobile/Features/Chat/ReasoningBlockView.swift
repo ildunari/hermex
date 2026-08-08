@@ -152,6 +152,32 @@ enum ActivityBlockChrome {
     static func shape() -> RoundedRectangle {
         RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
+
+    // MARK: - Header alignment
+    //
+    // Expanding a block wraps the *same* header in a padded container, so the
+    // header would shift down and right by exactly the padding it gained. The
+    // two paddings below are chosen to cancel the capsule's own inset, keeping
+    // the orb and title pinned while the card grows around them:
+    //
+    //   collapsed  header x = capsule 14                     = 14
+    //   expanded   header x = block 12 + capsule 2           = 14
+    //   collapsed  header y = capsule 7                      = 7
+    //   expanded   header y = block 7 (top) + capsule 0      = 7
+    //
+    // Bottom padding is free to be larger — nothing below it needs to align.
+
+    /// Horizontal inset the expanded container adds.
+    static let horizontalPadding: CGFloat = 12
+    /// Top inset, matched to the collapsed capsule's vertical padding so the
+    /// header does not drop when the card opens.
+    static let topPadding: CGFloat = 7
+    static let bottomPadding: CGFloat = 10
+
+    /// Capsule padding while it is a block header (chrome `.none`), reduced to
+    /// absorb the container's inset. See the arithmetic above.
+    static let headerCapsuleHorizontalPadding: CGFloat = 2
+    static let headerCapsuleVerticalPadding: CGFloat = 0
 }
 
 /// One border for an expanded thinking block. Collapsed, the header capsule
@@ -170,8 +196,9 @@ private struct ReasoningBlockChrome: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding(.horizontal, isEnabled ? 12 : 0)
-            .padding(.vertical, isEnabled ? 10 : 0)
+            .padding(.horizontal, isEnabled ? ActivityBlockChrome.horizontalPadding : 0)
+            .padding(.top, isEnabled ? ActivityBlockChrome.topPadding : 0)
+            .padding(.bottom, isEnabled ? ActivityBlockChrome.bottomPadding : 0)
             .background(
                 ActivityBlockChrome.shape()
                     .fill(palette.surface.opacity(0.8))

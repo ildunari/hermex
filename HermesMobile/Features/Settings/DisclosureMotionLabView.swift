@@ -78,7 +78,10 @@ struct DisclosureMotionLabView: View {
             ToolCall(id: "l3", name: "read_file", preview: nil, args: nil, duration: 1.2, isCompleted: true, batchIndex: 1),
             ToolCall(id: "l4", name: "execute_code", preview: nil, args: nil, duration: 2.5, isCompleted: true, batchIndex: 2),
             ToolCall(id: "l5", name: "search_files", preview: nil, args: nil, duration: 0.8, isCompleted: true, batchIndex: 3),
-            ToolCall(id: "l6", name: "web_search", preview: nil, args: nil, duration: 3.1, isCompleted: true, batchIndex: 4)
+            ToolCall(id: "l6", name: "web_search", preview: nil, args: nil, duration: 3.1, isCompleted: true, batchIndex: 4),
+            // Sequential + still running: keeps the live indicator on screen at
+            // a row's leading edge, where the ring stroke used to clip.
+            ToolCall(id: "l7", name: "read_file", preview: nil, args: nil, batchIndex: 5)
         ]
     )
 }
