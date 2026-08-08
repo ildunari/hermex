@@ -70,6 +70,7 @@ enum SSEEvent: Equatable {
     case reasoning(String)
     case toolStarted(ToolStreamEvent)
     case toolCompleted(ToolStreamEvent)
+    case todoState(TodoState)
     case title(TitleStreamEvent)
     case metering(MeteringStreamEvent)
     case done(DoneStreamEvent)
@@ -251,6 +252,14 @@ struct SSEEventDecoder {
         case "tool_complete":
             let payload = decodePayload(ToolStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .toolCompleted(payload ?? ToolStreamEvent())
+        case "todo_state":
+            // Full plan snapshot, emitted on every `todo` tool call. Dropping a
+            // malformed one is safe: the next call re-sends the whole list, and
+            // the contract is idempotent under SSE replay.
+            guard let payload = decodePayload(TodoState.self, eventType: eventType, from: eventData, decoder: decoder) else {
+                return .ignored
+            }
+            return .todoState(payload)
         case "title":
             let payload = decodePayload(TitleStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .title(payload ?? TitleStreamEvent())

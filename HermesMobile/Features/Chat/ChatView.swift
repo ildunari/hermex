@@ -542,6 +542,8 @@ struct ChatView: View {
 
             composerAccessoryStack
 
+            planTimelineLayer
+
             messageComposer
 
             if let approvalPrompt = viewModel.approvalPrompt {
@@ -1069,6 +1071,37 @@ struct ChatView: View {
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: activeRunStatusPresentation)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.pinnedLocalNotices)
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsApprovalBypassStatus)
+        }
+    }
+
+    /// The plan pill/card band, pinned just above the composer.
+    ///
+    /// A separate layer from `composerAccessoryStack` because that stack sets
+    /// `allowsHitTesting(false)` — everything in it is passive status chrome,
+    /// whereas the plan is tappable.
+    ///
+    /// Absent entirely when the session has no plan. Hermes agents call the
+    /// `todo` tool only when they choose to, so most conversations never have
+    /// one; an empty state here would be permanent dead chrome above the
+    /// composer.
+    @ViewBuilder
+    private var planTimelineLayer: some View {
+        if let planState = viewModel.planState, !planState.isEmpty {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
+                PlanTimelineView(
+                    state: planState,
+                    isExpanded: Binding(
+                        get: { viewModel.isPlanExpanded },
+                        set: { viewModel.isPlanExpanded = $0 }
+                    )
+                )
+                .padding(.horizontal)
+                .padding(.bottom, composerHeight + 8)
+            }
+            .zIndex(9)
+            .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
         }
     }
 

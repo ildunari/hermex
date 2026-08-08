@@ -427,6 +427,42 @@ final class ChatViewModel {
         compressionAnchorMetadata = nil
         compressionReferenceCard = nil
     }
+
+    // MARK: - Plan (todo_state)
+
+    /// Latest plan snapshot for this session, or nil when the agent never
+    /// called the `todo` tool. Nil is the common case — Hermes agents don't
+    /// plan on every turn — so the surface must be genuinely absent rather than
+    /// an empty state, or most conversations carry dead chrome.
+    private(set) var planState: TodoState?
+    /// Expansion is view state, but it lives here so it survives the transcript
+    /// rebuilding underneath it mid-run.
+    var isPlanExpanded = false
+
+    /// Applies a snapshot from either the live stream or a cold load.
+    ///
+    /// Always replace, never merge: the server sends the complete list on every
+    /// write and its own frontend treats the snapshot as the single source of
+    /// truth. Ordering is by `ts` so a cold-load snapshot and an in-flight one
+    /// can't fight; see `TodoState.supersedes(_:)`.
+    @discardableResult
+    private func applyTodoState(_ snapshot: TodoState) -> Bool {
+        guard snapshot.supersedes(planState) else { return false }
+        guard snapshot != planState else { return false }
+        planState = snapshot
+        return true
+    }
+
+    private func applyTodoState(from session: SessionDetail?) {
+        guard let snapshot = session?.todoState else { return }
+        applyTodoState(snapshot)
+    }
+
+    private func clearPlanState() {
+        planState = nil
+        isPlanExpanded = false
+    }
+
     private func recomputeCompressionReferenceCard() {
         // Not folded into the messages/messagesOffset observers alone:
         // applyCompletedStreamSession can update the metadata without
@@ -1400,6 +1436,7 @@ final class ChatViewModel {
                 reloadedMessages = loadedMessages
             }
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             applyReloadedMessages(
                 reloadedMessages,
                 from: session,
@@ -1634,6 +1671,7 @@ final class ChatViewModel {
             let mergedMessages = Self.prependingOlderMessages(olderMessages, to: messages)
             let didAddMessages = mergedMessages.count > messages.count
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             messages = mergedMessages
             latestServerLoadHadAssistantResponseAfterLatestUser = Self.hasAssistantResponseAfterLatestUser(
                 in: messages
@@ -2479,6 +2517,7 @@ final class ChatViewModel {
         cancelPendingStreamingScrollTrigger()
         resetPendingStreamingContentBuffers()
         clearCompressionAnchorMetadata()
+        clearPlanState()
         messages = []
         messagesOffset = 0
         hasOlderMessages = false
@@ -3142,6 +3181,7 @@ final class ChatViewModel {
             }
 
             applyCompressionAnchorMetadata(from: session)
+            applyTodoState(from: session)
             messages = session.messages ?? []
             updateOlderMessagePagination(from: session, loadedMessageCount: messages.count)
             isViewingCachedData = false
@@ -4052,7 +4092,7 @@ final class ChatViewModel {
             activeBtwAnswer = "Error: \(message)"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
-        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .title, .metering, .pendingSteerLeftover:
+        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .todoState, .title, .metering, .pendingSteerLeftover:
             break
         }
     }
@@ -4193,6 +4233,7 @@ final class ChatViewModel {
         }
 
         applyCompressionAnchorMetadata(from: completedSession)
+        applyTodoState(from: completedSession)
 
         var didApplyCompletedTranscript = false
         if let completedMessages = completedSession.messages,
@@ -5334,6 +5375,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     @discardableResult
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool {
         updateTitle(payload)
+    }
+
+    @discardableResult
+    func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool {
+        applyTodoState(payload)
     }
 
     @discardableResult

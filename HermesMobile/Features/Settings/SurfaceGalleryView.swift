@@ -14,6 +14,8 @@ struct SurfaceGalleryView: View {
         // own scroll view and padding, so it short-circuits the shared stack.
         if page == 10 {
             DisclosureMotionLabView()
+        } else if let page, (11...12).contains(page) {
+            PlanTimelineGalleryView(page: page)
         } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {
