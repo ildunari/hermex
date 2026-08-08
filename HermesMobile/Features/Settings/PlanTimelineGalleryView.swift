@@ -10,6 +10,8 @@ struct PlanTimelineGalleryView: View {
     var body: some View {
         if page == 12 {
             PlanMotionLabView()
+        } else if page == 13 {
+            PlanComposerDockView()
         } else {
             states
         }
@@ -73,9 +75,24 @@ struct PlanTimelineGalleryView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
 
-            PlanTimelineView(state: state, isExpanded: .constant(expanded))
+            // Glass is a blur of what is behind it, so a specimen on a flat
+            // background shows none of the effect. Backing each one with text
+            // makes the frost and the specular edge legible.
+            ZStack(alignment: .leading) {
+                Text(Self.backdrop)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+                    .padding(.horizontal, 6)
+
+                PlanTimelineView(state: state, isExpanded: .constant(expanded))
+            }
         }
     }
+
+    private static let backdrop = "Transcript text sits behind the plan so the glass has something to refract — without a backdrop the blur and its specular edge are invisible."
+
+    static let motionBackdrop = "The assistant's answer continues underneath the plan card. As the card expands over this text the glass blurs it, and the beam traces the card's edge while the plan is open."
 
     // MARK: - Fixtures
 
@@ -134,7 +151,15 @@ private struct PlanMotionLabView: View {
 
             Spacer()
 
+            // Stand-in transcript so the glass and the beam have a backdrop.
+            Text(PlanTimelineGalleryView.motionBackdrop)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 10)
+
             PlanTimelineView(state: state, isExpanded: $isExpanded)
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 28)
         }
@@ -164,6 +189,71 @@ private struct PlanMotionLabView: View {
             }
             return TodoItem(rawID: "\(index)", content: content, status: status)
         })
+    }
+}
+
+/// The pill in situ: floating above a composer stand-in, which is the framing
+/// that actually matters — the collapsed state is judged against the composer
+/// below it, not against an empty page.
+private struct PlanComposerDockView: View {
+    @State private var isExpanded = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            Text("Tell me your actual tasks and I'll organize them here.")
+                .font(.body)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+
+            HStack(spacing: 18) {
+                ForEach(["doc.on.doc", "hand.thumbsup", "hand.thumbsdown", "arrow.turn.up.right"], id: \.self) { name in
+                    Image(systemName: name)
+                        .font(.system(size: 15))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+
+            Spacer()
+
+            PlanTimelineView(
+                state: PlanTimelineGalleryView.midRun,
+                isExpanded: $isExpanded
+            )
+            .padding(.bottom, 10)
+
+            composerStandIn
+                .padding(.horizontal, 12)
+                .padding(.bottom, 24)
+        }
+    }
+
+    private var composerStandIn: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "plus")
+                .font(.system(size: 20, weight: .light))
+            Text("Work on Studio")
+                .font(.body)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Image(systemName: "mic")
+                .font(.system(size: 17))
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 15)
+        .background(
+            Capsule(style: .continuous)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.white)
+        )
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.07), lineWidth: 1)
+        )
     }
 }
 #endif

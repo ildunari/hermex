@@ -542,9 +542,7 @@ struct ChatView: View {
 
             composerAccessoryStack
 
-            planTimelineLayer
-
-            messageComposer
+            composerDock
 
             if let approvalPrompt = viewModel.approvalPrompt {
                 ApprovalRequestOverlay(
@@ -1087,22 +1085,36 @@ struct ChatView: View {
     @ViewBuilder
     private var planTimelineLayer: some View {
         if let planState = viewModel.planState, !planState.isEmpty {
-            VStack(spacing: 0) {
-                Spacer(minLength: 0)
-
-                PlanTimelineView(
-                    state: planState,
-                    isExpanded: Binding(
-                        get: { viewModel.isPlanExpanded },
-                        set: { viewModel.isPlanExpanded = $0 }
-                    )
+            PlanTimelineView(
+                state: planState,
+                isExpanded: Binding(
+                    get: { viewModel.isPlanExpanded },
+                    set: { viewModel.isPlanExpanded = $0 }
                 )
-                .padding(.horizontal)
-                .padding(.bottom, composerHeight + 8)
-            }
-            .zIndex(9)
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            // Centered over the composer. The collapsed pill is a small
+            // free-floating control, and hanging it off the leading edge made it
+            // read as attached to the transcript rather than to the composer.
+            .frame(maxWidth: .infinity, alignment: .center)
             .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
         }
+    }
+
+    /// The composer plus anything docked directly to it.
+    ///
+    /// The plan rides here rather than floating over the transcript so it
+    /// tracks the composer's height instead of being positioned against a
+    /// separately-measured `composerHeight`, which drifted by a frame whenever
+    /// the composer grew (multi-line draft, attachment strip, git bar).
+    private var composerDock: some View {
+        VStack(spacing: 0) {
+            planTimelineLayer
+
+            messageComposer
+        }
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
     }
 
     @ViewBuilder

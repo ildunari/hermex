@@ -14,6 +14,8 @@ struct PlanTimelineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
+    @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     /// Drives phase 1 of the reveal (chrome) independently of the row fades, so
     /// the container widens before its contents arrive. See `ChatMotion`.
@@ -30,20 +32,42 @@ struct PlanTimelineView: View {
 
             header
         }
+        // Hugs its content instead of filling the transcript width. A plan is a
+        // short list of short lines; a full-width slab over the composer reads
+        // as a sheet rather than an inline status surface. The cap is enforced
+        // on the row labels (see `PlanRowLabel`), so the card ends up as wide as
+        // its longest *wrapped* row rather than its longest ideal one.
+        .fixedSize(horizontal: true, vertical: false)
         .background(
             // Single branch with an animatable opacity rather than an
             // if/else on the styled view: two view identities make SwiftUI
             // *replace* the subtree instead of animating it, which shows up as
             // a ghosted double-card during the reveal.
             ActivityBlockChrome.shape()
-                .fill(palette.surface.opacity(chromeExpanded ? 0.92 : 0.0))
+                .fill(palette.surface.opacity(chromeExpanded ? 0.5 : 0.0))
                 .overlay(
                     ActivityBlockChrome.shape()
                         .strokeBorder(palette.tableRule, lineWidth: 1)
                         .opacity(chromeExpanded ? 1 : 0)
                 )
         )
+        // Glass sits over the tinted fill, not instead of it: the fill keeps the
+        // palette's warmth, glass supplies the blur and specular edge. Matches
+        // how `ChatActiveRunStatusView` layers the same two.
+        .adaptiveGlass(
+            .regular,
+            isInteractive: false,
+            fallbackMaterial: .regularMaterial,
+            in: ActivityBlockChrome.shape()
+        )
         .clipShape(ActivityBlockChrome.shape())
+        // The beam marks the card as live while it is open — the same signal the
+        // thinking and tool blocks use, so the plan reads as one of that family.
+        .borderBeam(
+            style: beamStyle,
+            shape: ActivityBlockChrome.shape(),
+            active: chromeExpanded && beamStyle.isVisible
+        )
         .onChange(of: isExpanded) { _, expanded in
             withAnimation(ChatMotion.cardChrome(reduceMotion: reduceMotion)) {
                 chromeExpanded = expanded
@@ -72,24 +96,38 @@ struct PlanTimelineView: View {
                     // it is the counter the user actually watches.
                     .contentTransition(.numericText(value: Double(state.currentStep)))
                     .lineLimit(1)
-
-                Image(systemName: "chevron.up")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(palette.textTertiary)
-                    .rotationEffect(.degrees(isExpanded ? 0 : 180))
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 7)
+            // Roomier than a status chip: the pill is the resting state of this
+            // surface, so it reads as a control rather than a label. No chevron
+            // — the whole pill is the hit target, and the affordance is the
+            // floating shape itself.
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
             .background(
                 // The pill keeps its own chrome only while collapsed; expanded,
                 // the surrounding card owns the surface so the two don't stack.
                 Capsule(style: .continuous)
-                    .fill(palette.surface.opacity(chromeExpanded ? 0 : 0.92))
+                    .fill(palette.surface.opacity(chromeExpanded ? 0 : 0.5))
                     .overlay(
                         Capsule(style: .continuous)
                             .strokeBorder(palette.tableRule, lineWidth: 1)
                             .opacity(chromeExpanded ? 0 : 1)
                     )
+            )
+            .adaptiveGlass(
+                .regular,
+                isInteractive: false,
+                fallbackMaterial: .regularMaterial,
+                in: Capsule(style: .continuous)
+            )
+            // Lifts the pill off the transcript so it reads as floating above
+            // the composer rather than printed onto the canvas. Only while
+            // collapsed: once expanded the card owns the elevation, and two
+            // stacked shadows muddy the edge.
+            .shadow(
+                color: .black.opacity(chromeExpanded ? 0 : (colorScheme == .dark ? 0.34 : 0.12)),
+                radius: chromeExpanded ? 0 : 8,
+                y: chromeExpanded ? 0 : 3
             )
             .contentShape(Capsule(style: .continuous))
         }
@@ -108,9 +146,13 @@ struct PlanTimelineView: View {
             PlanProgressRing(
                 fraction: completionFraction,
                 reduceMotion: reduceMotion,
-                tint: palette.textSecondary
+                // Accent-tinted rather than gray: in the collapsed pill the ring
+                // is the only live element, and a gray arc on a gray capsule
+                // reads as decoration instead of progress.
+                tint: HeaderLogoColor.color(for: headerLogoColorHex),
+                trackTint: palette.textTertiary
             )
-            .frame(width: 12, height: 12)
+            .frame(width: 13, height: 13)
         }
     }
 
@@ -139,6 +181,35 @@ struct PlanTimelineView: View {
     }
 
     // MARK: - Derived
+
+    /// Upper bound so a long step can't stretch the card back to full width on
+    /// a large phone. Past this the row wraps instead.
+    ///
+    /// `fixedSize` alone was not enough: it sizes to the widest row's *ideal*
+    /// width, and a five-word step is already wider than this, so the card kept
+    /// filling the screen. Capping the row label is what actually makes the
+    /// card narrow — the cap has to bite on the text, not just the container.
+    static let maximumWidth: CGFloat = 268
+
+    private var beamStyle: BeamStyle {
+        // Follows the accent hue rather than the user's global beam style, so
+        // the plan's edge matches the orange running mark on the tool rows —
+        // both are "this is live" in the same color. `.off` still wins, because
+        // that setting means the user wants no traveling edges anywhere.
+        //
+        // Note the tool indicator's orange is the *accent* (`HeaderLogoColor`,
+        // default #FFD700), not the `ember` preset, so `.accent` is what
+        // actually matches it.
+        let stored = ActivityBeamStyle.storedValue(beamStyleRawValue)
+        let effective: ActivityBeamStyle = stored == .off ? .off : .accent
+        return BeamStyle(
+            resolved: effective.resolved(
+                palette: palette,
+                colorScheme: colorScheme,
+                accent: HeaderLogoColor.color(for: headerLogoColorHex)
+            )
+        )
+    }
 
     /// Stagger order, measured from the pill outward.
     ///
@@ -202,6 +273,7 @@ private struct PlanRowView: View {
                 color: todo.status.isResolved ? palette.textTertiary : palette.textPrimary,
                 reduceMotion: reduceMotion
             )
+            .frame(maxWidth: PlanTimelineView.maximumWidth, alignment: .leading)
 
             Spacer(minLength: 0)
         }
@@ -317,17 +389,19 @@ private struct PlanProgressRing: View {
     let fraction: Double
     let reduceMotion: Bool
     let tint: Color
+    /// Unfilled track. Defaults to a faded `tint` when omitted.
+    var trackTint: Color?
 
     var body: some View {
         ZStack {
             Circle()
-                .strokeBorder(tint.opacity(0.25), lineWidth: 1.6)
+                .strokeBorder((trackTint ?? tint).opacity(0.3), lineWidth: 1.8)
 
             Circle()
                 .trim(from: 0, to: max(0.02, fraction))
-                .stroke(tint, style: StrokeStyle(lineWidth: 1.6, lineCap: .round))
+                .stroke(tint, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .padding(0.8)
+                .padding(0.9)
         }
         .animation(
             reduceMotion ? .easeOut(duration: 0.10) : .smooth(duration: 0.32, extraBounce: 0),
