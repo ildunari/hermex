@@ -52,10 +52,26 @@ struct TurnActivitySummaryRow: View {
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(palette.textTertiary)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 11)
-            .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.8)))
-            .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
+            // Horizontal inset drops with the fill so the header's text lines
+            // up with the block titles beneath it instead of sitting 14pt in
+            // from nothing.
+            .padding(.horizontal, isExpanded ? 2 : 14)
+            .padding(.vertical, isExpanded ? 4 : 11)
+            // Expanded, the row is a header *for* the blocks below, not a peer
+            // of them. Keeping its filled card chrome made it read as a third
+            // sibling stacked on two others, which is the "two different cards"
+            // complaint in a different form. Dropping to a bare row lets the
+            // blocks own the visual weight while the header keeps the position
+            // and the control.
+            .background(
+                ActivityBlockChrome.shape()
+                    .fill(palette.surface.opacity(isExpanded ? 0 : 0.8))
+            )
+            .overlay(
+                ActivityBlockChrome.shape()
+                    .strokeBorder(palette.tableRule, lineWidth: 1)
+                    .opacity(isExpanded ? 0 : 1)
+            )
             .contentShape(ActivityBlockChrome.shape())
         }
         .buttonStyle(.plain)
@@ -70,11 +86,21 @@ struct TurnActivitySummaryRow: View {
     /// At most eight dots; beyond that the row becomes noise rather than a
     /// glance-able result strip.
     private var resultDots: [Bool] {
+        // Expanded, every row shows its own result mark, so the strip is a
+        // duplicate summary of what is already visible below.
+        guard !isExpanded else { return [] }
         guard toolCalls.contains(where: { $0.isCompleted }) else { return [] }
         return toolCalls.prefix(8).map { $0.isError == true }
     }
 
     private var summaryText: String {
+        // Expanded, the blocks below state their own durations and counts, so
+        // repeating "Thought for 12s · ran 6 tools in 13s" in the header is
+        // noise. The row keeps its place as the anchor and gets out of the way.
+        if isExpanded {
+            return String(localized: "Activity")
+        }
+
         var parts: [String] = []
 
         if let reasoningDuration {

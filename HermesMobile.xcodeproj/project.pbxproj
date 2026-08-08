@@ -185,6 +185,7 @@
 		D0P1A0000000000000000001 /* TodoState.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000002 /* TodoState.swift */; };
 		D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000004 /* PlanTimelineView.swift */; };
 		D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */; };
+		D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */; };
 		C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */; };
 		C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C900000000000000000002 /* TurnActivityFoldView.swift */; };
 		C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000004 /* BorderBeamModifier.swift */; };
@@ -539,6 +540,7 @@
 		D0P1A0000000000000000002 /* TodoState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoState.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000004 /* PlanTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineView.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineGalleryView.swift; sourceTree = "<group>"; };
+		D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityFoldGalleryView.swift; sourceTree = "<group>"; };
 		C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivitySummaryRow.swift; sourceTree = "<group>"; };
 		C7C900000000000000000002 /* TurnActivityFoldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityFoldView.swift; sourceTree = "<group>"; };
 		C7C400000000000000000004 /* BorderBeamModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderBeamModifier.swift; sourceTree = "<group>"; };
@@ -1148,6 +1150,7 @@
 				C23400000000000000000002 /* StreamingLabReplay.swift */,
 				C23400000000000000000004 /* StreamingLabView.swift */,
 				C7B100000000000000000002 /* SurfaceGalleryView.swift */,
+				D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */,
 				D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */,
 				C7C700000000000000000002 /* TurnTimelineMockView.swift */,
 				C7CB00000000000000000002 /* DisclosureMotionLabView.swift */,
@@ -1591,6 +1594,7 @@
 				D0P1A0000000000000000001 /* TodoState.swift in Sources */,
 				D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */,
 				D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */,
+				D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */,
 				C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */,
 				C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */,
 				C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */,

@@ -16,6 +16,8 @@ struct SurfaceGalleryView: View {
             DisclosureMotionLabView()
         } else if let page, (11...13).contains(page) {
             PlanTimelineGalleryView(page: page)
+        } else if page == 14 {
+            ActivityFoldGalleryView()
         } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {

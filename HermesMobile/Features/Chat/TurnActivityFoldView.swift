@@ -20,8 +20,17 @@ import SwiftUI
 /// trees mounted and cross-faded opacity inside a clipped, fixed-height
 /// container. That made every settled turn keep its full block list alive —
 /// for a 70-tool turn, seventy rows laying out behind a 40pt window — which
-/// made expanding and collapsing visibly janky. Folded now renders the summary
+/// made expanding and collapsing visibly janky. Folded renders the summary
 /// row *only*; the blocks mount on expand and the height animates naturally.
+///
+/// **Why the summary row stays mounted while expanded.** It used to be
+/// replaced by the blocks, so tapping destroyed one full-width row and
+/// produced two content-width capsules in its place, with the chevron
+/// relocating to the opposite corner. Nothing connected the two states, so the
+/// disclosure read as a swap rather than an opening. The row is now a
+/// persistent header: it stays put, keeps owning the chevron, and the blocks
+/// reveal *underneath* it. Only the blocks subtree mounts and unmounts, so the
+/// 70-tool cost above is unchanged.
 struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
     /// Drives the fold. Set true when the first answer token lands.
     let isCollapsed: Bool
@@ -67,32 +76,17 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if isFolded {
-                summary(false) { setUserExpanded(true) }
-                    .transition(.opacity)
-            } else {
+            // Always mounted, in both states. This is the anchor that makes the
+            // disclosure legible: the thing you tap does not move or vanish.
+            summary(!isFolded) { setUserExpanded(isFolded) }
+
+            if !isFolded {
                 blocks()
+                    .padding(.top, Self.blocksTopInset)
                     // Same anchored reveal the cards use, so the fold and the
                     // blocks inside it read as one motion rather than two
                     // curves competing.
                     .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
-                    // Re-collapse affordance while expanded, so the fold is a
-                    // real two-way disclosure rather than a one-shot.
-                    .overlay(alignment: .topTrailing) {
-                        if userExpanded == true {
-                            Button {
-                                setUserExpanded(false)
-                            } label: {
-                                Image(systemName: "chevron.up")
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                    .padding(6)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(String(localized: "Collapse activity"))
-                        }
-                    }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -121,6 +115,11 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
     /// Matches the transcript's disclosure curve so opening a turn's activity
     /// feels like opening any other card in the timeline.
     private var foldAnimation: Animation? { TurnActivityFoldAnimation.curve(reduceMotion: reduceMotion) }
+
+    /// Gap between the header row and the revealed blocks. Matches the spacing
+    /// between the blocks themselves so the header reads as the first item in
+    /// one stack rather than a separate object sitting above it.
+    private static var blocksTopInset: CGFloat { 8 }
 }
 
 /// Non-generic holder: static stored properties aren't allowed in generic types.
