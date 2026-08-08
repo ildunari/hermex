@@ -39,17 +39,9 @@ struct PlanTimelineView: View {
         // its longest *wrapped* row rather than its longest ideal one.
         .fixedSize(horizontal: true, vertical: false)
         .background(
-            // Single branch with an animatable opacity rather than an
-            // if/else on the styled view: two view identities make SwiftUI
-            // *replace* the subtree instead of animating it, which shows up as
-            // a ghosted double-card during the reveal.
-            ActivityBlockChrome.shape()
-                .fill(palette.surface.opacity(chromeExpanded ? 0.5 : 0.0))
-                .overlay(
-                    ActivityBlockChrome.shape()
-                        .strokeBorder(palette.tableRule, lineWidth: 1)
-                        .opacity(chromeExpanded ? 1 : 0)
-                )
+            surfaceShape
+                .fill(palette.surface.opacity(0.5))
+                .overlay(surfaceShape.strokeBorder(palette.tableRule, lineWidth: 1))
         )
         // Glass sits over the tinted fill, not instead of it: the fill keeps the
         // palette's warmth, glass supplies the blur and specular edge. Matches
@@ -58,14 +50,21 @@ struct PlanTimelineView: View {
             .regular,
             isInteractive: false,
             fallbackMaterial: .regularMaterial,
-            in: ActivityBlockChrome.shape()
+            in: surfaceShape
         )
-        .clipShape(ActivityBlockChrome.shape())
+        .clipShape(surfaceShape)
+        // Lifts the whole surface off the transcript so it floats above the
+        // composer rather than being printed onto the canvas.
+        .shadow(
+            color: .black.opacity(colorScheme == .dark ? 0.34 : 0.12),
+            radius: 8,
+            y: 3
+        )
         // The beam marks the card as live while it is open — the same signal the
         // thinking and tool blocks use, so the plan reads as one of that family.
         .borderBeam(
             style: beamStyle,
-            shape: ActivityBlockChrome.shape(),
+            shape: surfaceShape,
             active: chromeExpanded && beamStyle.isVisible
         )
         .onChange(of: isExpanded) { _, expanded in
@@ -103,33 +102,14 @@ struct PlanTimelineView: View {
             // floating shape itself.
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
-            .background(
-                // The pill keeps its own chrome only while collapsed; expanded,
-                // the surrounding card owns the surface so the two don't stack.
-                Capsule(style: .continuous)
-                    .fill(palette.surface.opacity(chromeExpanded ? 0 : 0.5))
-                    .overlay(
-                        Capsule(style: .continuous)
-                            .strokeBorder(palette.tableRule, lineWidth: 1)
-                            .opacity(chromeExpanded ? 0 : 1)
-                    )
-            )
-            .adaptiveGlass(
-                .regular,
-                isInteractive: false,
-                fallbackMaterial: .regularMaterial,
-                in: Capsule(style: .continuous)
-            )
-            // Lifts the pill off the transcript so it reads as floating above
-            // the composer rather than printed onto the canvas. Only while
-            // collapsed: once expanded the card owns the elevation, and two
-            // stacked shadows muddy the edge.
-            .shadow(
-                color: .black.opacity(chromeExpanded ? 0 : (colorScheme == .dark ? 0.34 : 0.12)),
-                radius: chromeExpanded ? 0 : 8,
-                y: chromeExpanded ? 0 : 3
-            )
-            .contentShape(Capsule(style: .continuous))
+            // No surface of its own. The outer view owns the one background,
+            // border, glass, and shadow for both states; the header only
+            // supplies its hit target. Giving the header its own glass meant a
+            // second `glassEffect` capsule stayed rendered inside the expanded
+            // card — `glassEffect` paints its own surface and specular edge, so
+            // fading the *fill and stroke* to zero could not hide it. That was
+            // the double outline.
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
@@ -181,6 +161,26 @@ struct PlanTimelineView: View {
     }
 
     // MARK: - Derived
+
+    /// The single surface shape, morphing between the collapsed pill and the
+    /// expanded card.
+    ///
+    /// One `RoundedRectangle` whose radius animates rather than a
+    /// `Capsule`/`RoundedRectangle` swap: swapping the type changes view
+    /// identity, so SwiftUI replaces the surface instead of animating it — the
+    /// same trap that produced the ghosted double-capsule on the activity
+    /// blocks. A large radius on a short pill is visually identical to a
+    /// capsule, so nothing is lost by expressing both as one shape.
+    private var surfaceShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: chromeExpanded ? ActivityBlockChrome.cornerRadius : Self.collapsedRadius,
+            style: .continuous
+        )
+    }
+
+    /// Half the collapsed pill's height, which is what makes it read as a
+    /// capsule. Height is 9pt padding twice plus a footnote line.
+    private static let collapsedRadius: CGFloat = 19
 
     /// Upper bound so a long step can't stretch the card back to full width on
     /// a large phone. Past this the row wraps instead.
