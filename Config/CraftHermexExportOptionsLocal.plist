@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Exports an IPA to disk instead of uploading through Xcode.
+	     The sibling CraftHermexExportOptions.plist uses destination=upload,
+	     which makes exportArchive authenticate through a signed-in Xcode
+	     account and fails headlessly with "Failed to Use Accounts".
+	     Export locally here, then ship the IPA with `asc publish testflight`,
+	     which authenticates with the App Store Connect API key. -->
+	<key>destination</key>
+	<string>export</string>
+	<key>manageAppVersionAndBuildNumber</key>
+	<false/>
+	<key>method</key>
+	<string>app-store-connect</string>
+	<key>signingStyle</key>
+	<string>automatic</string>
+	<key>teamID</key>
+	<string>SV9Z2RG2A6</string>
+	<key>testFlightInternalTestingOnly</key>
+	<true/>
+	<key>uploadSymbols</key>
+	<true/>
+</dict>
+</plist>
