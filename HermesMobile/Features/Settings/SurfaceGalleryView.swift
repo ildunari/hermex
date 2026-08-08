@@ -12,7 +12,9 @@ struct SurfaceGalleryView: View {
     var body: some View {
         // Page 5 is the standalone turn-timeline design mock-up; it owns its
         // own scroll view and padding, so it short-circuits the shared stack.
-        if let page, (5...9).contains(page) {
+        if page == 10 {
+            DisclosureMotionLabView()
+        } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {
             galleryBody

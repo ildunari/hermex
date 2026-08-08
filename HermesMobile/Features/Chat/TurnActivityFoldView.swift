@@ -72,7 +72,10 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
                     .transition(.opacity)
             } else {
                 blocks()
-                    .transition(.opacity)
+                    // Same anchored reveal the cards use, so the fold and the
+                    // blocks inside it read as one motion rather than two
+                    // curves competing.
+                    .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
                     // Re-collapse affordance while expanded, so the fold is a
                     // real two-way disclosure rather than a one-shot.
                     .overlay(alignment: .topTrailing) {
@@ -117,10 +120,16 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
 
     /// Matches the transcript's disclosure curve so opening a turn's activity
     /// feels like opening any other card in the timeline.
-    private var foldAnimation: Animation { TurnActivityFoldAnimation.curve }
+    private var foldAnimation: Animation? { TurnActivityFoldAnimation.curve(reduceMotion: reduceMotion) }
 }
 
 /// Non-generic holder: static stored properties aren't allowed in generic types.
 enum TurnActivityFoldAnimation {
-    static let curve: Animation = .spring(response: 0.32, dampingFraction: 0.9)
+    /// Deliberately the same container spring the cards use
+    /// (`ChatMotion.cardExpand`). The fold and the blocks inside it used to run
+    /// on unrelated curves at the same time, which is what made expanding a
+    /// settled turn feel like several things happening at once.
+    static func curve(reduceMotion: Bool) -> Animation? {
+        ChatMotion.cardExpand(reduceMotion: reduceMotion)
+    }
 }

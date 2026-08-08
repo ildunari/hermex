@@ -25,11 +25,18 @@ struct ToolActivityGroupView: View {
     }
 
     private var isExpanded: Bool {
-        ChatTranscriptDisplaySettings.isCardExpanded(
+        #if DEBUG
+        if let forced = disclosureLabExpansion { return forced }
+        #endif
+        return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
             startsExpanded: startsExpanded
         )
     }
+
+    #if DEBUG
+    @Environment(\.disclosureLabExpansion) private var disclosureLabExpansion
+    #endif
 
     var body: some View {
         VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
@@ -42,7 +49,7 @@ struct ToolActivityGroupView: View {
                 completedLabel: completedCapsuleLabel,
                 accessory: AnyView(headerTrailing),
                 onTap: {
-                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                    withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
                         userToggledExpansion = !isExpanded
                     }
                 },
@@ -54,7 +61,7 @@ struct ToolActivityGroupView: View {
             if isExpanded {
                 runsList
                     .padding(.leading, 8)
-                    .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                    .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
             }
         }
         // Expanded, the block is one bordered container carrying one beam;
@@ -115,6 +122,13 @@ struct ToolActivityGroupView: View {
                         indicatorRowIndex: rowOffset(before: runOffset),
                         isBlockActive: isRunning
                     )
+                    .modifier(
+                        CardRowReveal(
+                            index: rowOffset(before: runOffset),
+                            isVisible: isExpanded,
+                            reduceMotion: reduceMotion
+                        )
+                    )
                 }
             }
         }
@@ -149,6 +163,13 @@ struct ToolActivityGroupView: View {
                         isNestedInGroup: true,
                         indicatorRowIndex: rowOffset + index,
                         isBlockActive: isRunning
+                    )
+                    .modifier(
+                        CardRowReveal(
+                            index: rowOffset + index,
+                            isVisible: isExpanded,
+                            reduceMotion: reduceMotion
+                        )
                     )
                 }
             }
@@ -299,5 +320,35 @@ private struct ToolBlockChrome: ViewModifier {
                 accent: HeaderLogoColor.color(for: headerLogoColorHex)
             )
         )
+    }
+}
+
+/// Staggered fade for one row inside an expanding card.
+///
+/// The row's opacity is driven by the block's expansion with a per-index delay,
+/// so the card populates top-down as it opens instead of every row landing on
+/// the same frame. Only `opacity` animates — the row's layout is already
+/// established by the container's spring, so nothing moves independently and
+/// there is no second layout pass per row.
+private struct CardRowReveal: ViewModifier {
+    let index: Int
+    let isVisible: Bool
+    let reduceMotion: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(isVisible ? 1 : 0)
+            .animation(
+                ChatMotion.cardContent(
+                    reduceMotion: reduceMotion,
+                    delay: isVisible
+                        ? ChatMotion.cardContentLeadIn
+                            + ChatMotion.cardRowDelay(index: index, reduceMotion: reduceMotion)
+                        // Collapsing runs in one beat: a reverse stagger reads
+                        // as the card struggling to close.
+                        : 0
+                ),
+                value: isVisible
+            )
     }
 }

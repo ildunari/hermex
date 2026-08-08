@@ -16,11 +16,20 @@ struct ReasoningBlockView: View {
     @State private var userToggledExpansion: Bool?
 
     private var isExpanded: Bool {
-        ChatTranscriptDisplaySettings.isCardExpanded(
+        #if DEBUG
+        // Debug motion lab drives expansion on a timer so open/close can be
+        // recorded deterministically; nil in every production path.
+        if let forced = disclosureLabExpansion { return forced }
+        #endif
+        return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
             startsExpanded: startsExpanded
         )
     }
+
+    #if DEBUG
+    @Environment(\.disclosureLabExpansion) private var disclosureLabExpansion
+    #endif
 
     var body: some View {
         if let trimmedText {
@@ -38,7 +47,7 @@ struct ReasoningBlockView: View {
                     completedLabel: completedLabelText,
                     accessory: AnyView(chevron),
                     onTap: {
-                        withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
                             userToggledExpansion = !isExpanded
                         }
                     },
@@ -62,9 +71,19 @@ struct ReasoningBlockView: View {
                             .foregroundStyle(palette.textSecondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            // Emerges from inside the opening card rather than
+                            // arriving with it.
+                            .opacity(isExpanded ? 1 : 0)
+                            .animation(
+                                ChatMotion.cardContent(
+                                    reduceMotion: reduceMotion,
+                                    delay: isExpanded ? ChatMotion.cardContentLeadIn : 0
+                                ),
+                                value: isExpanded
+                            )
                     }
                     .padding(.leading, 4)
-                    .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                    .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
                 }
             }
             // One container for the whole block when open — same treatment the

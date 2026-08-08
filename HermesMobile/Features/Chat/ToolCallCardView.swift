@@ -58,7 +58,7 @@ struct ToolCallCardView: View {
                     completedLabel: completedCapsuleLabel,
                     accessory: AnyView(chevron)
                 ) {
-                    withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+                    withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
                         userToggledExpansion = !isExpanded
                     }
                 }
@@ -81,7 +81,7 @@ struct ToolCallCardView: View {
                 // results — code-like content that must stay left-to-right
                 // inside an RTL message (#259).
                 .forcedLeftToRight()
-                .transition(ChatMotion.disclosureTransition(reduceMotion: reduceMotion))
+                .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,7 +105,7 @@ struct ToolCallCardView: View {
     /// duration or failure note. No capsule chrome, no orb, no beam.
     private var nestedHeader: some View {
         Button {
-            withAnimation(ChatMotion.disclosure(reduceMotion: reduceMotion)) {
+            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
                 userToggledExpansion = !isExpanded
             }
         } label: {

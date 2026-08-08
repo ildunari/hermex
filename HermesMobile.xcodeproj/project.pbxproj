@@ -274,6 +274,7 @@
 		C23400000000000000000003 /* StreamingLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000004 /* StreamingLabView.swift */; };
 		C7B100000000000000000001 /* SurfaceGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7B100000000000000000002 /* SurfaceGalleryView.swift */; };
 		C7C700000000000000000001 /* TurnTimelineMockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C700000000000000000002 /* TurnTimelineMockView.swift */; };
+		C7CB00000000000000000001 /* DisclosureMotionLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CB00000000000000000002 /* DisclosureMotionLabView.swift */; };
 		C23400000000000000000005 /* StreamingLabReplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C23400000000000000000006 /* StreamingLabReplayTests.swift */; };
 		C14900000000000000000001 /* Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000002 /* Kanban.swift */; };
 		C14900000000000000000003 /* APIClient+Kanban.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14900000000000000000004 /* APIClient+Kanban.swift */; };
@@ -646,6 +647,7 @@
 		C23400000000000000000004 /* StreamingLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabView.swift; sourceTree = "<group>"; };
 		C7B100000000000000000002 /* SurfaceGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SurfaceGalleryView.swift; sourceTree = "<group>"; };
 		C7C700000000000000000002 /* TurnTimelineMockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnTimelineMockView.swift; sourceTree = "<group>"; };
+		C7CB00000000000000000002 /* DisclosureMotionLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DisclosureMotionLabView.swift; sourceTree = "<group>"; };
 		C23400000000000000000006 /* StreamingLabReplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamingLabReplayTests.swift; sourceTree = "<group>"; };
 		C14900000000000000000002 /* Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Kanban.swift; sourceTree = "<group>"; };
 		C14900000000000000000004 /* APIClient+Kanban.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Kanban.swift"; sourceTree = "<group>"; };
@@ -1136,6 +1138,7 @@
 				C23400000000000000000004 /* StreamingLabView.swift */,
 				C7B100000000000000000002 /* SurfaceGalleryView.swift */,
 				C7C700000000000000000002 /* TurnTimelineMockView.swift */,
+				C7CB00000000000000000002 /* DisclosureMotionLabView.swift */,
 				1A2B3C4D5E6F70000000113 /* ArchivedSessionsViewModel.swift */,
 				19C1150000000000000000A2 /* CliSessionsSyncModel.swift */,
 				26AB000000000000000000F2 /* ProvidersView.swift */,
@@ -1533,6 +1536,7 @@
 				C23400000000000000000003 /* StreamingLabView.swift in Sources */,
 				C7B100000000000000000001 /* SurfaceGalleryView.swift in Sources */,
 				C7C700000000000000000001 /* TurnTimelineMockView.swift in Sources */,
+				C7CB00000000000000000001 /* DisclosureMotionLabView.swift in Sources */,
 				1A2B3C4D5E6F70000000112 /* ArchivedSessionsViewModel.swift in Sources */,
 				19C1150000000000000000A1 /* CliSessionsSyncModel.swift in Sources */,
 				1A2B3C4D5E6F7000000000F8 /* AppConfig.swift in Sources */,
