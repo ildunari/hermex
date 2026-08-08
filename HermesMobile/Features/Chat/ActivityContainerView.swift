@@ -22,9 +22,15 @@ struct ActivityContainerView<Content: View>: View {
     /// Vertical gap between sections. Matches the transcript's block spacing so
     /// the container reads as the same rhythm as the rest of the timeline.
     var spacing: CGFloat = 8
+    /// True while the turn is still working. The container carries the running
+    /// beam because its sections no longer draw their own chrome — without
+    /// this, a live turn had no running indicator border anywhere.
+    var isActive: Bool = false
     @ViewBuilder let content: () -> Content
 
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
@@ -40,6 +46,21 @@ struct ActivityContainerView<Content: View>: View {
         // into it instead of holding them.
         .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.55)))
         .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
+        .borderBeam(
+            style: beamStyle,
+            shape: ActivityBlockChrome.shape(),
+            active: isActive && beamStyle.isVisible
+        )
+    }
+
+    private var beamStyle: BeamStyle {
+        BeamStyle(
+            resolved: ActivityBeamStyle.storedValue(beamStyleRawValue).resolved(
+                palette: palette,
+                colorScheme: colorScheme,
+                accent: HeaderLogoColor.color(for: headerLogoColorHex)
+            )
+        )
     }
 
     private var palette: ChatPalette {

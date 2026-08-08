@@ -404,7 +404,7 @@ struct ChatTranscriptView: View {
                 isCollapsed: isAnswerStreaming,
                 animatesFold: isScrolledNearBottom
             ) {
-                ActivityContainerView {
+                ActivityContainerView(isActive: isToolPhaseActive || isReasoningActive) {
                     if showsReasoning {
                         ReasoningBlockView(
                             text: liveReasoningText,
@@ -650,7 +650,10 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 initiallyCollapsed: isHistorical,
                 animatesFold: !isHistorical && isScrolledNearBottom
             ) {
-                ActivityContainerView(spacing: transcriptBlockSpacing) {
+                ActivityContainerView(
+                    spacing: transcriptBlockSpacing,
+                    isActive: isToolPhaseActive || isReasoningActive
+                ) {
                     activitySections
                 }
             } summary: { isExpanded, toggle in

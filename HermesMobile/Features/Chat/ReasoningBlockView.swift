@@ -104,7 +104,8 @@ struct ReasoningBlockView: View {
             // tool block uses, so thinking and tools read as one family.
             .modifier(ReasoningBlockChrome(
                 palette: palette,
-                isEnabled: isExpanded && drawsOwnChrome,
+                isExpanded: isExpanded,
+                drawsSurface: drawsOwnChrome,
                 reduceMotion: reduceMotion
             ))
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,27 +188,39 @@ enum ActivityBlockChrome {
 /// same content and only its values animate.
 private struct ReasoningBlockChrome: ViewModifier {
     let palette: ChatPalette
-    let isEnabled: Bool
+    /// Whether the block is open. Owns the *padding*, which must apply even
+    /// when the parent draws the surface: the header capsule sheds its own
+    /// 14/7 inset on expand (`.pill` → `.none`), and this padding is what
+    /// replaces it. Keying padding to `drawsSurface` instead made the header
+    /// jump 12pt left and 7pt up whenever the block was inside a container.
+    let isExpanded: Bool
+    /// Whether this block draws its own fill and border. False when it is a
+    /// section inside `ActivityContainerView`, which owns the surface.
+    let drawsSurface: Bool
     /// Phase-1 curve for the chrome itself; the height rides `cardExpand`.
     var reduceMotion: Bool = false
 
     func body(content: Content) -> some View {
+        // Single branch with animatable opacity, never an if/else on the styled
+        // view: two identities make SwiftUI replace the subtree rather than
+        // animate it.
+        let showsSurface = isExpanded && drawsSurface
         content
-            .padding(.horizontal, isEnabled ? ActivityBlockChrome.horizontalPadding : 0)
-            .padding(.top, isEnabled ? ActivityBlockChrome.topPadding : 0)
-            .padding(.bottom, isEnabled ? ActivityBlockChrome.bottomPadding : 0)
+            .padding(.horizontal, isExpanded ? ActivityBlockChrome.horizontalPadding : 0)
+            .padding(.top, isExpanded ? ActivityBlockChrome.topPadding : 0)
+            .padding(.bottom, isExpanded ? ActivityBlockChrome.bottomPadding : 0)
             .background(
                 ActivityBlockChrome.shape()
                     .fill(palette.surface.opacity(0.8))
-                    .opacity(isEnabled ? 1 : 0)
+                    .opacity(showsSurface ? 1 : 0)
             )
             .overlay(
                 ActivityBlockChrome.shape()
                     .strokeBorder(palette.tableRule, lineWidth: 1)
-                    .opacity(isEnabled ? 1 : 0)
+                    .opacity(showsSurface ? 1 : 0)
             )
             // Chrome resolves on the short horizontal curve; the enclosing
             // `withAnimation(cardExpand)` still owns the height.
-            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: isEnabled)
+            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: showsSurface)
     }
 }

@@ -17,15 +17,6 @@ enum MarkdownTypographyRole {
         self == .assistantResponse
     }
 
-    /// Scale applied to body and heading sizes. Thought text sits at caption
-    /// scale to match the rest of the activity block.
-    var textScale: CGFloat {
-        self == .reasoning ? 0.88 : 1.0
-    }
-
-    var usesSecondaryForeground: Bool {
-        self == .reasoning
-    }
 }
 
 struct MarkdownRenderer: View {
@@ -1335,16 +1326,32 @@ private extension MarkdownUI.Theme {
         // is a dense aside inside a card — full answer-scale headings would
         // make it out-shout the answer that follows it.
         let isReasoning = role == .reasoning
-        let scale: CGFloat = isReasoning ? 0.88 : 1.0
-        // Absolute point size for the reasoning base, resolved through Dynamic
-        // Type so the thought still scales with the user's text-size setting.
-        let reasoningBaseSize = UIFontMetrics(forTextStyle: .caption1)
-            .scaledValue(for: UIFont.preferredFont(forTextStyle: .caption1).pointSize)
+        // Reasoning damping lives entirely in this absolute base size. It is
+        // deliberately NOT combined with a separate `.em` scale on `.text`:
+        // heading `.em` values resolve against the already-scaled base, so
+        // damping in both places compounds and drives headings below body size.
+        //
+        // Caption relative to the *body* size, expressed as an `.em` ratio
+        // rather than an absolute point size.
+        //
+        // An absolute `FontSize(pt)` was tried first and is wrong twice over:
+        // `UIFontMetrics.scaledValue(for: preferredFont(...).pointSize)` scales
+        // an already-scaled size (43pt → 137pt at AX5, measured), and even the
+        // single-scaled absolute value pins the text so MarkdownUI stops
+        // wrapping headings at accessibility sizes. A ratio keeps Dynamic Type
+        // in charge of the actual metrics, which is what the answer path does.
+        let bodyPointSize = UIFont.preferredFont(forTextStyle: .body).pointSize
+        let captionPointSize = UIFont.preferredFont(forTextStyle: .caption1).pointSize
+        let reasoningScale = captionPointSize / max(bodyPointSize, 1)
         let h1: CGFloat = isReasoning ? 1.12 : 1.45
         let h2: CGFloat = isReasoning ? 1.06 : 1.25
         let h3: CGFloat = isReasoning ? 1.0 : 1.1
         let headingTop: CGFloat = isReasoning ? 12 : 24
         let headingBottom: CGFloat = isReasoning ? 4 : 8
+        // h4–h6 share the reasoning margins too; leaving them at answer scale
+        // made a thought's minor headings sit further apart than its major ones.
+        let minorHeadingTop: CGFloat = isReasoning ? 10 : 16
+        let minorHeadingBottom: CGFloat = isReasoning ? 3 : 4
         let paragraphBottom: CGFloat = isReasoning ? 7 : 12
         let bodyColor = isReasoning ? palette.textSecondary : palette.textPrimary
 
@@ -1354,15 +1361,13 @@ private extension MarkdownUI.Theme {
                 // the SwiftUI environment font, so an outer `.font()` cannot
                 // shrink reasoning text. The base has to be stated here.
                 if isReasoning {
-                    FontSize(reasoningBaseSize)
+                    FontSize(.em(reasoningScale))
                 }
                 if usesSerif {
                     FontFamily(.system(.serif))
                     // New York runs optically smaller than SF at the same
                     // point size; nudge the body up so both faces read equally.
-                    FontSize(.em(1.02 * scale))
-                } else {
-                    FontSize(.em(scale))
+                    FontSize(.em(1.02))
                 }
                 ForegroundColor(bodyColor)
                 BackgroundColor(nil)
@@ -1385,7 +1390,7 @@ private extension MarkdownUI.Theme {
                     .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(h1 * scale))
+                        FontSize(.em(h1))
                     }
             }
             .heading2 { configuration in
@@ -1394,7 +1399,7 @@ private extension MarkdownUI.Theme {
                     .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(h2 * scale))
+                        FontSize(.em(h2))
                     }
             }
             .heading3 { configuration in
@@ -1403,12 +1408,12 @@ private extension MarkdownUI.Theme {
                     .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(h3 * scale))
+                        FontSize(.em(h3))
                     }
             }
             .heading4 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 4)
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))
@@ -1416,7 +1421,7 @@ private extension MarkdownUI.Theme {
             }
             .heading5 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 4)
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))
@@ -1425,7 +1430,7 @@ private extension MarkdownUI.Theme {
             }
             .heading6 { configuration in
                 configuration.label
-                    .markdownMargin(top: 16, bottom: 4)
+                    .markdownMargin(top: minorHeadingTop, bottom: minorHeadingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
                         FontSize(.em(1.0))

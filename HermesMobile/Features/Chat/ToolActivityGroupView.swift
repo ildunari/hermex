@@ -74,7 +74,8 @@ struct ToolActivityGroupView: View {
         .modifier(
             ToolBlockChrome(
                 palette: palette,
-                isEnabled: isExpanded && drawsOwnChrome,
+                isExpanded: isExpanded,
+                drawsSurface: drawsOwnChrome,
                 reduceMotion: reduceMotion,
                 isActive: isRunning
             )
@@ -290,7 +291,11 @@ struct ToolActivityGroupView: View {
 /// beam animate per turn step regardless of how many tools are inside.
 private struct ToolBlockChrome: ViewModifier {
     let palette: ChatPalette
-    let isEnabled: Bool
+    /// Owns the padding — see `ReasoningBlockChrome` for why this must stay
+    /// separate from surface ownership.
+    let isExpanded: Bool
+    /// False when this block is a section inside `ActivityContainerView`.
+    let drawsSurface: Bool
     /// Phase-1 curve for the chrome itself; the height rides `cardExpand`.
     var reduceMotion: Bool = false
     let isActive: Bool
@@ -304,20 +309,23 @@ private struct ToolBlockChrome: ViewModifier {
     /// `isEnabled` changes view identity and replaces the subtree mid-animation
     /// instead of animating it.
     func body(content: Content) -> some View {
+        let showsSurface = isExpanded && drawsSurface
         content
-            .padding(.horizontal, isEnabled ? ActivityBlockChrome.horizontalPadding : 0)
-            .padding(.top, isEnabled ? ActivityBlockChrome.topPadding : 0)
-            .padding(.bottom, isEnabled ? ActivityBlockChrome.bottomPadding : 0)
+            .padding(.horizontal, isExpanded ? ActivityBlockChrome.horizontalPadding : 0)
+            .padding(.top, isExpanded ? ActivityBlockChrome.topPadding : 0)
+            .padding(.bottom, isExpanded ? ActivityBlockChrome.bottomPadding : 0)
             .background(
                 shape.fill(palette.surface.opacity(0.8))
-                    .opacity(isEnabled ? 1 : 0)
+                    .opacity(showsSurface ? 1 : 0)
             )
             .overlay(
                 shape.strokeBorder(palette.tableRule, lineWidth: 1)
-                    .opacity(isEnabled ? 1 : 0)
+                    .opacity(showsSurface ? 1 : 0)
             )
-            .borderBeam(style: beamStyle, shape: shape, active: isEnabled && isActive)
-            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: isEnabled)
+            // Beam only when this block owns its surface; embedded, the
+            // container carries it so exactly one beam animates per turn.
+            .borderBeam(style: beamStyle, shape: shape, active: showsSurface && isActive)
+            .animation(ChatMotion.cardChrome(reduceMotion: reduceMotion), value: showsSurface)
     }
 
     /// Shared with the thinking block so both read as the same card family.
