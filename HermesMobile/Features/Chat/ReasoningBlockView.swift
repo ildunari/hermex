@@ -7,6 +7,16 @@ struct ReasoningBlockView: View {
     /// ChatTranscriptView). Drives the "Thought for 3.4s" completed label;
     /// nil keeps the plain "Thought".
     var completedDuration: TimeInterval? = nil
+    /// Render the thought as markdown instead of plain paragraphs.
+    ///
+    /// Models routinely emit `**bold**` section markers, lists, and inline
+    /// code inside reasoning; as plain text those show up as literal asterisks
+    /// and backticks. Uses the `.reasoning` typography role so headings and
+    /// body sit a step below the answer's scale.
+    var rendersMarkdown: Bool = true
+    /// When embedded in a merged activity card the parent owns the container,
+    /// so the block must not draw its own.
+    var drawsOwnChrome: Bool = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -71,23 +81,45 @@ struct ReasoningBlockView: View {
                         // laid out in its final position from frame one and only
                         // fades up — nothing travels into place.
                         VStack(alignment: .leading, spacing: 6) {
-                            ForEach(Array(paragraphs.enumerated()), id: \.offset) { index, paragraph in
-                                Text(paragraph)
-                                    .font(AppFont.caption())
-                                    .foregroundStyle(palette.textSecondary)
-                                    .textSelection(.enabled)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .opacity(isExpanded ? 1 : 0)
-                                    .animation(
-                                        ChatMotion.cardContent(
-                                            reduceMotion: reduceMotion,
-                                            delay: isExpanded
-                                                ? ChatMotion.cardContentLeadIn
-                                                    + ChatMotion.cardRowDelay(index: index, reduceMotion: reduceMotion)
-                                                : 0
-                                        ),
-                                        value: isExpanded
-                                    )
+                            if rendersMarkdown {
+                                // One renderer for the whole thought rather than
+                                // one per paragraph: markdown blocks span
+                                // paragraph breaks (lists, fences), so splitting
+                                // first would parse each fragment out of context
+                                // and break every multi-line construct.
+                                MarkdownRenderer(
+                                    content: trimmedText ?? "",
+                                    isStreaming: isStreaming,
+                                    typographyRole: .reasoning
+                                )
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .opacity(isExpanded ? 1 : 0)
+                                .animation(
+                                    ChatMotion.cardContent(
+                                        reduceMotion: reduceMotion,
+                                        delay: isExpanded ? ChatMotion.cardContentLeadIn : 0
+                                    ),
+                                    value: isExpanded
+                                )
+                            } else {
+                                ForEach(Array(paragraphs.enumerated()), id: \.offset) { index, paragraph in
+                                    Text(paragraph)
+                                        .font(AppFont.caption())
+                                        .foregroundStyle(palette.textSecondary)
+                                        .textSelection(.enabled)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .opacity(isExpanded ? 1 : 0)
+                                        .animation(
+                                            ChatMotion.cardContent(
+                                                reduceMotion: reduceMotion,
+                                                delay: isExpanded
+                                                    ? ChatMotion.cardContentLeadIn
+                                                        + ChatMotion.cardRowDelay(index: index, reduceMotion: reduceMotion)
+                                                    : 0
+                                            ),
+                                            value: isExpanded
+                                        )
+                                }
                             }
                         }
                     }
@@ -97,7 +129,11 @@ struct ReasoningBlockView: View {
             }
             // One container for the whole block when open — same treatment the
             // tool block uses, so thinking and tools read as one family.
-            .modifier(ReasoningBlockChrome(palette: palette, isEnabled: isExpanded, reduceMotion: reduceMotion))
+            .modifier(ReasoningBlockChrome(
+                palette: palette,
+                isEnabled: isExpanded && drawsOwnChrome,
+                reduceMotion: reduceMotion
+            ))
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

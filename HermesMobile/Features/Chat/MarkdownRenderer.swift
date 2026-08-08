@@ -7,9 +7,24 @@ import UIKit
 enum MarkdownTypographyRole {
     case standard
     case assistantResponse
+    /// Reasoning text. Renders real markdown but one step quieter than an
+    /// answer: caption-scale body, damped headings, secondary foreground. A
+    /// thought containing an H1 must not shout louder than the answer it
+    /// precedes, which is what `assistantResponse` would do.
+    case reasoning
 
     var usesResponseFontPreference: Bool {
         self == .assistantResponse
+    }
+
+    /// Scale applied to body and heading sizes. Thought text sits at caption
+    /// scale to match the rest of the activity block.
+    var textScale: CGFloat {
+        self == .reasoning ? 0.88 : 1.0
+    }
+
+    var usesSecondaryForeground: Bool {
+        self == .reasoning
     }
 }
 
@@ -80,7 +95,8 @@ struct MarkdownRenderer: View {
                                 content: markdown,
                                 colorScheme: colorScheme,
                                 isStreaming: isStreaming,
-                                usesResponseFontPreference: typographyRole.usesResponseFontPreference
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                                role: typographyRole
                             )
                         }
                     case .displayMath(let latex):
@@ -94,7 +110,8 @@ struct MarkdownRenderer: View {
                 content: MarkdownMathFormatter.replacingInlineMath(in: content),
                 colorScheme: colorScheme,
                 isStreaming: isStreaming,
-                usesResponseFontPreference: typographyRole.usesResponseFontPreference
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                role: typographyRole
             )
             .textSelection(.enabled)
         }
@@ -148,7 +165,8 @@ struct StreamingMarkdownRenderer: View {
                             StreamingMarkdownChunkedView(
                                 content: markdown,
                                 colorScheme: colorScheme,
-                                usesResponseFontPreference: typographyRole.usesResponseFontPreference
+                                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                                role: typographyRole
                             )
                         }
                     case .displayMath(let latex):
@@ -160,7 +178,8 @@ struct StreamingMarkdownRenderer: View {
             StreamingMarkdownChunkedView(
                 content: MarkdownMathFormatter.replacingInlineMath(in: displayedContent),
                 colorScheme: colorScheme,
-                usesResponseFontPreference: typographyRole.usesResponseFontPreference
+                usesResponseFontPreference: typographyRole.usesResponseFontPreference,
+                role: typographyRole
             )
         }
     }
@@ -171,6 +190,7 @@ private struct StreamingMarkdownChunkedView: View {
     let content: String
     let colorScheme: ColorScheme
     let usesResponseFontPreference: Bool
+    var role: MarkdownTypographyRole = .standard
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
@@ -210,7 +230,8 @@ private struct StreamingMarkdownChunkedView: View {
                     content: chunk.text,
                     colorScheme: colorScheme,
                     isStreaming: false,
-                    usesResponseFontPreference: usesResponseFontPreference
+                    usesResponseFontPreference: usesResponseFontPreference,
+                    role: role
                 )
             }
 
@@ -219,7 +240,8 @@ private struct StreamingMarkdownChunkedView: View {
                     content: blockSplit.head,
                     colorScheme: colorScheme,
                     isStreaming: true,
-                    usesResponseFontPreference: usesResponseFontPreference
+                    usesResponseFontPreference: usesResponseFontPreference,
+                    role: role
                 )
             }
 
@@ -238,7 +260,8 @@ private struct StreamingMarkdownChunkedView: View {
                                 armOnAppear: block.ordinal > mountBoundaryCount,
                                 clock: context.date.timeIntervalSinceReferenceDate,
                                 chain: chain,
-                                usesResponseFontPreference: usesResponseFontPreference
+                                usesResponseFontPreference: usesResponseFontPreference,
+                                role: role
                             )
                         }
                     }
@@ -336,6 +359,7 @@ private struct StreamingFadeBlockView: View {
     let armOnAppear: Bool
     let clock: TimeInterval
     let usesResponseFontPreference: Bool
+    let role: MarkdownTypographyRole
 
     @State private var store: StreamingTextFadeStampStore<Text.Layout.CharacterIndex>
 
@@ -346,7 +370,8 @@ private struct StreamingFadeBlockView: View {
         armOnAppear: Bool,
         clock: TimeInterval,
         chain: StreamingTextFadeStampChain,
-        usesResponseFontPreference: Bool
+        usesResponseFontPreference: Bool,
+        role: MarkdownTypographyRole = .standard
     ) {
         self.text = text
         self.colorScheme = colorScheme
@@ -354,6 +379,7 @@ private struct StreamingFadeBlockView: View {
         self.armOnAppear = armOnAppear
         self.clock = clock
         self.usesResponseFontPreference = usesResponseFontPreference
+        self.role = role
         _store = State(initialValue: StreamingTextFadeStampStore(chain: chain))
     }
 
@@ -365,7 +391,8 @@ private struct StreamingFadeBlockView: View {
                         content: text,
                         colorScheme: colorScheme,
                         isStreaming: true,
-                        usesResponseFontPreference: usesResponseFontPreference
+                        usesResponseFontPreference: usesResponseFontPreference,
+                        role: role
                     )
                     .textRenderer(StreamingTextFadeRenderer(clock: clock, store: store))
                 } else {
@@ -373,7 +400,8 @@ private struct StreamingFadeBlockView: View {
                         content: text,
                         colorScheme: colorScheme,
                         isStreaming: true,
-                        usesResponseFontPreference: usesResponseFontPreference
+                        usesResponseFontPreference: usesResponseFontPreference,
+                        role: role
                     )
                 }
             }
@@ -394,6 +422,7 @@ private struct ChatMarkdownView: View {
     let colorScheme: ColorScheme
     let isStreaming: Bool
     let usesResponseFontPreference: Bool
+    var role: MarkdownTypographyRole = .standard
 
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
@@ -413,7 +442,8 @@ private struct ChatMarkdownView: View {
                 isStreaming: isStreaming,
                 palette: palette,
                 usesSerif: usesResponseFontPreference && responseFontStyle.usesSerif,
-                accentColor: HeaderLogoColor.color(for: headerLogoColorHex)
+                accentColor: HeaderLogoColor.color(for: headerLogoColorHex),
+                role: role
             ))
             .markdownCodeSyntaxHighlighter(.plainText)
     }
@@ -1297,19 +1327,44 @@ private extension MarkdownUI.Theme {
         isStreaming: Bool,
         palette: ChatPalette,
         usesSerif: Bool,
-        accentColor: SwiftUI.Color
+        accentColor: SwiftUI.Color,
+        role: MarkdownTypographyRole = .standard
     ) -> MarkdownUI.Theme {
-        MarkdownUI.Theme()
+        // Reasoning renders the same markdown one step quieter. Headings are
+        // compressed toward body size and margins tightened, because a thought
+        // is a dense aside inside a card — full answer-scale headings would
+        // make it out-shout the answer that follows it.
+        let isReasoning = role == .reasoning
+        let scale: CGFloat = isReasoning ? 0.88 : 1.0
+        // Absolute point size for the reasoning base, resolved through Dynamic
+        // Type so the thought still scales with the user's text-size setting.
+        let reasoningBaseSize = UIFontMetrics(forTextStyle: .caption1)
+            .scaledValue(for: UIFont.preferredFont(forTextStyle: .caption1).pointSize)
+        let h1: CGFloat = isReasoning ? 1.12 : 1.45
+        let h2: CGFloat = isReasoning ? 1.06 : 1.25
+        let h3: CGFloat = isReasoning ? 1.0 : 1.1
+        let headingTop: CGFloat = isReasoning ? 12 : 24
+        let headingBottom: CGFloat = isReasoning ? 4 : 8
+        let paragraphBottom: CGFloat = isReasoning ? 7 : 12
+        let bodyColor = isReasoning ? palette.textSecondary : palette.textPrimary
+
+        return MarkdownUI.Theme()
             .text {
+                // MarkdownUI resolves `.em` against the theme's own base, not
+                // the SwiftUI environment font, so an outer `.font()` cannot
+                // shrink reasoning text. The base has to be stated here.
+                if isReasoning {
+                    FontSize(reasoningBaseSize)
+                }
                 if usesSerif {
                     FontFamily(.system(.serif))
                     // New York runs optically smaller than SF at the same
                     // point size; nudge the body up so both faces read equally.
-                    FontSize(.em(1.02))
+                    FontSize(.em(1.02 * scale))
                 } else {
-                    FontSize(.em(1.0))
+                    FontSize(.em(scale))
                 }
-                ForegroundColor(palette.textPrimary)
+                ForegroundColor(bodyColor)
                 BackgroundColor(nil)
             }
             .code {
@@ -1327,28 +1382,28 @@ private extension MarkdownUI.Theme {
             .heading1 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 24, bottom: 8)
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.45))
+                        FontSize(.em(h1 * scale))
                     }
             }
             .heading2 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 24, bottom: 8)
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.25))
+                        FontSize(.em(h2 * scale))
                     }
             }
             .heading3 { configuration in
                 configuration.label
                     .relativeLineSpacing(.em(0.12))
-                    .markdownMargin(top: 20, bottom: 6)
+                    .markdownMargin(top: headingTop, bottom: headingBottom)
                     .markdownTextStyle {
                         FontWeight(.semibold)
-                        FontSize(.em(1.1))
+                        FontSize(.em(h3 * scale))
                     }
             }
             .heading4 { configuration in
@@ -1381,7 +1436,7 @@ private extension MarkdownUI.Theme {
                 configuration.label
                     .fixedSize(horizontal: false, vertical: true)
                     .relativeLineSpacing(.em(0.29))
-                    .markdownMargin(top: 0, bottom: 12)
+                    .markdownMargin(top: 0, bottom: paragraphBottom)
             }
             .blockquote { configuration in
                 HStack(alignment: .top, spacing: 12) {

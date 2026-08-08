@@ -9,6 +9,9 @@ struct ToolActivityGroupView: View {
     /// turn is still semantically in its tool step (the backend emits no
     /// argument-streaming events, so that window is otherwise silent).
     var isPhaseActive: Bool = false
+    /// When embedded in a merged activity card the parent owns the container
+    /// and its beam, so the block must not draw a competing one.
+    var drawsOwnChrome: Bool = true
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
@@ -71,7 +74,7 @@ struct ToolActivityGroupView: View {
         .modifier(
             ToolBlockChrome(
                 palette: palette,
-                isEnabled: isExpanded,
+                isEnabled: isExpanded && drawsOwnChrome,
                 reduceMotion: reduceMotion,
                 isActive: isRunning
             )
