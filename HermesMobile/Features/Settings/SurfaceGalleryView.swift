@@ -18,8 +18,6 @@ struct SurfaceGalleryView: View {
             PlanTimelineGalleryView(page: page)
         } else if page == 14 {
             ActivityFoldGalleryView()
-        } else if page == 15 {
-            ActivityCardOptionsGalleryView(option: galleryOption)
         } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {
@@ -221,18 +219,6 @@ struct SurfaceGalleryView: View {
         return value
     }
 
-    /// Which variant to render on a multi-option page
-    /// (`--surface-gallery-option N`). Defaults to 0.
-    private var galleryOption: Int {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "--surface-gallery-option"),
-              index + 1 < arguments.count,
-              let value = Int(arguments[index + 1])
-        else {
-            return 0
-        }
-        return value
-    }
 
     private var galleryPalette: ChatPalette {
         ChatPalette.appChrome(colorScheme: colorScheme)

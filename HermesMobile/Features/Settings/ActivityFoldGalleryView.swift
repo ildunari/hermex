@@ -61,13 +61,19 @@ private struct ActivityFoldSpecimen: View {
             initiallyCollapsed: true,
             animatesFold: false
         ) {
-            VStack(alignment: .leading, spacing: 8) {
+            // Mirrors the production composition in `ChatTranscriptView`: one
+            // container, sections inside it, divider between them.
+            ActivityContainerView {
                 ReasoningBlockView(
                     text: Self.thought,
                     isStreaming: false,
-                    completedDuration: 12
+                    completedDuration: 12,
+                    drawsOwnChrome: false
                 )
-                ToolActivityGroupView(group: Self.group)
+
+                ActivitySectionDivider()
+
+                ToolActivityGroupView(group: Self.group, drawsOwnChrome: false)
             }
         } summary: { isExpanded, toggle in
             TurnActivitySummaryRow(
@@ -84,9 +90,17 @@ private struct ActivityFoldSpecimen: View {
         }
     }
 
+    /// Contains real markdown on purpose: models emit `**run headers**`,
+    /// lists, and inline code inside reasoning, and this specimen is the check
+    /// that they render rather than showing as literal punctuation.
     static let thought = """
-        Checked the palette tokens and the transcript row structure before \
-        deciding where the rails belong.
+        **Checking the palette tokens**
+
+        The transcript row structure decides where the rails belong, so the \
+        token audit has to come first.
+
+        - `ChatPalette.surface` is already warm in both schemes
+        - `tableRule` is the only hairline used by activity blocks
         """
 
     static let group: ToolCallGroup = {

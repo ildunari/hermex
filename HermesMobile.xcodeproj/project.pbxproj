@@ -186,7 +186,7 @@
 		D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000004 /* PlanTimelineView.swift */; };
 		D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */; };
 		D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */; };
-		D0P1A000000000000000000D /* ActivityCardOptionsGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000E /* ActivityCardOptionsGalleryView.swift */; };
+		D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000010 /* ActivityContainerView.swift */; };
 		C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */; };
 		C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C900000000000000000002 /* TurnActivityFoldView.swift */; };
 		C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7C400000000000000000004 /* BorderBeamModifier.swift */; };
@@ -542,7 +542,7 @@
 		D0P1A0000000000000000004 /* PlanTimelineView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineView.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanTimelineGalleryView.swift; sourceTree = "<group>"; };
 		D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityFoldGalleryView.swift; sourceTree = "<group>"; };
-		D0P1A000000000000000000E /* ActivityCardOptionsGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityCardOptionsGalleryView.swift; sourceTree = "<group>"; };
+		D0P1A0000000000000000010 /* ActivityContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityContainerView.swift; sourceTree = "<group>"; };
 		C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivitySummaryRow.swift; sourceTree = "<group>"; };
 		C7C900000000000000000002 /* TurnActivityFoldView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivityFoldView.swift; sourceTree = "<group>"; };
 		C7C400000000000000000004 /* BorderBeamModifier.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BorderBeamModifier.swift; sourceTree = "<group>"; };
@@ -1069,6 +1069,7 @@
 				C7C500000000000000000002 /* ActivityHistoryRailView.swift */,
 				C7C800000000000000000002 /* ToolRunIndicatorView.swift */,
 				C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */,
+				D0P1A0000000000000000010 /* ActivityContainerView.swift */,
 				C7C900000000000000000002 /* TurnActivityFoldView.swift */,
 				C7C400000000000000000004 /* BorderBeamModifier.swift */,
 				B5A220000000000000000002 /* ChatMarkerMessageClassifier.swift */,
@@ -1152,7 +1153,6 @@
 				C23400000000000000000002 /* StreamingLabReplay.swift */,
 				C23400000000000000000004 /* StreamingLabView.swift */,
 				C7B100000000000000000002 /* SurfaceGalleryView.swift */,
-				D0P1A000000000000000000E /* ActivityCardOptionsGalleryView.swift */,
 				D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */,
 				D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */,
 				C7C700000000000000000002 /* TurnTimelineMockView.swift */,
@@ -1598,7 +1598,7 @@
 				D0P1A0000000000000000003 /* PlanTimelineView.swift in Sources */,
 				D0P1A0000000000000000007 /* PlanTimelineGalleryView.swift in Sources */,
 				D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */,
-				D0P1A000000000000000000D /* ActivityCardOptionsGalleryView.swift in Sources */,
+				D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */,
 				C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */,
 				C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */,
 				C7C400000000000000000003 /* BorderBeamModifier.swift in Sources */,

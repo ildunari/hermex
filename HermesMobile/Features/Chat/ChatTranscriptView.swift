@@ -404,13 +404,18 @@ struct ChatTranscriptView: View {
                 isCollapsed: isAnswerStreaming,
                 animatesFold: isScrolledNearBottom
             ) {
-                VStack(alignment: .leading, spacing: 8) {
+                ActivityContainerView {
                     if showsReasoning {
                         ReasoningBlockView(
                             text: liveReasoningText,
                             isStreaming: isReasoningActive,
-                            completedDuration: lastReasoningDuration
+                            completedDuration: lastReasoningDuration,
+                            drawsOwnChrome: false
                         )
+                    }
+
+                    if showsReasoning, showsTools {
+                        ActivitySectionDivider()
                     }
 
                     if showsTools {
@@ -419,7 +424,8 @@ struct ChatTranscriptView: View {
                                 anchorMessageID: toolCallAnchorMessageID,
                                 toolCalls: liveToolCalls
                             ),
-                            isPhaseActive: isToolPhaseActive
+                            isPhaseActive: isToolPhaseActive,
+                            drawsOwnChrome: false
                         )
                     }
                 }
@@ -644,11 +650,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 initiallyCollapsed: isHistorical,
                 animatesFold: !isHistorical && isScrolledNearBottom
             ) {
-                VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
-                    reasoningBlocks
-                    liveReasoningBlock
-                    toolActivityGroups
-                    liveToolActivityGroup
+                ActivityContainerView(spacing: transcriptBlockSpacing) {
+                    activitySections
                 }
             } summary: { isExpanded, toggle in
                 TurnActivitySummaryRow(
@@ -699,7 +702,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     private var reasoningBlocks: some View {
         if showsThinkingAndToolCards {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
-                ReasoningBlockView(text: group.text)
+                ReasoningBlockView(text: group.text, drawsOwnChrome: false)
             }
         }
     }
@@ -710,7 +713,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ReasoningBlockView(
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
-                completedDuration: lastReasoningDuration
+                completedDuration: lastReasoningDuration,
+                drawsOwnChrome: false
             )
         }
     }
@@ -719,7 +723,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     private var toolActivityGroups: some View {
         if showsThinkingAndToolCards {
             ForEach(toolCallGroups) { group in
-                ToolActivityGroupView(group: group)
+                ToolActivityGroupView(group: group, drawsOwnChrome: false)
             }
         }
     }
@@ -732,9 +736,40 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     anchorMessageID: toolCallAnchorMessageID,
                     toolCalls: liveToolCalls
                 ),
-                isPhaseActive: isToolPhaseActive
+                isPhaseActive: isToolPhaseActive,
+                drawsOwnChrome: false
             )
         }
+    }
+
+    /// The turn's blocks as container sections, with a hairline between each.
+    ///
+    /// The dividers are emitted between *rendered* sections rather than after
+    /// every block, so a turn with only thinking (or only tools) gets no
+    /// trailing rule. `hasReasoningSections` and `hasToolSections` mirror the
+    /// same conditions the block builders above check.
+    @ViewBuilder
+    private var activitySections: some View {
+        reasoningBlocks
+        liveReasoningBlock
+
+        if hasReasoningSections, hasToolSections {
+            ActivitySectionDivider()
+        }
+
+        toolActivityGroups
+        liveToolActivityGroup
+    }
+
+    private var hasReasoningSections: Bool {
+        let hasArchived = showsThinkingAndToolCards
+            && reasoningGroups.contains { $0.anchorMessageID == transcriptMessage.anchorID }
+        return hasArchived || shouldRenderLiveReasoningBlock
+    }
+
+    private var hasToolSections: Bool {
+        let hasArchived = showsThinkingAndToolCards && !toolCallGroups.isEmpty
+        return hasArchived || shouldRenderLiveToolActivityGroup
     }
 
     private var shouldRenderLiveReasoningBlock: Bool {
