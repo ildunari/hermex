@@ -401,6 +401,13 @@ struct ChatTranscriptView: View {
     /// Live thinking + tool blocks, folding into one summary row when the
     /// answer starts streaming. See `TurnActivityFoldView` for why the fold is
     /// keyed on the first answer token rather than on turn end.
+    ///
+    /// **Deliberately not wrapped in `ActivityContainerView`.** The unified
+    /// container is an end-of-turn presentation: it exists to make a settled
+    /// turn's work read as one object once you go back and open it. While the
+    /// turn is still running these blocks are live, independently-collapsing
+    /// status surfaces, and boxing them changes what the reader is watching
+    /// mid-stream.
     @ViewBuilder
     private var liveActivityFold: some View {
         let showsReasoning = hasLiveReasoningText
@@ -413,19 +420,13 @@ struct ChatTranscriptView: View {
                 isCollapsed: isAnswerStreaming,
                 animatesFold: isScrolledNearBottom
             ) {
-                ActivityContainerView(isActive: isToolPhaseActive || isReasoningActive) {
+                VStack(alignment: .leading, spacing: 8) {
                     if showsReasoning {
                         ReasoningBlockView(
                             text: liveReasoningText,
                             isStreaming: isReasoningActive,
-                            completedDuration: lastReasoningDuration,
-                            drawsOwnChrome: false,
-                            startsExpandedOverride: true
+                            completedDuration: lastReasoningDuration
                         )
-                    }
-
-                    if showsReasoning, showsTools {
-                        ActivitySectionDivider()
                     }
 
                     if showsTools {
@@ -434,9 +435,7 @@ struct ChatTranscriptView: View {
                                 anchorMessageID: toolCallAnchorMessageID,
                                 toolCalls: liveToolCalls
                             ),
-                            isPhaseActive: isToolPhaseActive,
-                            drawsOwnChrome: false,
-                            startsExpandedOverride: true
+                            isPhaseActive: isToolPhaseActive
                         )
                     }
                 }
@@ -656,6 +655,12 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     /// the answer starts streaming. Reconciled/historical rows mount already
     /// collapsed so the post-stream rebuild is invisible — see
     /// `TurnActivityFoldView`.
+    ///
+    /// The unified container is applied to **settled turns only**. It is an
+    /// end-of-turn presentation: going back and opening a finished turn should
+    /// read as one object. A turn that is still running keeps independent
+    /// blocks, because those are live status surfaces the reader is watching
+    /// change, not a record to review.
     @ViewBuilder
     private var activityFold: some View {
         if hasAnyActivity {
@@ -664,11 +669,14 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 initiallyCollapsed: isHistorical,
                 animatesFold: !isHistorical && isScrolledNearBottom
             ) {
-                ActivityContainerView(
-                    spacing: transcriptBlockSpacing,
-                    isActive: isToolPhaseActive || isReasoningActive
-                ) {
-                    activitySections
+                if isHistorical {
+                    ActivityContainerView(spacing: transcriptBlockSpacing) {
+                        activitySections
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
+                        activitySections
+                    }
                 }
             } summary: { isExpanded, toggle in
                 TurnActivitySummaryRow(
@@ -721,8 +729,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
                 ReasoningBlockView(
                     text: group.text,
-                    drawsOwnChrome: false,
-                    startsExpandedOverride: true
+                    drawsOwnChrome: !isHistorical,
+                    startsExpandedOverride: isHistorical ? true : nil
                 )
             }
         }
@@ -735,8 +743,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
                 completedDuration: lastReasoningDuration,
-                drawsOwnChrome: false,
-                startsExpandedOverride: true
+                drawsOwnChrome: !isHistorical,
+                startsExpandedOverride: isHistorical ? true : nil
             )
         }
     }
@@ -747,8 +755,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(toolCallGroups) { group in
                 ToolActivityGroupView(
                     group: group,
-                    drawsOwnChrome: false,
-                    startsExpandedOverride: true
+                    drawsOwnChrome: !isHistorical,
+                    startsExpandedOverride: isHistorical ? true : nil
                 )
             }
         }
@@ -763,8 +771,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     toolCalls: liveToolCalls
                 ),
                 isPhaseActive: isToolPhaseActive,
-                drawsOwnChrome: false,
-                startsExpandedOverride: true
+                drawsOwnChrome: !isHistorical,
+                startsExpandedOverride: isHistorical ? true : nil
             )
         }
     }
@@ -780,7 +788,10 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
         reasoningBlocks
         liveReasoningBlock
 
-        if hasReasoningSections, hasToolSections {
+        // The divider is container furniture: it separates sections inside one
+        // surface. A live turn's blocks are separate cards with their own
+        // borders, so a rule between them would just be a second line.
+        if isHistorical, hasReasoningSections, hasToolSections {
             ActivitySectionDivider()
         }
 

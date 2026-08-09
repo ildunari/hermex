@@ -20,6 +20,8 @@ struct SurfaceGalleryView: View {
             ActivityFoldGalleryView(page: 14)
         } else if page == 16 {
             ActivityFoldGalleryView(page: 16)
+        } else if page == 17 {
+            TranscriptStressLabView()
         } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {
