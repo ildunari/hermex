@@ -17,7 +17,9 @@ struct SurfaceGalleryView: View {
         } else if let page, (11...13).contains(page) {
             PlanTimelineGalleryView(page: page)
         } else if page == 14 {
-            ActivityFoldGalleryView()
+            ActivityFoldGalleryView(page: 14)
+        } else if page == 16 {
+            ActivityFoldGalleryView(page: 16)
         } else if let page, (5...9).contains(page) {
             TurnTimelineMockView(page: page)
         } else {

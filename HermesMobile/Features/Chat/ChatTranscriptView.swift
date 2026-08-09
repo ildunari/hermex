@@ -645,6 +645,9 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     onFork: onFork,
                     onCopy: onCopy
                 )
+                // Guards the answer's markdown against the activity fold, its
+                // sibling in this VStack — see the type's doc comment.
+                .equatable()
             }
         }
     }
@@ -811,7 +814,36 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     }
 }
 
-private struct ChatTranscriptMessageRow: View {
+/// The answer bubble for one transcript row.
+///
+/// **Equatable is load-bearing.** This sits in the same `VStack` as
+/// `activityFold`, so expanding or collapsing a turn's activity re-runs the
+/// enclosing row body — and without a guard here, that re-runs this body too
+/// and `Markdown(content)` re-parses the whole answer from scratch on the main
+/// thread, mid-animation. On a long answer that is the stutter. The outer
+/// `.equatable()` only stops *other* rows from invalidating; it cannot stop a
+/// sibling inside the same row.
+private struct ChatTranscriptMessageRow: View, Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // Closures are excluded deliberately: they are recreated on every
+        // parent evaluation and would make this always-unequal, silently
+        // restoring the re-parse. They capture the view model, which is a
+        // reference type, so a stale capture still reads current state.
+        lhs.message == rhs.message &&
+            lhs.visibleIndex == rhs.visibleIndex &&
+            lhs.actionContext == rhs.actionContext &&
+            lhs.localAttachmentPreviews == rhs.localAttachmentPreviews &&
+            lhs.listeningMessageID == rhs.listeningMessageID &&
+            lhs.isViewingCachedData == rhs.isViewingCachedData &&
+            lhs.hasActiveStream == rhs.hasActiveStream &&
+            lhs.isStreaming == rhs.isStreaming &&
+            lhs.liveTokensPerSecond == rhs.liveTokensPerSecond &&
+            lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
+            lhs.isEditingMessage == rhs.isEditingMessage &&
+            lhs.isForkingMessage == rhs.isForkingMessage &&
+            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
+    }
+
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     let message: ChatMessage

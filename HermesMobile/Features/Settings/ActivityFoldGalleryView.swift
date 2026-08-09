@@ -10,7 +10,18 @@ import SwiftUI
 /// states render in one screenshot so the edges, widths, and control position
 /// can be compared directly.
 struct ActivityFoldGalleryView: View {
+    /// Page 14 shows both states; page 16 is the re-parse probe.
+    var page: Int = 14
+
     var body: some View {
+        if page == 16 {
+            FoldReparseProbeView()
+        } else {
+            states
+        }
+    }
+
+    private var states: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
                 specimen(
@@ -118,6 +129,92 @@ private struct ActivityFoldSpecimen: View {
             )
         }
         return ToolCallGroup.live(anchorMessageID: "fold-anchor", toolCalls: calls)
+    }()
+}
+
+/// Reproduces the production sibling arrangement — an activity fold and a long
+/// markdown answer in the same `VStack` — and toggles the fold on a timer.
+///
+/// Kept as the only debug surface where the fold and a long markdown answer
+/// are siblings, which is the arrangement that produced the stutter — a
+/// gallery page rendering a card alone cannot show it. Note it does *not*
+/// fully reproduce production: this passes a constant string, so SwiftUI can
+/// skip the renderer regardless of the guard. Judge the real fix on device.
+private struct FoldReparseProbeView: View {
+    @State private var isCollapsed = true
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("FOLD RE-PARSE PROBE")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                TurnActivityFoldView(
+                    isCollapsed: isCollapsed,
+                    initiallyCollapsed: true,
+                    animatesFold: true
+                ) {
+                    ActivityContainerView {
+                        ReasoningBlockView(
+                            text: ActivityFoldSpecimen.thought,
+                            completedDuration: 12,
+                            drawsOwnChrome: false,
+                            startsExpandedOverride: true
+                        )
+                        ActivitySectionDivider()
+                        ToolActivityGroupView(
+                            group: ActivityFoldSpecimen.group,
+                            drawsOwnChrome: false,
+                            startsExpandedOverride: true
+                        )
+                    }
+                } summary: { isExpanded, toggle in
+                    TurnActivitySummaryRow(
+                        reasoningDuration: 12,
+                        toolCalls: ActivityFoldSpecimen.group.toolCalls,
+                        isExpanded: isExpanded,
+                        onTap: toggle
+                    )
+                }
+
+                // The sibling that must NOT re-parse.
+                MarkdownRenderer(content: Self.longAnswer, typographyRole: .assistantResponse)
+            }
+            .padding(16)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                withAnimation(ChatMotion.cardExpand(reduceMotion: false)) {
+                    isCollapsed.toggle()
+                }
+            }
+        }
+    }
+
+    /// Deliberately long and structurally varied — a short string would parse
+    /// fast enough to hide the cost even when it is being redone.
+    static let longAnswer: String = {
+        let block = """
+        ## Section heading
+
+        Running prose with **bold**, *italic*, and `inline code` so the parser \
+        has real inline structure to walk rather than a flat string.
+
+        - First bullet with `a.code.reference` inside it
+        - Second bullet that wraps onto more than one line so layout has work
+          - A nested child item
+        1. An ordered item
+        2. Another ordered item
+
+        > A blockquote, because quote handling is a separate parse path.
+
+        ```swift
+        let palette = ChatPalette(colorScheme: .dark, backgroundStyle: .warm)
+        ```
+        """
+        return Array(repeating: block, count: 8).joined(separator: "\n\n")
     }()
 }
 #endif
