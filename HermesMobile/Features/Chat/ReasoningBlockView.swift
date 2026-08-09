@@ -10,6 +10,14 @@ struct ReasoningBlockView: View {
     /// When embedded in a merged activity card the parent owns the container,
     /// so the block must not draw its own.
     var drawsOwnChrome: Bool = true
+    /// Default expansion when the reader has not toggled this block.
+    ///
+    /// Inside the end-of-turn unified card, opening the card is already the
+    /// gesture that says "show me the work" — leaving the sections as pills
+    /// makes that a two-tap disclosure into an empty-looking box. The container
+    /// passes `true` so its sections mount open; standalone blocks keep the
+    /// user's `thinkingCardsStartExpanded` setting.
+    var startsExpandedOverride: Bool?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
@@ -26,7 +34,7 @@ struct ReasoningBlockView: View {
         #endif
         return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
-            startsExpanded: startsExpanded
+            startsExpanded: startsExpandedOverride ?? startsExpanded
         )
     }
 
@@ -85,15 +93,13 @@ struct ReasoningBlockView: View {
                                 isStreaming: isStreaming,
                                 typographyRole: .reasoning
                             )
+                            // Report full intrinsic height on the first layout
+                            // pass. Without this the renderer settles its height
+                            // over a frame or two *while* the card's own height
+                            // spring is running, so the text is laid out against
+                            // a moving container and visibly slides.
+                            .fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .opacity(isExpanded ? 1 : 0)
-                            .animation(
-                                ChatMotion.cardContent(
-                                    reduceMotion: reduceMotion,
-                                    delay: isExpanded ? ChatMotion.cardContentLeadIn : 0
-                                ),
-                                value: isExpanded
-                            )
                         }
                     }
                     .padding(.leading, 4)
@@ -108,6 +114,16 @@ struct ReasoningBlockView: View {
                 drawsSurface: drawsOwnChrome,
                 reduceMotion: reduceMotion
             ))
+            // Clip to the animating shape.
+            //
+            // The body reports its full intrinsic height on the frame it
+            // mounts, but the card's height spring is still near zero, so
+            // without clipping the text renders at full size *outside* the
+            // card and overlaps whatever sits below it. That overspill sliding
+            // up into place is the "flying in from the top" artifact — it was
+            // masked while the body was plain `Text` (cheap, short) and became
+            // obvious once markdown made the body taller and multi-block.
+            .clipShape(ActivityBlockChrome.shape())
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }

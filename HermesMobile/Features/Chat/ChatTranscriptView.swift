@@ -410,7 +410,8 @@ struct ChatTranscriptView: View {
                             text: liveReasoningText,
                             isStreaming: isReasoningActive,
                             completedDuration: lastReasoningDuration,
-                            drawsOwnChrome: false
+                            drawsOwnChrome: false,
+                            startsExpandedOverride: true
                         )
                     }
 
@@ -425,7 +426,8 @@ struct ChatTranscriptView: View {
                                 toolCalls: liveToolCalls
                             ),
                             isPhaseActive: isToolPhaseActive,
-                            drawsOwnChrome: false
+                            drawsOwnChrome: false,
+                            startsExpandedOverride: true
                         )
                     }
                 }
@@ -705,7 +707,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     private var reasoningBlocks: some View {
         if showsThinkingAndToolCards {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
-                ReasoningBlockView(text: group.text, drawsOwnChrome: false)
+                ReasoningBlockView(
+                    text: group.text,
+                    drawsOwnChrome: false,
+                    startsExpandedOverride: true
+                )
             }
         }
     }
@@ -717,7 +723,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
                 completedDuration: lastReasoningDuration,
-                drawsOwnChrome: false
+                drawsOwnChrome: false,
+                startsExpandedOverride: true
             )
         }
     }
@@ -726,7 +733,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     private var toolActivityGroups: some View {
         if showsThinkingAndToolCards {
             ForEach(toolCallGroups) { group in
-                ToolActivityGroupView(group: group, drawsOwnChrome: false)
+                ToolActivityGroupView(
+                    group: group,
+                    drawsOwnChrome: false,
+                    startsExpandedOverride: true
+                )
             }
         }
     }
@@ -740,7 +751,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     toolCalls: liveToolCalls
                 ),
                 isPhaseActive: isToolPhaseActive,
-                drawsOwnChrome: false
+                drawsOwnChrome: false,
+                startsExpandedOverride: true
             )
         }
     }

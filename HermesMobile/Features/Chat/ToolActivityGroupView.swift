@@ -12,6 +12,10 @@ struct ToolActivityGroupView: View {
     /// When embedded in a merged activity card the parent owns the container
     /// and its beam, so the block must not draw a competing one.
     var drawsOwnChrome: Bool = true
+    /// Default expansion when the reader has not toggled this block. See
+    /// `ReasoningBlockView.startsExpandedOverride` — inside the unified card
+    /// the sections mount open so one tap reveals the turn's work.
+    var startsExpandedOverride: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
@@ -33,7 +37,7 @@ struct ToolActivityGroupView: View {
         #endif
         return ChatTranscriptDisplaySettings.isCardExpanded(
             userToggled: userToggledExpansion,
-            startsExpanded: startsExpanded
+            startsExpanded: startsExpandedOverride ?? startsExpanded
         )
     }
 
@@ -80,6 +84,10 @@ struct ToolActivityGroupView: View {
                 isActive: isRunning
             )
         )
+        // See `ReasoningBlockView`: the rows report full height immediately
+        // while the container's height spring is still running, so unclipped
+        // they render outside the block and overlap the neighbouring section.
+        .clipShape(ActivityBlockChrome.shape())
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
     }

@@ -64,9 +64,19 @@ struct DisclosureMotionLabView: View {
             .foregroundStyle(palette.textTertiary)
     }
 
+    /// Contains markdown deliberately. The reasoning body is a markdown
+    /// renderer now, and its multi-block layout is what makes the reveal
+    /// misbehave — a plain-prose fixture cannot reproduce that.
     private static let thinkingText = """
+    **Checking the palette tokens**
+
     Checked the palette tokens and the transcript row structure before deciding where the rails belong.
-    The expanded body should hang off a quiet rail rather than nesting a washed slab inside a card.
+
+    - `ChatPalette.surface` is already warm in both schemes
+    - `tableRule` is the only hairline used by activity blocks
+
+    **Deciding the container**
+
     That keeps thinking and tools reading as one family of surface.
     """
 
