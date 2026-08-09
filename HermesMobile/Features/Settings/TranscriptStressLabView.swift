@@ -14,6 +14,9 @@ import SwiftUI
 /// artifact without a device.
 struct TranscriptStressLabView: View {
     @State private var isCollapsed = true
+    /// Renders the settled (container) composition alongside the live
+    /// (independent cards) one, so a single screenshot proves the split.
+    var showsBothCompositions = false
 
     /// Messages above the card under test. Enough of them, and heavy enough,
     /// that a transcript-wide invalidation is visible as a dropped frame.
@@ -21,6 +24,50 @@ struct TranscriptStressLabView: View {
     private let trailingMessages = 4
 
     var body: some View {
+        if showsBothCompositions {
+            compositionComparison
+        } else {
+            stressBody
+        }
+    }
+
+    /// Side-by-side proof that the unified container is settled-only.
+    private var compositionComparison: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text("LIVE TURN — independent cards, own borders")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    ReasoningBlockView(text: Self.thought, completedDuration: 12)
+                    ToolActivityGroupView(group: Self.group)
+                }
+
+                Text("SETTLED TURN — one container, sections inside")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                ActivityContainerView {
+                    ReasoningBlockView(
+                        text: Self.thought,
+                        completedDuration: 12,
+                        drawsOwnChrome: false,
+                        startsExpandedOverride: true
+                    )
+                    ActivitySectionDivider()
+                    ToolActivityGroupView(
+                        group: Self.group,
+                        drawsOwnChrome: false,
+                        startsExpandedOverride: true
+                    )
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    private var stressBody: some View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
