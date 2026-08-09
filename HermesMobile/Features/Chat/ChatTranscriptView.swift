@@ -150,7 +150,8 @@ struct ChatTranscriptView: View {
                     )
                     .defaultScrollAnchor(
                         ChatScrollPolicy.sizeChangeAnchor(
-                            shouldFollowLatestMessage: shouldFollowLatestMessage
+                            shouldFollowLatestMessage: shouldFollowLatestMessage,
+                            hasActiveStream: activeStreamID != nil
                         ),
                         for: .sizeChanges
                     )
@@ -257,7 +258,15 @@ struct ChatTranscriptView: View {
                     lastReasoningDuration: isReasoningAnchor ? lastReasoningDuration : nil,
                     isToolPhaseActive: isToolCallAnchor && isToolPhaseActive,
                     isAnswerStreaming: (isToolCallAnchor || isReasoningAnchor) && isAnswerStreaming,
-                    isScrolledNearBottom: isScrolledNearBottom,
+                    // Scoped like the live props above it. Only the live row
+                    // consumes this (it gates `animatesFold`), but passing the
+                    // global flag to every row meant one scroll-proximity flip
+                    // changed every row's inputs, defeating `.equatable()` and
+                    // re-running every markdown-heavy body at once — a
+                    // transcript-wide re-parse on the main thread, which is what
+                    // made expanding a card stutter on a long chat.
+                    isScrolledNearBottom: (isReasoningAnchor || isToolCallAnchor || isStreamingRow)
+                        && isScrolledNearBottom,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,

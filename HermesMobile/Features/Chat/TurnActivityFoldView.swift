@@ -90,6 +90,16 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Clip the frame that actually animates.
+        //
+        // The inserted blocks are laid out at full final size on frame one
+        // while only this VStack's height interpolates, so for the length of
+        // the spring the activity content draws *over* the answer below it —
+        // two markdown layers ghosting through each other. The blocks got the
+        // same fix one level down, but inside the fold they mount already
+        // expanded, so clipping them to their own bounds clips nothing; the
+        // fold's frame is the one that moves.
+        .clipped()
         .onAppear { didAppear = true }
         .onChange(of: isCollapsed) { _, collapsed in
             // An explicit user choice outranks the automatic fold.
