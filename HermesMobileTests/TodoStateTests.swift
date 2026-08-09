@@ -106,6 +106,39 @@ final class TodoStateTests: XCTestCase {
         XCTAssertTrue(TodoState(todos: []).supersedes(nil))
     }
 
+    // MARK: - Malformed elements
+
+    /// A single bad element must not collapse the list. Empty is a valid
+    /// "cleared" snapshot, so an all-or-nothing decode would supersede the real
+    /// plan and blank the pill rather than being ignored.
+    func testMalformedElementDoesNotEraseTheRest() throws {
+        let state = try decode("""
+        {"todos":[{"id":"1","content":"Keep me","status":"completed"},
+                  "not-an-object",
+                  {"id":"3","content":"Keep me too","status":"pending"}]}
+        """)
+        XCTAssertEqual(state.todos.count, 2)
+        XCTAssertEqual(state.todos.first?.content, "Keep me")
+        XCTAssertEqual(state.todos.last?.content, "Keep me too")
+    }
+
+    func testAllCancelledIsFinishedButNotSuccessful() {
+        let state = TodoState(todos: [
+            TodoItem(rawID: "1", content: "A", status: .cancelled),
+            TodoItem(rawID: "2", content: "B", status: .cancelled)
+        ])
+        XCTAssertTrue(state.isFinished)
+        XCTAssertTrue(state.hasCancelledWork)
+    }
+
+    func testCompletedPlanHasNoCancelledWork() {
+        let state = TodoState(todos: [
+            TodoItem(rawID: "1", content: "A", status: .completed)
+        ])
+        XCTAssertTrue(state.isFinished)
+        XCTAssertFalse(state.hasCancelledWork)
+    }
+
     // MARK: - Transport
 
     func testSSEDecodesTodoStateEvent() {

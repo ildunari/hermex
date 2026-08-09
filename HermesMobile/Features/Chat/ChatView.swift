@@ -1090,7 +1090,8 @@ struct ChatView: View {
                 isExpanded: Binding(
                     get: { viewModel.isPlanExpanded },
                     set: { viewModel.isPlanExpanded = $0 }
-                )
+                ),
+                isLive: viewModel.activeStreamID != nil
             )
             .padding(.horizontal)
             .padding(.bottom, 8)

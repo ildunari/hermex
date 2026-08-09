@@ -106,8 +106,7 @@ struct TodoState: Decodable, Equatable, Sendable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decoded = (try? container.decodeIfPresent([TodoItem].self, forKey: .todos)) ?? nil
-        todos = decoded ?? []
+        todos = Self.decodeTodosTolerantly(from: container)
         // The server's summary is authoritative when present, but it is
         // normalized to `{}` on any malformed input, so recount as a fallback
         // rather than rendering "0 of 0" over a populated list.
@@ -134,6 +133,29 @@ struct TodoState: Decodable, Equatable, Sendable {
         return mine >= theirs
     }
 
+    /// Decodes `todos` element by element, skipping malformed entries.
+    ///
+    /// An all-or-nothing `[TodoItem]` decode is dangerous here: upstream
+    /// normalizes only that `todos` is a list and makes no guarantee about
+    /// element shape, so one bad entry would throw, collapse the array to
+    /// empty — and an empty array is a *valid* "plan cleared" snapshot, so it
+    /// would supersede and hide a real plan rather than being ignored.
+    private static func decodeTodosTolerantly(
+        from container: KeyedDecodingContainer<CodingKeys>
+    ) -> [TodoItem] {
+        if let direct = try? container.decodeIfPresent([TodoItem].self, forKey: .todos) {
+            return direct
+        }
+        guard let values = try? container.decodeIfPresent([JSONValue].self, forKey: .todos) else {
+            return []
+        }
+        let decoder = JSONDecoder()
+        return values.compactMap { value in
+            guard let data = try? JSONEncoder().encode(value) else { return nil }
+            return try? decoder.decode(TodoItem.self, from: data)
+        }
+    }
+
     /// 1-based position of the step being worked on, for the "3 of 5" pill.
     /// Falls back to the count of resolved rows so a plan whose in-progress
     /// step hasn't been marked yet still reads as forward progress.
@@ -149,6 +171,10 @@ struct TodoState: Decodable, Equatable, Sendable {
 
     /// True once every row is completed or cancelled.
     var isFinished: Bool { !todos.isEmpty && todos.allSatisfy { $0.status.isResolved } }
+
+    /// Any step was cancelled. A finished-but-cancelled plan must not render as
+    /// a success.
+    var hasCancelledWork: Bool { todos.contains { $0.status == .cancelled } }
 }
 
 struct TodoSummary: Decodable, Equatable, Sendable {

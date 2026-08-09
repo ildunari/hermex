@@ -9,6 +9,13 @@ import SwiftUI
 struct PlanTimelineView: View {
     let state: TodoState
     @Binding var isExpanded: Bool
+    /// Whether the session still has work in flight. Gates the beam.
+    ///
+    /// Every other beam in the app is activity-gated, but this is the one
+    /// surface designed to *stay* open, so without a liveness input an expanded
+    /// plan on an idle session drives a 30fps timeline and a per-frame
+    /// rasterization forever. That is a battery cost with nothing to report.
+    var isLive: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -65,7 +72,7 @@ struct PlanTimelineView: View {
         .borderBeam(
             style: beamStyle,
             shape: surfaceShape,
-            active: chromeExpanded && beamStyle.isVisible
+            active: chromeExpanded && isPlanRunning && beamStyle.isVisible
         )
         .onChange(of: isExpanded) { _, expanded in
             withAnimation(ChatMotion.cardChrome(reduceMotion: reduceMotion)) {
@@ -93,7 +100,9 @@ struct PlanTimelineView: View {
                     // Rolls the digit instead of hard-cutting when a step
                     // completes. This pill is on screen for the whole run, so
                     // it is the counter the user actually watches.
-                    .contentTransition(.numericText(value: Double(state.currentStep)))
+                    .contentTransition(
+                        reduceMotion ? .identity : .numericText(value: Double(state.currentStep))
+                    )
                     .lineLimit(1)
             }
             // Roomier than a status chip: the pill is the resting state of this
@@ -118,10 +127,16 @@ struct PlanTimelineView: View {
 
     @ViewBuilder
     private var progressGlyph: some View {
-        if state.isFinished {
+        // A plan whose steps were all *cancelled* is not a success. Only the
+        // genuinely-completed case earns the green check.
+        if state.isFinished, !state.hasCancelledWork {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(Color.green.opacity(0.85))
+        } else if state.isFinished {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color.red.opacity(0.55))
         } else {
             PlanProgressRing(
                 fraction: completionFraction,
@@ -140,12 +155,19 @@ struct PlanTimelineView: View {
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(state.todos.enumerated()), id: \.element.id) { index, todo in
+            // Index-qualified identity: `TodoItem.id` falls back to its content
+            // when the server omits an id, so two id-less rows with the same
+            // text would collide and recycle onto each other mid-animation.
+            ForEach(Array(state.todos.enumerated()), id: \.offset) { index, todo in
                 PlanRowView(
                     index: index + 1,
                     todo: todo,
                     palette: palette,
-                    reduceMotion: reduceMotion
+                    reduceMotion: reduceMotion,
+                    // A row stays `in_progress` forever if the stream dies
+                    // before a final snapshot, so the spin follows session
+                    // liveness rather than the row's status alone.
+                    isLive: isLive
                 )
                 .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
                 .animation(
@@ -190,6 +212,13 @@ struct PlanTimelineView: View {
     /// filling the screen. Capping the row label is what actually makes the
     /// card narrow — the cap has to bite on the text, not just the container.
     static let maximumWidth: CGFloat = 268
+
+    /// The plan is doing work: a row is in progress and the session still has
+    /// a stream attached. A finished plan, or one left open on an idle session,
+    /// has nothing to report and must not keep the beam running.
+    private var isPlanRunning: Bool {
+        isLive && state.todos.contains { $0.status == .inProgress }
+    }
 
     private var beamStyle: BeamStyle {
         // Follows the accent hue rather than the user's global beam style, so
@@ -257,10 +286,17 @@ private struct PlanRowView: View {
     let todo: TodoItem
     let palette: ChatPalette
     let reduceMotion: Bool
+    /// Session still streaming; see `PlanTimelineView.isLive`.
+    var isLive: Bool = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
-            PlanStatusGlyph(status: todo.status, reduceMotion: reduceMotion, palette: palette)
+            PlanStatusGlyph(
+                status: todo.status,
+                reduceMotion: reduceMotion,
+                palette: palette,
+                isLive: isLive
+            )
                 .frame(width: 15, height: 15)
 
             Text("\(index).")
@@ -278,6 +314,19 @@ private struct PlanRowView: View {
             Spacer(minLength: 0)
         }
         .padding(.vertical, 5)
+        // Status is otherwise conveyed only by symbol shape and color, neither
+        // of which VoiceOver reads.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Step \(index), \(statusDescription): \(todo.content)")
+    }
+
+    private var statusDescription: String {
+        switch todo.status {
+        case .pending: String(localized: "not started")
+        case .inProgress: String(localized: "in progress")
+        case .completed: String(localized: "completed")
+        case .cancelled: String(localized: "cancelled")
+        }
     }
 }
 
@@ -292,17 +341,18 @@ private struct PlanStatusGlyph: View {
     let status: TodoItem.Status
     let reduceMotion: Bool
     let palette: ChatPalette
+    var isLive: Bool = false
 
     var body: some View {
         Image(systemName: symbolName)
             .font(.system(size: 13, weight: .medium))
             .foregroundStyle(tint)
-            .contentTransition(.symbolEffect(.replace))
+            .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace))
             .animation(
                 reduceMotion ? .easeOut(duration: 0.10) : .snappy(duration: 0.28, extraBounce: 0.08),
                 value: status
             )
-            .modifier(PlanSpinModifier(isActive: status == .inProgress, reduceMotion: reduceMotion))
+            .modifier(PlanSpinModifier(isActive: isLive && status == .inProgress, reduceMotion: reduceMotion))
     }
 
     private var symbolName: String {

@@ -75,8 +75,19 @@ struct TurnActivitySummaryRow: View {
             .contentShape(ActivityBlockChrome.shape())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(summaryText)
+        // The failure triangle and the green/red result dots are visual-only,
+        // so the raw summary text hides a failed turn from VoiceOver entirely.
+        .accessibilityLabel(accessibilityText)
         .accessibilityHint(isExpanded ? "Double tap to collapse activity." : "Double tap to expand activity.")
+    }
+
+    private var accessibilityText: String {
+        guard hasFailure else { return summaryText }
+        let failures = toolCalls.filter { $0.isError == true }.count
+        let detail = failures == 1
+            ? String(localized: "1 tool failed")
+            : String(localized: "\(failures) tools failed")
+        return "\(summaryText), \(detail)"
     }
 
     private var hasFailure: Bool {
