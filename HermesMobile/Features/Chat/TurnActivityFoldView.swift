@@ -47,9 +47,6 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var didAppear = false
-    /// Bumped to carry an explicit animation transaction when the automatic
-    /// fold flips; `isFolded` is derived, so it needs a driver to animate.
-    @State private var foldTick = 0
     /// User override. `nil` follows the automatic fold; set explicitly once the
     /// reader taps the summary (open) or the block header (re-collapse), so a
     /// settled turn's details stay reachable rather than being sealed shut.
@@ -90,16 +87,26 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // `isFolded` is derived, so by the time an `onChange(of: isCollapsed)`
+        // body runs SwiftUI has already reconciled it and removed `blocks()`.
+        // Animating a counter there drove nothing. Attaching the animation to
+        // the derived value animates the transition that actually happens.
+        //
+        // Scoped to the automatic fold: an explicit tap goes through
+        // `setUserExpanded`, which supplies its own `withAnimation`.
+        .animation(automaticFoldAnimation, value: isFolded)
         .onAppear { didAppear = true }
-        .onChange(of: isCollapsed) { _, collapsed in
-            // An explicit user choice outranks the automatic fold.
-            guard userExpanded == nil, didAppear else { return }
-            guard animatesFold, !reduceMotion else { return }
-            // The fold itself is driven by `isFolded`; animate the swap.
-            withAnimation(foldAnimation) {
-                foldTick += 1
-            }
+    }
+
+    /// Animation for the automatic (streaming-driven) fold, or `nil` when the
+    /// swap should be instant — before first appearance, when the caller opts
+    /// out, under Reduce Motion, or once the reader has made an explicit
+    /// choice that `setUserExpanded` already animates.
+    private var automaticFoldAnimation: Animation? {
+        guard didAppear, animatesFold, !reduceMotion, userExpanded == nil else {
+            return nil
         }
+        return foldAnimation
     }
 
     private func setUserExpanded(_ expanded: Bool) {
