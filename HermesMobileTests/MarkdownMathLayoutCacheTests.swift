@@ -74,9 +74,23 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
     func testUncachedLayoutDoesNotPopulateTheCache() {
         let content = "streaming answer with no math"
 
+        // Comparing the two layout values proves nothing: they are equal
+        // whether or not the cache was written. Observe the cache directly.
+        XCTAssertFalse(MarkdownMathLayoutCache.hasCachedLayout(for: content))
+
         let uncached = MarkdownMathLayoutCache.uncachedLayout(for: content)
+
+        XCTAssertFalse(
+            MarkdownMathLayoutCache.hasCachedLayout(for: content),
+            "The streaming path must not write to the cache; per-token entries would evict settled answers."
+        )
+
         let cached = MarkdownMathLayoutCache.layout(for: content)
 
+        XCTAssertTrue(
+            MarkdownMathLayoutCache.hasCachedLayout(for: content),
+            "The settled path is expected to memoize."
+        )
         XCTAssertEqual(uncached, cached, "Cached and uncached layouts must agree.")
     }
 
@@ -101,7 +115,11 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
         let fragments = [
             "prose ", "**bold** ", "`code` ", "$5 ", "$x^2$ ", "\\$escaped ",
             "\n\n", "- item\n", "> quote\n", "café ", "| a | b |\n", "[l](u) ",
-            "```\ncode\n```\n", "# heading\n", "1. ordered\n"
+            "```\ncode\n```\n", "# heading\n", "1. ordered\n",
+            // Display delimiters, including the empty spans the segmenter
+            // recognises but emits no math for. These are the cases that
+            // regressed once; keep them in the generator.
+            "$$ $$ ", "$$$$ ", "\\[ \\] ", "$$m$$ ", "\\[d\\] ", "$$", "\\["
         ]
 
         var generator = SeededGenerator(seed: 0xC0FFEE)
@@ -128,6 +146,39 @@ final class MarkdownMathLayoutCacheTests: XCTestCase {
         }
 
         XCTAssertGreaterThan(checked, 500, "Generator produced too few no-math cases to be meaningful.")
+    }
+
+    /// A display-math span whose body is empty or whitespace-only produces no
+    /// `.displayMath` segment, but the segmenter has still consumed the
+    /// delimiters. Reconstructing the plain layout by joining the remaining
+    /// markdown would silently swallow that literal text.
+    ///
+    /// Caught in review on #261 — the original generator never produced an
+    /// empty span, so nothing failed. The leading-delimiter case matters
+    /// specifically because it still leaves exactly one markdown segment, so a
+    /// segment-count check does not catch it.
+    func testEmptyDisplayMathSpansSurviveAsLiteralText() {
+        let inputs = [
+            "before $$ $$ after",
+            "before $$$$ after",
+            "before $$\n\n$$ after",
+            #"before \[ \] after"#,
+            "text $$   $$ more text",
+            "$$ $$",
+            "$$ $$ trailing",
+            #"\[ \] leading"#
+        ]
+
+        for input in inputs {
+            guard case .plain(let layout) = MarkdownMathLayoutCache.layout(for: input) else {
+                continue
+            }
+            XCTAssertEqual(
+                layout,
+                MarkdownMathFormatter.replacingInlineMath(in: input),
+                "Empty display-math delimiters were dropped for \(input.debugDescription)"
+            )
+        }
     }
 }
 

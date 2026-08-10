@@ -365,6 +365,29 @@ enum MarkdownMathLayoutCache {
             // Reuse the markdown the segmenter already produced. It has been
             // inline-math-formatted, so re-running that pass here would be a
             // second full-string walk for an identical result.
+            //
+            // One exception: the segmenter *recognises* a display-math span but
+            // drops it when the body is empty or whitespace-only (`$$ $$`,
+            // `\[ \]`). Those produce no `.displayMath` segment, so
+            // `containsMath` is false, yet the surrounding markdown segments no
+            // longer contain the delimiters — joining them would silently
+            // swallow literal text the old single-pass renderer preserved.
+            //
+            // Checking the segment count is not enough: an empty span at the
+            // very start still leaves exactly one markdown segment. Instead,
+            // ask whether the content contains a display delimiter at all. If
+            // it does and nothing was emitted as math, the segmenter consumed
+            // delimiters that the legacy pass would have preserved, so defer to
+            // the legacy whole-string pass.
+            //
+            // This costs an extra walk only for content carrying a display
+            // delimiter that produced no math, which is rare. Content with no
+            // display delimiters at all -- the overwhelmingly common case --
+            // takes the fast path untouched.
+            guard !containsDisplayDelimiter(content) else {
+                return .plain(MarkdownMathFormatter.replacingInlineMath(in: content))
+            }
+
             let joined = segments.compactMap { segment -> String? in
                 guard case .markdown(let markdown) = segment else { return nil }
                 return markdown
@@ -374,8 +397,26 @@ enum MarkdownMathLayoutCache {
         return .segmented(segments)
     }
 
+    /// Cheap scan for a display-math opener/closer (`$$` or `\[` / `\]`).
+    ///
+    /// Deliberately conservative: a false positive only costs one extra pass,
+    /// while a false negative would drop literal text from the transcript.
+    private static func containsDisplayDelimiter(_ content: String) -> Bool {
+        content.contains("$$") || content.contains("\\[") || content.contains("\\]")
+    }
+
     /// Test seam: drop memoized layouts so a test can observe a cold pass.
     static func removeAll() {
         storage.removeAllObjects()
+    }
+
+    /// Test seam: whether `content` currently has a memoized entry.
+    ///
+    /// Exists so a test can assert the *absence* of caching on the streaming
+    /// path. Comparing two layout values cannot do that — they are equal
+    /// whether or not the cache was written — so without this probe the
+    /// non-pollution contract is untestable.
+    static func hasCachedLayout(for content: String) -> Bool {
+        storage.object(forKey: content as NSString) != nil
     }
 }
