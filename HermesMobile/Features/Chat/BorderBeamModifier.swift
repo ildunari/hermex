@@ -48,6 +48,15 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// Keeps the beam mounted while it fades out.
+    ///
+    /// Without this the `else if active` below removes the `TimelineView` on
+    /// the same update that flips `active` to false, so the opacity animation
+    /// has nothing left to render and the glow pops instead of fading. This
+    /// stays true until the fade has finished, then unmounts so an inactive
+    /// capsule stops scheduling frames.
+    @State private var isRenderingBeam = false
+
     /// Fraction of the full circle occupied by the bright segment.
     private static var segmentSpan: Double { 0.12 }
     private static var lineWidth: CGFloat { 1.5 }
@@ -63,6 +72,22 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
                         .allowsHitTesting(false)
                 }
             }
+            .onAppear { isRenderingBeam = active }
+            .onChange(of: active) { _, nowActive in
+                if nowActive {
+                    isRenderingBeam = true
+                } else if !reduceMotion {
+                    // Hold the strokes on screen for exactly the fade, then
+                    // drop them so no frames are scheduled while idle.
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(Self.fadeDuration))
+                        guard !active else { return }
+                        isRenderingBeam = false
+                    }
+                } else {
+                    isRenderingBeam = false
+                }
+            }
     }
 
     @ViewBuilder
@@ -74,7 +99,7 @@ private struct BorderBeamModifier<BeamShape: InsettableShape>: ViewModifier {
                     staticRingColor,
                     lineWidth: Self.lineWidth
                 )
-        } else if active {
+        } else if active || isRenderingBeam {
             // Same capped cadence as the orbs. Uses the animation schedule so
             // the beam stops updating when the capsule isn't being drawn.
             TimelineView(ThinkingOrbView.schedule()) { timeline in
