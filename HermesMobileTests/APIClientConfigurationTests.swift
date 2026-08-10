@@ -88,15 +88,12 @@ final class APIClientConfigurationTests: APIClientTestCase {
         let reasoningGroups = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
 
-        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), [
-            "assistant-tools",
-            "assistant-post-tools",
-            "assistant-final"
-        ])
-        XCTAssertEqual(reasoningGroups[0].text, "The user wants me to use terminal and search_files. I should run a quick command.")
-        XCTAssertEqual(reasoningGroups[1].text, "Terminal works. Now run search_files to show that works too.")
-        XCTAssertTrue(reasoningGroups[2].text.contains("Both tools worked. I should give a concise summary."))
-        XCTAssertFalse(reasoningGroups[2].text.contains("**Terminal:**"))
+        XCTAssertEqual(reasoningGroups.map(\.anchorMessageID), ["assistant-final"])
+        XCTAssertTrue(reasoningGroups[0].text.contains("The user wants me to use terminal and search_files."))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Terminal works. Now run search_files"))
+        XCTAssertTrue(reasoningGroups[0].text.contains("Both tools worked. I should give a concise summary."))
+        XCTAssertFalse(reasoningGroups[0].text.contains("**Terminal:**"))
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["user-tools", "assistant-final"])
         XCTAssertFalse(transcriptMessages.contains { $0.message.id == "tool-results" })
     }
 

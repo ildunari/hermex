@@ -923,6 +923,7 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
     private(set) var resetRecoveryCount = 0
     private(set) var tokens: [String] = []
     private(set) var donePayloads: [DoneStreamEvent] = []
+    private(set) var todoStates: [TodoState] = []
     private(set) var pendingSteerLeftovers: [String] = []
     var latestAssistantMessageID: String? = "assistant-latest"
     var restoredSnapshotEventID: String?
@@ -1019,6 +1020,11 @@ private final class CoordinatorDelegateSpy: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool {
         payload.title?.isEmpty == false
+    }
+
+    func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool {
+        todoStates.append(payload)
+        return true
     }
 
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool {

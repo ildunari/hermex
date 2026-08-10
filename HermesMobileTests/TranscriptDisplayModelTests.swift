@@ -23,8 +23,8 @@ final class TranscriptMessageTests: XCTestCase {
 
         let transcriptMessages = ChatViewModel.transcriptMessages(from: messages)
 
-        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 1, 3])
-        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a1", "a2"])
+        XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 3])
+        XCTAssertEqual(transcriptMessages.map(\.message.id), ["u1", "a2"])
     }
 
     func testTranscriptMessagesCanHideActiveStreamingAssistantTurn() {
@@ -171,6 +171,53 @@ final class TranscriptMessageTests: XCTestCase {
 
         XCTAssertEqual(transcriptMessages.map(\.loadedIndex), [0, 1])
         XCTAssertEqual(transcriptMessages.map(\.message.role), ["user", "assistant"])
+    }
+
+    func testCodexItemsProjectCommentaryOntoOneThinkingCardAndFinalAnswerRow() throws {
+        let data = Data(#"""
+        [
+          {"role":"user","content":"Fix it","message_id":"u1"},
+          {
+            "role":"assistant",
+            "content":"Inspecting. Final answer.",
+            "message_id":"a1",
+            "codex_message_items":[
+              {"type":"message","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"Inspecting the transcript."}]},
+              {"type":"message","role":"assistant","phase":"final_answer","content":[{"type":"output_text","text":"Final answer."}]}
+            ]
+          }
+        ]
+        """#.utf8)
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let messages = try decoder.decode([ChatMessage].self, from: data)
+
+        let transcript = ChatViewModel.transcriptMessages(from: messages)
+        let reasoning = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(transcript.map(\.message.content), ["Fix it", "Final answer."])
+        XCTAssertEqual(reasoning.count, 1)
+        XCTAssertEqual(reasoning.first?.anchorMessageID, "a1")
+        XCTAssertEqual(reasoning.first?.text, "Inspecting the transcript.")
+    }
+
+    func testMultipleAssistantToolRoundsCollapseOntoFinalTurnAnchor() {
+        let messages = [
+            ChatMessage(role: "user", content: "Fix it", timestamp: 1, messageId: "u1"),
+            ChatMessage(role: "assistant", content: "Inspecting files.", timestamp: 2, messageId: "a1"),
+            ChatMessage(role: "tool", content: "result", timestamp: 3, messageId: "t1", toolCallId: "call-1"),
+            ChatMessage(role: "assistant", content: "Running tests.", timestamp: 4, messageId: "a2"),
+            ChatMessage(role: "tool", content: "passed", timestamp: 5, messageId: "t2", toolCallId: "call-2"),
+            ChatMessage(role: "assistant", content: "Fixed and verified.", timestamp: 6, messageId: "a3")
+        ]
+
+        let transcript = ChatViewModel.transcriptMessages(from: messages)
+        let reasoning = ChatViewModel.reasoningDisplayGroups(messages: messages, archivedGroups: [])
+
+        XCTAssertEqual(transcript.map(\.message.id), ["u1", "a3"])
+        XCTAssertEqual(reasoning.count, 1)
+        XCTAssertEqual(reasoning.first?.anchorMessageID, "a3")
+        XCTAssertEqual(reasoning.first?.text, "Inspecting files.\n\nRunning tests.")
     }
 }
 

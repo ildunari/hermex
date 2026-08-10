@@ -535,6 +535,8 @@ struct ChatTranscriptLoadingSkeletonView: View {
 private struct ChatTranscriptLoadingSkeletonRow: View {
     let configuration: ChatTranscriptSkeletonRowConfiguration
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         switch configuration.role {
         case .assistant:
@@ -567,9 +569,9 @@ private struct ChatTranscriptLoadingSkeletonRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
-            .background(Color(.secondarySystemFill))
+            .background(ChatPalette.appChrome(colorScheme: colorScheme).userBubble)
             .foregroundStyle(.primary)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .redacted(reason: .placeholder)
         .accessibilityHidden(true)

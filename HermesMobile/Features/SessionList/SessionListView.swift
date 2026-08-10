@@ -300,7 +300,7 @@ struct SessionListView: View {
 
     private var sessionListSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground
                 .ignoresSafeArea()
 
             content
@@ -480,7 +480,9 @@ struct SessionListView: View {
         .environment(\.defaultMinListRowHeight, 0)
         .scrollContentBackground(.hidden)
         .scrollPosition(id: $sidebarScrollPosition)
-        .background(Color(.systemBackground))
+        // Shares the transcript canvas so the app reads as one warm material
+        // from the session list through the chat surface.
+        .background(ChatPalette.appChrome(colorScheme: colorScheme).chatBackground)
         .scrollDismissesKeyboard(.interactively)
         // Disclosure subrows are real List rows; drive their fold from the List
         // so insert/remove animates. Value-based so it works with @AppStorage.
@@ -1377,6 +1379,7 @@ private struct ActiveSessionMonitorTaskID: Hashable {
 
 private struct PendingNewChatView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
 
     let server: URL
@@ -1442,7 +1445,7 @@ private struct PendingNewChatView: View {
 
     private var pendingContent: some View {
         ZStack(alignment: .bottom) {
-            Color(.systemBackground)
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground
                 .ignoresSafeArea()
 
             ContentUnavailableView {
@@ -1489,7 +1492,7 @@ private struct PendingNewChatView: View {
                     .font(.headline.weight(.bold))
                     .foregroundStyle(Color(.secondaryLabel))
                     .frame(width: 44, height: 44)
-                    .background(Color(.tertiarySystemFill), in: Circle())
+                    .appSurfaceBackground(.inset, in: Circle())
             }
             .buttonStyle(.plain)
             .disabled(true)
