@@ -22,6 +22,8 @@ struct SurfaceGalleryView: View {
             ActivityFoldGalleryView(page: 16)
         } else if page == 17 {
             TranscriptStressLabView()
+        } else if page == 19 {
+            OrbGalleryView()
         } else if page == 18 {
             TranscriptStressLabView(showsBothCompositions: true)
         } else if let page, (5...9).contains(page) {

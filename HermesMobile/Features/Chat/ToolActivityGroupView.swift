@@ -235,6 +235,12 @@ struct ToolActivityGroupView: View {
             String(localized: "Connecting")
         case .working:
             String(localized: "Working")
+        case .shaping:
+            String(localized: "Running")
+        case .solving:
+            String(localized: "Checking")
+        case .listening:
+            String(localized: "Waiting")
         }
     }
 

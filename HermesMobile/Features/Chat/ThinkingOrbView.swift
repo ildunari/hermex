@@ -14,28 +14,70 @@ enum ThinkingOrbState {
     case searching
     case writing
     case connecting
+    /// Shell / execute work. Dotted outline cycling circle → triangle →
+    /// square: a shape being formed, which reads as "running something"
+    /// better than the generic orbit field did.
+    case shaping
+    /// Deterministic, converging work — tests, builds, diffs. A dot sphere
+    /// whose bands scramble in quarter turns and then click back to solved.
+    case solving
+    /// Waiting on the user or an external party: approvals, clarifications.
+    case listening
 
-    /// Maps a tool name to the orb state that best matches the activity.
-    /// Edit-like tools write, search-like tools scan, network/session
-    /// tools connect, terminal-and-everything-else works. `.thinking`
-    /// is reserved for reasoning streams and never maps from a tool.
-    /// Defaults to `.working`.
+    /// Maps a tool name to the orb that best matches the activity.
+    ///
+    /// `.thinking` is reserved for reasoning streams and never maps here.
+    ///
+    /// **Order is the whole design.** These are substring tests over an
+    /// unbounded vocabulary, so the earlier a bucket sits the more it
+    /// captures. The sequence runs most-specific to least: a name like
+    /// `run_tests_in_shell` should read as testing, not shell, so `solving`
+    /// is checked before `shaping`.
+    ///
+    /// `.working` is the residual. It used to absorb everything that was not
+    /// an edit, a search, or a network call — which in practice meant most
+    /// shell and test tools wore a generic orb. The buckets below exist to
+    /// pull the common cases out of it.
     static func forTool(name: String?) -> ThinkingOrbState {
         let name = name?.lowercased() ?? ""
 
-        let writing = ["write", "edit", "create", "apply_patch", "patch", "insert", "replace"]
+        // Waiting on a human. First because these are interrupts: whatever
+        // else the name says, the turn is blocked on someone answering.
+        let listening = ["approval", "approve", "clarif", "confirm", "ask_user", "prompt_user", "permission", "elicit"]
+        if listening.contains(where: { name.contains($0) }) {
+            return .listening
+        }
+
+        // Converging work with a pass/fail end state.
+        let solving = ["test", "build", "compile", "lint", "typecheck", "diff", "verify", "validate", "check", "xcodebuild", "pytest"]
+        if solving.contains(where: { name.contains($0) }) {
+            return .solving
+        }
+
+        // Producing or changing content.
+        let writing = ["write", "edit", "create", "apply_patch", "patch", "insert", "replace", "append", "rename", "delete", "move", "mkdir", "format"]
         if writing.contains(where: { name.contains($0) }) {
             return .writing
         }
 
-        let searching = ["search", "read", "grep", "list", "web", "find", "glob", "fetch", "view"]
+        // Looking something up. After `writing` so `edit_file` is not caught
+        // by `file`-adjacent search words.
+        let searching = ["search", "read", "grep", "list", "web", "find", "glob", "fetch", "view", "lookup", "query", "browse", "inspect", "cat", "ls"]
         if searching.contains(where: { name.contains($0) }) {
             return .searching
         }
 
-        let connecting = ["network", "server", "session", "connect", "http", "request", "api"]
+        // Talking to something else over a wire.
+        let connecting = ["network", "server", "session", "connect", "http", "request", "api", "curl", "clone", "push", "pull", "upload", "download", "deploy", "mcp"]
         if connecting.contains(where: { name.contains($0) }) {
             return .connecting
+        }
+
+        // Executing. Last of the named buckets because `run`/`exec` appear
+        // inside many compound names that belong to an earlier bucket.
+        let shaping = ["shell", "bash", "exec", "run", "command", "terminal", "process", "script", "python", "node", "npm", "git"]
+        if shaping.contains(where: { name.contains($0) }) {
+            return .shaping
         }
 
         return .working
@@ -81,6 +123,15 @@ struct ThinkingOrbView: View {
             2.6
         case .working, .searching, .connecting:
             1.7
+        case .shaping:
+            // Mid-hold rather than mid-blend: a frozen half-morph is an
+            // unreadable blob, whereas a held shape is a clean silhouette.
+            0.7
+        case .solving:
+            // Mid-scramble, so some bands sit visibly off-axis.
+            2.2
+        case .listening:
+            1.1
         }
     }
 
@@ -286,6 +337,12 @@ struct ThinkingOrbView: View {
             drawRibbon(context: context, size: size, time: time, color: color)
         case .connecting:
             drawWeb(context: context, size: size, time: time, color: color)
+        case .shaping:
+            drawMorph(context: context, size: size, time: time, color: color)
+        case .solving:
+            drawRubik(context: context, size: size, time: time, color: color)
+        case .listening:
+            drawWave(context: context, size: size, time: time, color: color)
         }
     }
 
@@ -695,6 +752,332 @@ struct ThinkingOrbView: View {
         }
 
         paintLines(context: context, lines: lines, color: color)
+        paint(context: context, dots: dots, color: color)
+    }
+
+    // MARK: - Shaping: morphing outline (port of engine/morph.ts, size-20 preset)
+
+    /// Dotted outline cycling circle → triangle → square → circle.
+    ///
+    /// Upstream blends the two neighbouring shape *paths*, then lays dots
+    /// evenly along the blended outline by arc length. Interpolating vertex
+    /// positions directly would be simpler and wrong: spacing would bunch at
+    /// the corners during the transition. Even spacing at every instant is
+    /// the whole effect.
+    private static func drawMorph(
+        context: GraphicsContext,
+        size: Double,
+        time: Double,
+        color: Color
+    ) {
+        // Size-20 preset: speed 2.08, count ×0.53, radius ×1.011, spread 1.45.
+        let t = time * 2.08
+        let spread = 1.45
+        let dotCount = max(6, Int((34.0 * 0.53).rounded()))
+        let rDot = 0.021 * 1.35 * spread * 1.011
+
+        let hold = 1.4
+        let morphDuration = 0.9
+        let segment = hold + morphDuration
+        let shapeCount = 3
+
+        let cycle = t.truncatingRemainder(dividingBy: segment * Double(shapeCount))
+        let index = Int(cycle / segment)
+        let local = cycle - Double(index) * segment
+        // smoothstep, matching upstream's `smoothE`.
+        let raw = local > hold ? (local - hold) / morphDuration : 0
+        let m = raw * raw * (3 - 2 * raw)
+
+        // Sample the two blended paths at a fixed resolution, then walk the
+        // result by arc length. `M = 160` is upstream's value.
+        let samples = 160
+        var pts: [(Double, Double)] = []
+        pts.reserveCapacity(samples)
+        for i in 0..<samples {
+            let f = Double(i) / Double(samples)
+            let a = morphPath(index, f)
+            let b = morphPath((index + 1) % shapeCount, f)
+            pts.append((
+                (a.0 + (b.0 - a.0) * m) * spread,
+                (a.1 + (b.1 - a.1) * m) * spread
+            ))
+        }
+
+        var lengths: [Double] = []
+        lengths.reserveCapacity(samples)
+        var total = 0.0
+        for i in 0..<samples {
+            let a = pts[i]
+            let b = pts[(i + 1) % samples]
+            let l = ((b.0 - a.0) * (b.0 - a.0) + (b.1 - a.1) * (b.1 - a.1)).squareRoot()
+            lengths.append(l)
+            total += l
+        }
+
+        let pulse = 1 + 0.02 * sin(local * 3.1)
+        let centre = size / 2
+
+        var dots: [Dot] = []
+        dots.reserveCapacity(dotCount)
+        var segIndex = 0
+        var accumulated = 0.0
+        for k in 0..<dotCount {
+            let target = (Double(k) / Double(dotCount)) * total
+            while segIndex < samples - 1, accumulated + lengths[segIndex] < target {
+                accumulated += lengths[segIndex]
+                segIndex += 1
+            }
+            let a = pts[segIndex]
+            let b = pts[(segIndex + 1) % samples]
+            let f = lengths[segIndex] > 0 ? min(1, (target - accumulated) / lengths[segIndex]) : 0
+            let x = (a.0 + (b.0 - a.0) * f) * pulse
+            let y = (a.1 + (b.1 - a.1) * f) * pulse
+            dots.append(Dot(
+                x: centre + x * size,
+                y: centre + y * size,
+                z: 0,
+                r: max(0.35, rDot * size),
+                // Upstream sets `white: 0.1`, i.e. near-solid ink, because it
+                // paints through a threshold filter that hardens the edge.
+                // We draw plain circles, so full-strength dots read heavier
+                // here than every other orb — this is a flat outline with no
+                // depth falloff to lighten it. Matching the depth-shaded
+                // engines' mid-range keeps the family consistent.
+                opacity: 0.62
+            ))
+        }
+
+        paint(context: context, dots: dots, color: color)
+    }
+
+    /// The three closed paths of the morph cycle, parameterised by arc
+    /// fraction from top-centre, clockwise. The square is walked as five
+    /// vertices so its path *starts* at top-centre like the other two —
+    /// otherwise the shapes rotate against each other as they blend.
+    private static func morphPath(_ shape: Int, _ f: Double) -> (Double, Double) {
+        switch shape {
+        case 0:
+            let a = -Double.pi / 2 + f * 2 * .pi
+            return (cos(a) * 0.24, sin(a) * 0.24)
+        case 1:
+            return polyPath([(0.0, -0.26), (0.24, 0.16), (-0.24, 0.16)], f)
+        default:
+            return polyPath([(0, -0.2), (0.2, -0.2), (0.2, 0.2), (-0.2, 0.2), (-0.2, -0.2)], f)
+        }
+    }
+
+    /// Walks a closed polygon by arc-length fraction.
+    private static func polyPath(_ verts: [(Double, Double)], _ f: Double) -> (Double, Double) {
+        let count = verts.count
+        var lengths: [Double] = []
+        lengths.reserveCapacity(count)
+        var total = 0.0
+        for i in 0..<count {
+            let a = verts[i]
+            let b = verts[(i + 1) % count]
+            let l = ((b.0 - a.0) * (b.0 - a.0) + (b.1 - a.1) * (b.1 - a.1)).squareRoot()
+            lengths.append(l)
+            total += l
+        }
+        var target = f * total
+        var i = 0
+        while i < count - 1, target > lengths[i] {
+            target -= lengths[i]
+            i += 1
+        }
+        let a = verts[i]
+        let b = verts[(i + 1) % count]
+        let ff = lengths[i] > 0 ? min(1, target / lengths[i]) : 0
+        return (a.0 + (b.0 - a.0) * ff, a.1 + (b.1 - a.1) * ff)
+    }
+
+    // MARK: - Solving: twisting bands (port of engine/lattice.ts drawRubik, size-20 preset)
+
+    /// A dot sphere whose bands twist in quarter turns, scramble, then replay
+    /// in reverse so everything clicks back to solved before resting and
+    /// repeating. The palindrome is the point: it reads as work that
+    /// converges, which is why it maps to tests and builds.
+    private static func drawRubik(
+        context: GraphicsContext,
+        size: Double,
+        time: Double,
+        color: Color
+    ) {
+        // Size-20 preset: speed 1.95, count ×0.088 (√-split), radius ×1.9.
+        let t = time * 1.95
+        let latRings = 5      // round(15 × √0.088)
+        let lonDensity = 12.0 // round(40 × √0.088)
+        let rBase = 0.6 * 1.9
+        let rDepth = 1.7 * 1.9
+        let rActive = 0.3 * 1.9
+        let inkFar = 0.62
+        let inkSpan = 0.54
+        let moveCount = 14
+
+        let cx = size / 2
+        let cy = size / 2
+        let radius = (size / 2) * 0.82
+        let pt = makeProj(
+            yaw: t * 0.55,
+            tilt: 0.35 + 0.1 * sin(t * 0.9),
+            cx: cx,
+            cy: cy,
+            scale: radius
+        )
+        let rs = radiusScale(size: size, pow: 0.6)
+
+        // Deterministic move list — same hash upstream uses, so the sequence
+        // is stable across frames and launches.
+        var moves: [(axis: Int, lo: Double, hi: Double, ang: Double)] = []
+        moves.reserveCapacity(moveCount)
+        for i in 0..<moveCount {
+            let axis = min(2, Int(hashD(Double(i), 2.3) * 3))
+            let lo = -1.0 + 0.5 * Double(min(3, Int(hashD(Double(i), 5.9) * 4)))
+            let dir: Double = hashD(Double(i), 7.7) < 0.5 ? 1 : -1
+            moves.append((axis, lo, lo + 0.5, dir * .pi / 2))
+        }
+
+        // Scramble forward, then unwind: slot < count winds a band in,
+        // slot >= count unwinds the mirrored one.
+        let slotDuration = 0.42
+        let rest = 1.2
+        let cycleLength = 2 * Double(moveCount) * slotDuration + rest
+        let tc = t.truncatingRemainder(dividingBy: cycleLength)
+        var amount = [Double](repeating: 0, count: moveCount)
+        var activeMove = -1
+        if tc < 2 * Double(moveCount) * slotDuration {
+            let slot = Int(tc / slotDuration)
+            let p = (tc - Double(slot) * slotDuration) / slotDuration
+            let cl = min(1, p / 0.7)
+            let ep = 1 - pow(1 - cl, 3) // machine ease-out
+            if slot < moveCount {
+                for i in 0..<slot { amount[i] = 1 }
+                amount[slot] = ep
+                activeMove = slot
+            } else {
+                let u = 2 * moveCount - 1 - slot
+                for i in 0..<u { amount[i] = 1 }
+                amount[u] = 1 - ep
+                activeMove = u
+            }
+        }
+
+        var dots: [Dot] = []
+        dots.reserveCapacity((latRings + 1) * Int(lonDensity))
+
+        for li in 0...latRings {
+            let lat = -Double.pi / 2 + (Double(li) / Double(latRings)) * .pi
+            let cosLat = cos(lat)
+            let sinLat = sin(lat)
+            let lonCount = max(1, Int((abs(cosLat) * lonDensity).rounded()))
+            for lj in 0..<lonCount {
+                let lon = (Double(lj) / Double(lonCount)) * 2 * .pi
+                var x = cosLat * cos(lon)
+                var y = sinLat
+                var z = cosLat * sin(lon)
+                var inActive = false
+
+                for i in 0..<moveCount where amount[i] > 0 {
+                    let mv = moves[i]
+                    let coord = mv.axis == 0 ? x : (mv.axis == 1 ? y : z)
+                    guard coord >= mv.lo, coord < mv.hi else { continue }
+                    if i == activeMove { inActive = true }
+                    let a = mv.ang * amount[i]
+                    let ca = cos(a)
+                    let sa = sin(a)
+                    if mv.axis == 0 {
+                        let y2 = y * ca - z * sa
+                        z = y * sa + z * ca
+                        y = y2
+                    } else if mv.axis == 1 {
+                        let x2 = x * ca + z * sa
+                        z = -x * sa + z * ca
+                        x = x2
+                    } else {
+                        let x2 = x * ca - y * sa
+                        y = x * sa + y * ca
+                        x = x2
+                    }
+                }
+
+                let (px, py, zr) = pt(x, y, z)
+                let depth = (zr + 1) / 2
+                // The band being turned inks a touch darker — the "hand".
+                let white = inkFar - inkSpan * depth - (inActive ? 0.14 : 0)
+                dots.append(Dot(
+                    x: px,
+                    y: py,
+                    z: zr,
+                    r: (rBase + rDepth * depth + (inActive ? rActive : 0)) * rs,
+                    opacity: 1 - white
+                ))
+            }
+        }
+
+        paint(context: context, dots: dots, color: color)
+    }
+
+    // MARK: - Listening: rolling waveform (port of engine/lattice.ts drawWave, size-20 preset)
+
+    /// A waveform rolls through the sphere's rings. Two sine terms at
+    /// different tempi so it never quite repeats — it reads as attentive
+    /// rather than mechanical, which is what "waiting on you" should feel
+    /// like.
+    private static func drawWave(
+        context: GraphicsContext,
+        size: Double,
+        time: Double,
+        color: Color
+    ) {
+        // Size-20 preset: speed 3.998, count ×0.105 (√-split), radius ×1.6.
+        let t = time * 3.998
+        let rings = 6         // round(15 × √0.105)
+        let lonDensity = 13.0 // round(40 × √0.105)
+        let rBase = 0.6 * 1.6
+        let rDepth = 1.7 * 1.6
+
+        let cx = size / 2
+        let cy = size / 2
+        // 0.76 base × 1.15: the undulation pulls the sphere inward, so wave
+        // reads ~15% smaller than the other lattice modes without this.
+        let radius = (size / 2) * 0.874
+        // Scale 1 here on purpose — the radius is folded into the vectors
+        // below so the wave can modulate it per ring.
+        let pt = makeProj(yaw: t * 0.18, tilt: 0.38, cx: cx, cy: cy, scale: 1)
+        let rs = radiusScale(size: size, pow: 0.6)
+
+        var dots: [Dot] = []
+        dots.reserveCapacity((rings + 1) * Int(lonDensity))
+
+        for ri in 0...rings {
+            let lat = -Double.pi / 2 + (Double(ri) / Double(rings)) * .pi
+            let cosLat = cos(lat)
+            let sinLat = sin(lat)
+            // Two waves, different tempi — organic, never quite repeating.
+            let w = 0.62 * sin(t * 2.1 - Double(ri) * 0.52)
+                + 0.38 * sin(t * 1.27 + Double(ri) * 0.83)
+            let rr = radius * (0.88 + 0.105 * w)
+            let lonCount = max(1, Int((abs(cosLat) * lonDensity).rounded()))
+            for lj in 0..<lonCount {
+                let lon = (Double(lj) / Double(lonCount)) * 2 * .pi
+                let (px, py, z) = pt(
+                    cosLat * cos(lon) * rr,
+                    sinLat * rr,
+                    cosLat * sin(lon) * rr
+                )
+                let depth = (z / radius + 1) / 2
+                let crest = max(0, w)
+                let white = 0.66 - 0.56 * depth - 0.1 * crest
+                dots.append(Dot(
+                    x: px,
+                    y: py,
+                    z: z,
+                    r: (rBase + rDepth * depth) * (1 + 0.4 * crest) * rs,
+                    opacity: 1 - white
+                ))
+            }
+        }
+
         paint(context: context, dots: dots, color: color)
     }
 }
