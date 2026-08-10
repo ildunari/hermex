@@ -112,6 +112,91 @@ final class PrimaryActionTintSettingsTests: XCTestCase {
     }
 }
 
+final class ChatAppearanceSettingsTests: XCTestCase {
+    private let suiteName = "ChatAppearanceSettingsTests"
+
+    override func tearDown() {
+        UserDefaults.standard.removePersistentDomain(forName: suiteName)
+        super.tearDown()
+    }
+
+    func testChatBackgroundDefaultsToWarmAndRoundTripsBlack() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ChatBackgroundStyle.storageKey, "appearance.chatBackgroundStyle")
+        XCTAssertEqual(
+            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
+            .warm
+        )
+
+        defaults.set(ChatBackgroundStyle.black.rawValue, forKey: ChatBackgroundStyle.storageKey)
+        XCTAssertEqual(
+            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
+            .black
+        )
+    }
+
+    func testSerifDefaultsOffAndRoundTripsOn() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ResponseFontStyle.storageKey, "chatTranscript.responseFontStyle")
+        XCTAssertEqual(
+            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)),
+            .system
+        )
+        XCTAssertFalse(ResponseFontStyle.defaultValue.usesSerif)
+
+        defaults.set(ResponseFontStyle.serif.rawValue, forKey: ResponseFontStyle.storageKey)
+        XCTAssertTrue(
+            ResponseFontStyle.storedValue(defaults.string(forKey: ResponseFontStyle.storageKey)).usesSerif
+        )
+    }
+
+    func testLegacyTimesSerifValueMigratesToSerif() {
+        XCTAssertEqual(ResponseFontStyle.storedValue("timesSerif"), .serif)
+    }
+
+    func testResponseFontPreferenceIsAssistantScoped() {
+        XCTAssertFalse(MarkdownTypographyRole.standard.usesResponseFontPreference)
+        XCTAssertTrue(MarkdownTypographyRole.assistantResponse.usesResponseFontPreference)
+    }
+
+    func testPaletteTemperatureDefaultsToWarmAndRoundTripsStandard() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+
+        XCTAssertEqual(ChatPaletteTemperature.storageKey, "appearance.chatPaletteTemperature")
+        XCTAssertEqual(
+            ChatPaletteTemperature.storedValue(defaults.string(forKey: ChatPaletteTemperature.storageKey)),
+            .warm
+        )
+        XCTAssertTrue(ChatPaletteTemperature.defaultValue.usesWarmSurfaces)
+
+        defaults.set(ChatPaletteTemperature.standard.rawValue, forKey: ChatPaletteTemperature.storageKey)
+        let stored = ChatPaletteTemperature.storedValue(
+            defaults.string(forKey: ChatPaletteTemperature.storageKey)
+        )
+        XCTAssertEqual(stored, .standard)
+        XCTAssertFalse(stored.usesWarmSurfaces)
+    }
+
+    func testPaletteTemperatureFallsBackToWarmForUnknownRawValue() {
+        XCTAssertEqual(ChatPaletteTemperature.storedValue("unexpected"), .warm)
+        XCTAssertEqual(ChatPaletteTemperature.storedValue(nil), .warm)
+    }
+
+    /// The temperature axis must stay independent of the dark-canvas depth
+    /// choice: Black still resolves to a pure-black canvas under Standard.
+    func testTemperatureAndBackgroundStyleAreIndependent() {
+        let warmDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm)
+        let standardDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .standard)
+        XCTAssertNotEqual(warmDark.chatBackground, standardDark.chatBackground)
+
+        let warmBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .warm)
+        let standardBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .standard)
+        XCTAssertEqual(warmBlack.chatBackground, standardBlack.chatBackground)
+    }
+}
+
 final class ChatLayoutDirectionSettingsTests: XCTestCase {
     func testRTLChatLayoutKeyIsStable() {
         XCTAssertEqual(

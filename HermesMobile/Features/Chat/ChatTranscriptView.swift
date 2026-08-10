@@ -4,6 +4,9 @@ import UIKit
 struct ChatTranscriptView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let isLoading: Bool
     let errorMessage: String?
@@ -14,6 +17,23 @@ struct ChatTranscriptView: View {
     let completedToolCallGroupsForAnchor: (String?) -> [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// True while the turn is semantically in its reasoning step (phase
+    /// model — holds across intra-step token pauses, settles when a tool call
+    /// or answer text arrives). Drives the thinking orb / beam. Sourced from
+    /// `ChatViewModel.isReasoningPhaseActive`.
+    let isReasoningActive: Bool
+    /// Duration of the most recently completed reasoning stint in the open
+    /// turn ("Thought for Ns" on the live block once it settles). Historical
+    /// blocks always render nil. Sourced from
+    /// `ChatViewModel.lastReasoningDuration`.
+    let lastReasoningDuration: TimeInterval?
+    /// True while the turn is semantically in its tool step; keeps the live
+    /// tool capsule animating between a tool completing and the next event.
+    /// Sourced from `ChatViewModel.isToolPhaseActive`.
+    let isToolPhaseActive: Bool
+    /// True once the assistant's answer text has begun streaming for this turn
+    /// (`ChatViewModel.isAnswerPhaseActive`). Drives the activity fold.
+    let isAnswerStreaming: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -79,32 +99,35 @@ struct ChatTranscriptView: View {
     var onOpenTurnFileDiff: (GitFile) -> Void = { _ in }
 
     var body: some View {
-        if isLoading && messages.isEmpty && clarificationPrompt == nil {
-            ChatTranscriptLoadingSkeletonView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
-            ContentUnavailableView {
-                Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(errorMessage)
-            } actions: {
-                Button("Try Again") {
-                    Task { await onLoadMessages() }
+        Group {
+            if isLoading && messages.isEmpty && clarificationPrompt == nil {
+                ChatTranscriptLoadingSkeletonView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let errorMessage, messages.isEmpty, clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Label("Could Not Load Messages", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await onLoadMessages() }
+                    }
                 }
+            } else if messages.isEmpty && clarificationPrompt == nil {
+                ContentUnavailableView {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                } description: {
+                    Text("Send a message to start the conversation.")
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    onDismissKeyboard()
+                }
+            } else {
+                transcriptScrollView
             }
-        } else if messages.isEmpty && clarificationPrompt == nil {
-            ContentUnavailableView {
-                Image(systemName: "bubble.left.and.bubble.right")
-            } description: {
-                Text("Send a message to start the conversation.")
-            }
-            .contentShape(Rectangle())
-            .onTapGesture {
-                onDismissKeyboard()
-            }
-        } else {
-            transcriptScrollView
         }
+        .background(chatPalette.chatBackground)
     }
 
     private var transcriptScrollView: some View {
@@ -127,7 +150,8 @@ struct ChatTranscriptView: View {
                     )
                     .defaultScrollAnchor(
                         ChatScrollPolicy.sizeChangeAnchor(
-                            shouldFollowLatestMessage: shouldFollowLatestMessage
+                            shouldFollowLatestMessage: shouldFollowLatestMessage,
+                            hasActiveStream: activeStreamID != nil
                         ),
                         for: .sizeChanges
                     )
@@ -164,7 +188,7 @@ struct ChatTranscriptView: View {
                     }
                 }
                 .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: showsScrollToBottomButton)
-                .background(Color(.systemBackground))
+                .background(chatPalette.chatBackground)
                 .onChange(of: messages.count) {
                     guard shouldFollowLatestMessage else { return }
 
@@ -230,6 +254,19 @@ struct ChatTranscriptView: View {
                     toolCallGroups: completedToolCallGroupsForAnchor(transcriptMessage.anchorID),
                     liveReasoningText: isReasoningAnchor ? liveReasoningText : "",
                     reasoningAnchorMessageID: isReasoningAnchor ? reasoningAnchorMessageID : nil,
+                    isReasoningActive: isReasoningAnchor && isReasoningActive,
+                    lastReasoningDuration: isReasoningAnchor ? lastReasoningDuration : nil,
+                    isToolPhaseActive: isToolCallAnchor && isToolPhaseActive,
+                    isAnswerStreaming: (isToolCallAnchor || isReasoningAnchor) && isAnswerStreaming,
+                    // Scoped like the live props above it. Only the live row
+                    // consumes this (it gates `animatesFold`), but passing the
+                    // global flag to every row meant one scroll-proximity flip
+                    // changed every row's inputs, defeating `.equatable()` and
+                    // re-running every markdown-heavy body at once — a
+                    // transcript-wide re-parse on the main thread, which is what
+                    // made expanding a card stutter on a long chat.
+                    isScrolledNearBottom: (isReasoningAnchor || isToolCallAnchor || isStreamingRow)
+                        && isScrolledNearBottom,
                     liveToolCalls: isToolCallAnchor ? liveToolCalls : [],
                     toolCallAnchorMessageID: isToolCallAnchor ? toolCallAnchorMessageID : nil,
                     streamingAssistantMessageID: isStreamingRow ? streamingAssistantMessageID : nil,
@@ -303,6 +340,14 @@ struct ChatTranscriptView: View {
         dynamicTypeSize.isAccessibilitySize ? 20 : 16
     }
 
+    private var chatPalette: ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(chatBackgroundStyleRawValue),
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
+        )
+    }
+
     private func transcriptContentWidth(for viewportWidth: CGFloat) -> CGFloat {
         max(0, viewportWidth - (transcriptHorizontalPadding * 2))
     }
@@ -341,20 +386,7 @@ struct ChatTranscriptView: View {
     private var liveResponseBlocks: some View {
         if activeStreamID != nil {
             if showsThinkingAndToolCards {
-                if hasLiveReasoningText,
-                   !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID) {
-                    ReasoningBlockView(text: liveReasoningText)
-                }
-
-                if !liveToolCalls.isEmpty,
-                   !hasDisplayedTranscriptMessage(anchorID: toolCallAnchorMessageID) {
-                    ToolActivityGroupView(
-                        group: ToolCallGroup.live(
-                            anchorMessageID: toolCallAnchorMessageID,
-                            toolCalls: liveToolCalls
-                        )
-                    )
-                }
+                liveActivityFold
             }
 
             if activeStreamRecoveryState != .idle {
@@ -362,6 +394,59 @@ struct ChatTranscriptView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityHidden(hidesRunStatusAccessibility)
                     .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+            }
+        }
+    }
+
+    /// Live thinking + tool blocks, folding into one summary row when the
+    /// answer starts streaming. See `TurnActivityFoldView` for why the fold is
+    /// keyed on the first answer token rather than on turn end.
+    ///
+    /// **Deliberately not wrapped in `ActivityContainerView`.** The unified
+    /// container is an end-of-turn presentation: it exists to make a settled
+    /// turn's work read as one object once you go back and open it. While the
+    /// turn is still running these blocks are live, independently-collapsing
+    /// status surfaces, and boxing them changes what the reader is watching
+    /// mid-stream.
+    @ViewBuilder
+    private var liveActivityFold: some View {
+        let showsReasoning = hasLiveReasoningText
+            && !hasDisplayedTranscriptMessage(anchorID: reasoningAnchorMessageID)
+        let showsTools = !liveToolCalls.isEmpty
+            && !hasDisplayedTranscriptMessage(anchorID: toolCallAnchorMessageID)
+
+        if showsReasoning || showsTools {
+            TurnActivityFoldView(
+                isCollapsed: isAnswerStreaming,
+                animatesFold: isScrolledNearBottom
+            ) {
+                VStack(alignment: .leading, spacing: 8) {
+                    if showsReasoning {
+                        ReasoningBlockView(
+                            text: liveReasoningText,
+                            isStreaming: isReasoningActive,
+                            completedDuration: lastReasoningDuration
+                        )
+                    }
+
+                    if showsTools {
+                        ToolActivityGroupView(
+                            group: ToolCallGroup.live(
+                                anchorMessageID: toolCallAnchorMessageID,
+                                toolCalls: liveToolCalls
+                            ),
+                            isPhaseActive: isToolPhaseActive
+                        )
+                    }
+                }
+            } summary: { isExpanded, toggle in
+                TurnActivitySummaryRow(
+                    reasoningDuration: lastReasoningDuration,
+                    toolCalls: liveToolCalls,
+                    hasReasoning: showsReasoning,
+                    isExpanded: isExpanded,
+                    onTap: toggle
+                )
             }
         }
     }
@@ -452,6 +537,17 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     let toolCallGroups: [ToolCallGroup]
     let liveReasoningText: String
     let reasoningAnchorMessageID: String?
+    /// See `ChatTranscriptView.isReasoningActive` — scoped to the anchor row.
+    let isReasoningActive: Bool
+    /// See `ChatTranscriptView.lastReasoningDuration` — scoped to the anchor row.
+    let lastReasoningDuration: TimeInterval?
+    /// See `ChatTranscriptView.isToolPhaseActive` — scoped to the anchor row.
+    let isToolPhaseActive: Bool
+    /// See `ChatTranscriptView.isAnswerStreaming` — scoped to the anchor row.
+    let isAnswerStreaming: Bool
+    /// See `ChatTranscriptView.isScrolledNearBottom`; gates the fold animation
+    /// so a collapse the reader cannot see is applied instantly instead.
+    let isScrolledNearBottom: Bool
     let liveToolCalls: [ToolCall]
     let toolCallAnchorMessageID: String?
     let streamingAssistantMessageID: String?
@@ -492,6 +588,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             lhs.toolCallGroups == rhs.toolCallGroups &&
             lhs.liveReasoningText == rhs.liveReasoningText &&
             lhs.reasoningAnchorMessageID == rhs.reasoningAnchorMessageID &&
+            lhs.isReasoningActive == rhs.isReasoningActive &&
+            lhs.lastReasoningDuration == rhs.lastReasoningDuration &&
+            lhs.isToolPhaseActive == rhs.isToolPhaseActive &&
+            lhs.isAnswerStreaming == rhs.isAnswerStreaming &&
+            lhs.isScrolledNearBottom == rhs.isScrolledNearBottom &&
             lhs.liveToolCalls == rhs.liveToolCalls &&
             lhs.toolCallAnchorMessageID == rhs.toolCallAnchorMessageID &&
             lhs.streamingAssistantMessageID == rhs.streamingAssistantMessageID &&
@@ -508,10 +609,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
 
     var body: some View {
         VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
-            reasoningBlocks
-            liveReasoningBlock
-            toolActivityGroups
-            liveToolActivityGroup
+            activityFold
 
             if shouldRenderMessageRow(transcriptMessage.message) {
                 ChatTranscriptMessageRow(
@@ -546,15 +644,94 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     onFork: onFork,
                     onCopy: onCopy
                 )
+                // Guards the answer's markdown against the activity fold, its
+                // sibling in this VStack — see the type's doc comment.
+                .equatable()
             }
         }
+    }
+
+    /// The turn's thinking and tool activity, folded into one summary row once
+    /// the answer starts streaming. Reconciled/historical rows mount already
+    /// collapsed so the post-stream rebuild is invisible — see
+    /// `TurnActivityFoldView`.
+    ///
+    /// The unified container is applied to **settled turns only**. It is an
+    /// end-of-turn presentation: going back and opening a finished turn should
+    /// read as one object. A turn that is still running keeps independent
+    /// blocks, because those are live status surfaces the reader is watching
+    /// change, not a record to review.
+    @ViewBuilder
+    private var activityFold: some View {
+        if hasAnyActivity {
+            TurnActivityFoldView(
+                isCollapsed: isHistorical || isAnswerStreaming,
+                initiallyCollapsed: isHistorical,
+                animatesFold: !isHistorical && isScrolledNearBottom
+            ) {
+                if isHistorical {
+                    ActivityContainerView(spacing: transcriptBlockSpacing) {
+                        activitySections
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: transcriptBlockSpacing) {
+                        activitySections
+                    }
+                }
+            } summary: { isExpanded, toggle in
+                TurnActivitySummaryRow(
+                    reasoningDuration: lastReasoningDuration,
+                    toolCalls: summaryToolCalls,
+                    hasReasoning: hasAnyReasoning,
+                    isExpanded: isExpanded,
+                    onTap: toggle
+                )
+            }
+        }
+    }
+
+    /// A settled turn: this row is not the one the live stream is feeding, so
+    /// its activity is reconstructed and must mount already folded.
+    ///
+    /// Deliberately per-row, not `!hasActiveStream`: that flag is global, so a
+    /// session-wide "a stream is running" would un-fold *every* past turn the
+    /// moment a new message is sent, then snap them all shut at `done`.
+    private var isHistorical: Bool {
+        !isLiveTurnRow
+    }
+
+    /// Whether the live stream is currently attached to this row.
+    private var isLiveTurnRow: Bool {
+        hasActiveStream
+            && (reasoningAnchorMessageID == transcriptMessage.anchorID
+                || toolCallAnchorMessageID == transcriptMessage.anchorID
+                || streamingAssistantMessageID != nil)
+    }
+
+    private var hasAnyReasoning: Bool {
+        shouldRenderLiveReasoningBlock
+            || (showsThinkingAndToolCards
+                && reasoningGroups.contains { $0.anchorMessageID == transcriptMessage.anchorID })
+    }
+
+    private var summaryToolCalls: [ToolCall] {
+        if shouldRenderLiveToolActivityGroup { return liveToolCalls }
+        return toolCallGroups.flatMap(\.toolCalls)
+    }
+
+    private var hasAnyActivity: Bool {
+        hasAnyReasoning || !summaryToolCalls.isEmpty
     }
 
     @ViewBuilder
     private var reasoningBlocks: some View {
         if showsThinkingAndToolCards {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
-                ReasoningBlockView(text: group.text)
+                ReasoningBlockView(
+                    text: group.text,
+                    drawsOwnChrome: !isHistorical,
+                    startsExpandedOverride: isHistorical ? true : nil
+                )
             }
         }
     }
@@ -562,7 +739,13 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     @ViewBuilder
     private var liveReasoningBlock: some View {
         if shouldRenderLiveReasoningBlock {
-            ReasoningBlockView(text: liveReasoningText)
+            ReasoningBlockView(
+                text: liveReasoningText,
+                isStreaming: isReasoningActive,
+                completedDuration: lastReasoningDuration,
+                drawsOwnChrome: !isHistorical,
+                startsExpandedOverride: isHistorical ? true : nil
+            )
         }
     }
 
@@ -570,7 +753,11 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     private var toolActivityGroups: some View {
         if showsThinkingAndToolCards {
             ForEach(toolCallGroups) { group in
-                ToolActivityGroupView(group: group)
+                ToolActivityGroupView(
+                    group: group,
+                    drawsOwnChrome: !isHistorical,
+                    startsExpandedOverride: isHistorical ? true : nil
+                )
             }
         }
     }
@@ -582,9 +769,45 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 group: ToolCallGroup.live(
                     anchorMessageID: toolCallAnchorMessageID,
                     toolCalls: liveToolCalls
-                )
+                ),
+                isPhaseActive: isToolPhaseActive,
+                drawsOwnChrome: !isHistorical,
+                startsExpandedOverride: isHistorical ? true : nil
             )
         }
+    }
+
+    /// The turn's blocks as container sections, with a hairline between each.
+    ///
+    /// The dividers are emitted between *rendered* sections rather than after
+    /// every block, so a turn with only thinking (or only tools) gets no
+    /// trailing rule. `hasReasoningSections` and `hasToolSections` mirror the
+    /// same conditions the block builders above check.
+    @ViewBuilder
+    private var activitySections: some View {
+        reasoningBlocks
+        liveReasoningBlock
+
+        // The divider is container furniture: it separates sections inside one
+        // surface. A live turn's blocks are separate cards with their own
+        // borders, so a rule between them would just be a second line.
+        if isHistorical, hasReasoningSections, hasToolSections {
+            ActivitySectionDivider()
+        }
+
+        toolActivityGroups
+        liveToolActivityGroup
+    }
+
+    private var hasReasoningSections: Bool {
+        let hasArchived = showsThinkingAndToolCards
+            && reasoningGroups.contains { $0.anchorMessageID == transcriptMessage.anchorID }
+        return hasArchived || shouldRenderLiveReasoningBlock
+    }
+
+    private var hasToolSections: Bool {
+        let hasArchived = showsThinkingAndToolCards && !toolCallGroups.isEmpty
+        return hasArchived || shouldRenderLiveToolActivityGroup
     }
 
     private var shouldRenderLiveReasoningBlock: Bool {
@@ -602,7 +825,38 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
     }
 }
 
-private struct ChatTranscriptMessageRow: View {
+/// The answer bubble for one transcript row.
+///
+/// **Equatable is load-bearing.** This sits in the same `VStack` as
+/// `activityFold`, so expanding or collapsing a turn's activity re-runs the
+/// enclosing row body — and without a guard here, that re-runs this body too
+/// and `Markdown(content)` re-parses the whole answer from scratch on the main
+/// thread, mid-animation. On a long answer that is the stutter. The outer
+/// `.equatable()` only stops *other* rows from invalidating; it cannot stop a
+/// sibling inside the same row.
+private struct ChatTranscriptMessageRow: View, Equatable {
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        // Closures are excluded deliberately: they are recreated on every
+        // parent evaluation and would make this always-unequal, silently
+        // restoring the re-parse. They capture the view model, which is a
+        // reference type, so a stale capture still reads current state.
+        lhs.message == rhs.message &&
+            lhs.visibleIndex == rhs.visibleIndex &&
+            lhs.actionContext == rhs.actionContext &&
+            lhs.localAttachmentPreviews == rhs.localAttachmentPreviews &&
+            lhs.listeningMessageID == rhs.listeningMessageID &&
+            lhs.isViewingCachedData == rhs.isViewingCachedData &&
+            lhs.hasActiveStream == rhs.hasActiveStream &&
+            lhs.isStreaming == rhs.isStreaming &&
+            lhs.liveTokensPerSecond == rhs.liveTokensPerSecond &&
+            lhs.isRegeneratingMessage == rhs.isRegeneratingMessage &&
+            lhs.isEditingMessage == rhs.isEditingMessage &&
+            lhs.isForkingMessage == rhs.isForkingMessage &&
+            lhs.transcriptMediaCacheNamespace == rhs.transcriptMediaCacheNamespace
+    }
+
+    @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+
     let message: ChatMessage
     let visibleIndex: Int
     let actionContext: MessageActionContext?
@@ -651,7 +905,10 @@ private struct ChatTranscriptMessageRow: View {
                         onRegenerate: onRegenerate,
                         onEdit: onEdit,
                         onFork: onFork,
-                        onCopy: onCopy
+                        onCopy: { context in
+                            ChatHaptics.messageCopied(isEnabled: isHapticsEnabled)
+                            onCopy(context)
+                        }
                     )
                 }
         } else {
@@ -739,10 +996,6 @@ private struct LoadOlderMessagesButton: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
             .background(.regularMaterial, in: Capsule(style: .continuous))
-            .overlay(
-                Capsule(style: .continuous)
-                    .stroke(Color(.separator).opacity(0.32), lineWidth: 0.5)
-            )
         }
         .buttonStyle(.chatTactile(.capsule))
         .disabled(isLoading)

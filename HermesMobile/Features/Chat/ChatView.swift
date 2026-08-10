@@ -233,7 +233,7 @@ private struct ListenPlaybackBar: View {
                 .monospacedDigit()
                 .frame(minWidth: 36, minHeight: 30)
                 .padding(.horizontal, 6)
-                .background(Color(.secondarySystemBackground), in: Capsule())
+                .appSurfaceBackground(.surface, in: Capsule())
         }
         .disabled(!isReady)
         .accessibilityLabel(String(localized: "Playback speed"))
@@ -263,6 +263,7 @@ struct ChatView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -541,7 +542,7 @@ struct ChatView: View {
 
             composerAccessoryStack
 
-            messageComposer
+            composerDock
 
             if let approvalPrompt = viewModel.approvalPrompt {
                 ApprovalRequestOverlay(
@@ -573,6 +574,13 @@ struct ChatView: View {
         }
         .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.inline)
+        // Carry the transcript canvas into the navigation bar so the chat
+        // surface reads as one continuous material instead of warm content
+        // framed by cool system chrome.
+        .toolbarBackground(
+            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground,
+            for: .navigationBar
+        )
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
         .task(id: didCompleteInitialAppearance) {
             await handleInitialAppearanceTask()
@@ -1064,6 +1072,52 @@ struct ChatView: View {
         }
     }
 
+    /// The plan pill/card band, pinned just above the composer.
+    ///
+    /// A separate layer from `composerAccessoryStack` because that stack sets
+    /// `allowsHitTesting(false)` — everything in it is passive status chrome,
+    /// whereas the plan is tappable.
+    ///
+    /// Absent entirely when the session has no plan. Hermes agents call the
+    /// `todo` tool only when they choose to, so most conversations never have
+    /// one; an empty state here would be permanent dead chrome above the
+    /// composer.
+    @ViewBuilder
+    private var planTimelineLayer: some View {
+        if let planState = viewModel.planState, !planState.isEmpty {
+            PlanTimelineView(
+                state: planState,
+                isExpanded: Binding(
+                    get: { viewModel.isPlanExpanded },
+                    set: { viewModel.isPlanExpanded = $0 }
+                ),
+                isLive: viewModel.activeStreamID != nil
+            )
+            .padding(.horizontal)
+            .padding(.bottom, 8)
+            // Centered over the composer. The collapsed pill is a small
+            // free-floating control, and hanging it off the leading edge made it
+            // read as attached to the transcript rather than to the composer.
+            .frame(maxWidth: .infinity, alignment: .center)
+            .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
+        }
+    }
+
+    /// The composer plus anything docked directly to it.
+    ///
+    /// The plan rides here rather than floating over the transcript so it
+    /// tracks the composer's height instead of being positioned against a
+    /// separately-measured `composerHeight`, which drifted by a frame whenever
+    /// the composer grew (multi-line draft, attachment strip, git bar).
+    private var composerDock: some View {
+        VStack(spacing: 0) {
+            planTimelineLayer
+
+            messageComposer
+        }
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+    }
+
     @ViewBuilder
     private var messageContent: some View {
         ChatTranscriptView(
@@ -1078,6 +1132,10 @@ struct ChatView: View {
             },
             liveReasoningText: viewModel.liveReasoningText,
             reasoningAnchorMessageID: viewModel.reasoningAnchorMessageID,
+            isReasoningActive: viewModel.isReasoningPhaseActive,
+            lastReasoningDuration: viewModel.lastReasoningDuration,
+            isToolPhaseActive: viewModel.isToolPhaseActive,
+            isAnswerStreaming: viewModel.isAnswerPhaseActive,
             liveToolCalls: viewModel.liveToolCalls,
             toolCallAnchorMessageID: viewModel.toolCallAnchorMessageID,
             streamingAssistantMessageID: viewModel.streamingAssistantMessageID,
@@ -2313,7 +2371,7 @@ private struct LegacyToolbarClusterStyle: ViewModifier {
         } else {
             content
                 .background(
-                    Color(.secondarySystemBackground).opacity(colorScheme == .dark ? 0.24 : 0.42),
+                    ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(colorScheme == .dark ? 0.24 : 0.42),
                     in: Capsule()
                 )
                 .adaptiveGlass(
