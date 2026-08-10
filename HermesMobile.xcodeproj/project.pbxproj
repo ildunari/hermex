@@ -129,6 +129,7 @@
 		A02400000000000000000001 /* Goal.swift in Sources */ = {isa = PBXBuildFile; fileRef = A02400000000000000000002 /* Goal.swift */; };
 		C04600000000000000000001 /* ChatStreamCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000002 /* ChatStreamCoordinator.swift */; };
 		D0P1A0000000000000000009 /* TodoStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000A /* TodoStateTests.swift */; };
+		D0M1C0000000000000000009 /* MarkdownMathLayoutCacheTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */; };
 		C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */; };
 		C22600000000000000000001 /* ScriptedSSEStreamFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */; };
 		C22600000000000000000003 /* StreamReconnectContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C22600000000000000000004 /* StreamReconnectContractTests.swift */; };
@@ -487,6 +488,7 @@
 		A02400000000000000000002 /* Goal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Goal.swift; sourceTree = "<group>"; };
 		C04600000000000000000002 /* ChatStreamCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinator.swift; sourceTree = "<group>"; };
 		D0P1A000000000000000000A /* TodoStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoStateTests.swift; sourceTree = "<group>"; };
+		D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownMathLayoutCacheTests.swift; sourceTree = "<group>"; };
 		C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatStreamCoordinatorTests.swift; sourceTree = "<group>"; };
 		C22600000000000000000002 /* ScriptedSSEStreamFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScriptedSSEStreamFixture.swift; sourceTree = "<group>"; };
 		C22600000000000000000004 /* StreamReconnectContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamReconnectContractTests.swift; sourceTree = "<group>"; };
@@ -820,6 +822,7 @@
 					C04100000000000000000004 /* ChatComposerConfigLoaderTests.swift */,
 					C04600000000000000000004 /* ChatStreamCoordinatorTests.swift */,
 					D0P1A000000000000000000A /* TodoStateTests.swift */,
+					D0M1C000000000000000000A /* MarkdownMathLayoutCacheTests.swift */,
 					C04800000000000000000004 /* ChatAttachmentCoordinatorTests.swift */,
 					C0390000000000000000000E /* ChatViewModelSendTests.swift */,
 					C0DED00000000000000DE000 /* ChatViewModelMergeDedupTests.swift */,
@@ -1722,6 +1725,7 @@
 					C04100000000000000000003 /* ChatComposerConfigLoaderTests.swift in Sources */,
 					C04600000000000000000003 /* ChatStreamCoordinatorTests.swift in Sources */,
 					D0P1A0000000000000000009 /* TodoStateTests.swift in Sources */,
+					D0M1C0000000000000000009 /* MarkdownMathLayoutCacheTests.swift in Sources */,
 					C04800000000000000000003 /* ChatAttachmentCoordinatorTests.swift in Sources */,
 					C0391000000000000000000E /* ChatViewModelSendTests.swift in Sources */,
 					C0DED00000000000000DE001 /* ChatViewModelMergeDedupTests.swift in Sources */,
