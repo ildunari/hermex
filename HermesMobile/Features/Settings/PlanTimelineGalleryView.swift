@@ -12,6 +12,10 @@ struct PlanTimelineGalleryView: View {
             PlanMotionLabView()
         } else if page == 13 {
             PlanComposerDockView()
+        } else if page == 15 {
+            PlanComposerDockView(planLength: .long)
+        } else if page == 20 {
+            PlanComposerDockView(planLength: .veryLong)
         } else {
             states
         }
@@ -123,6 +127,31 @@ struct PlanTimelineGalleryView: View {
         TodoItem(rawID: "1", content: "Trace the todo_state contract through streaming and cold load so the panel never disagrees with the agent", status: .completed),
         TodoItem(rawID: "2", content: "Reconcile snapshots by timestamp", status: .inProgress)
     ])
+
+    /// A long plan, including wrapping rows. Agents routinely emit lists this
+    /// size, and the expanded card used to grow until it ran off the top of the
+    /// screen — carrying its own collapse control with it, so the plan could be
+    /// opened but never closed.
+    static let longRun = TodoState(todos: [
+        TodoItem(rawID: "1", content: "Run update-smart startup recovery and checklist gates", status: .completed),
+        TodoItem(rawID: "2", content: "Pin upstream and publish the pre-restart change brief", status: .completed),
+        TodoItem(rawID: "3", content: "Start and monitor the transactional update service", status: .inProgress),
+        TodoItem(rawID: "4", content: "Interpret receipts and report activation state", status: .pending),
+        TodoItem(rawID: "5", content: "Reconcile the agent runtime against the running WebUI", status: .pending),
+        TodoItem(rawID: "6", content: "Verify the gateway profile routes to the right model", status: .pending),
+        TodoItem(rawID: "7", content: "Re-run the smoke suite against the restarted surfaces", status: .pending),
+        TodoItem(rawID: "8", content: "Summarize what changed and what still needs a human", status: .pending)
+    ])
+
+    /// A plan long enough that it must scroll on any device, which is what
+    /// proves the cap engages rather than merely fitting by luck.
+    static let veryLongRun = TodoState(todos: (1...20).map { index in
+        TodoItem(
+            rawID: "\(index)",
+            content: "Step \(index): a task description long enough to wrap onto a second line on a phone",
+            status: index < 4 ? .completed : (index == 4 ? .inProgress : .pending)
+        )
+    })
 }
 
 /// Drives the plan card open and closed on a fixed cadence, and advances the
@@ -197,6 +226,15 @@ private struct PlanMotionLabView: View {
 /// below it, not against an empty page.
 private struct PlanComposerDockView: View {
     @State private var isExpanded = false
+    /// Page 13 shows the five-step plan, 15 an eight-step one, 16 a twenty-step
+    /// one. The long variants are the cases that exposed the expanded card
+    /// growing past the top of the screen and taking its own collapse control
+    /// with it.
+    var planLength: PlanLength = .short
+
+    enum PlanLength {
+        case short, long, veryLong
+    }
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -222,7 +260,7 @@ private struct PlanComposerDockView: View {
             Spacer()
 
             PlanTimelineView(
-                state: PlanTimelineGalleryView.midRun,
+                state: planState,
                 isExpanded: $isExpanded
             )
             .padding(.bottom, 10)
@@ -234,6 +272,18 @@ private struct PlanComposerDockView: View {
     }
 
     private var composerStandIn: some View {
+        planComposerStandIn
+    }
+
+    private var planState: TodoState {
+        switch planLength {
+        case .short: PlanTimelineGalleryView.midRun
+        case .long: PlanTimelineGalleryView.longRun
+        case .veryLong: PlanTimelineGalleryView.veryLongRun
+        }
+    }
+
+    private var planComposerStandIn: some View {
         HStack(spacing: 12) {
             Image(systemName: "plus")
                 .font(.system(size: 20, weight: .light))
