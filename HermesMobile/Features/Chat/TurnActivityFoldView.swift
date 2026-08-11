@@ -47,13 +47,17 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var didAppear = false
-    /// Bumped to carry an explicit animation transaction when the automatic
-    /// fold flips; `isFolded` is derived, so it needs a driver to animate.
-    @State private var foldTick = 0
-    /// User override. `nil` follows the automatic fold; set explicitly once the
-    /// reader taps the summary (open) or the block header (re-collapse), so a
-    /// settled turn's details stay reachable rather than being sealed shut.
-    @State private var userExpanded: Bool?
+    /// The fold's actual state. Real `@State` rather than a value derived in
+    /// `body`: a derived fold flips inside the parent's (unanimated) commit,
+    /// so its animation cannot be attributed reliably — the old `foldTick`
+    /// hack tried to smuggle a transaction into that commit and worked only
+    /// by accident. Owning the state locally lets `withAnimation` drive the
+    /// swap directly.
+    @State private var isFolded: Bool
+    /// True once the reader has toggled the fold by hand. The automatic fold
+    /// then stops driving it for the rest of this view's life, so a settled
+    /// turn's details stay reachable rather than being sealed shut.
+    @State private var userDidOverride = false
 
     init(
         isCollapsed: Bool,
@@ -67,18 +71,14 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
         self.animatesFold = animatesFold
         self.blocks = blocks
         self.summary = summary
-    }
-
-    /// Whether the fold is currently showing the summary row.
-    private var isFolded: Bool {
-        userExpanded.map { !$0 } ?? (initiallyCollapsed || isCollapsed)
+        _isFolded = State(initialValue: initiallyCollapsed || isCollapsed)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Always mounted, in both states. This is the anchor that makes the
             // disclosure legible: the thing you tap does not move or vanish.
-            summary(!isFolded) { setUserExpanded(isFolded) }
+            summary(!isFolded) { setFolded(!isFolded, isUserAction: true) }
 
             if !isFolded {
                 blocks()
@@ -93,22 +93,25 @@ struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
         .onAppear { didAppear = true }
         .onChange(of: isCollapsed) { _, collapsed in
             // An explicit user choice outranks the automatic fold.
-            guard userExpanded == nil, didAppear else { return }
-            guard animatesFold, !reduceMotion else { return }
-            // The fold itself is driven by `isFolded`; animate the swap.
-            withAnimation(foldAnimation) {
-                foldTick += 1
-            }
+            guard !userDidOverride else { return }
+            setFolded(initiallyCollapsed || collapsed, isUserAction: false)
         }
     }
 
-    private func setUserExpanded(_ expanded: Bool) {
-        guard !reduceMotion else {
-            userExpanded = expanded
-            return
-        }
-        withAnimation(foldAnimation) {
-            userExpanded = expanded
+    private func setFolded(_ folded: Bool, isUserAction: Bool) {
+        if isUserAction { userDidOverride = true }
+        guard folded != isFolded else { return }
+
+        // A user tap always animates (unless Reduce Motion); the automatic
+        // fold additionally requires being watchable — on screen since before
+        // this change (`didAppear`) and near the bottom (`animatesFold`).
+        let animates = isUserAction
+            ? !reduceMotion
+            : (animatesFold && !reduceMotion && didAppear)
+        if animates {
+            withAnimation(foldAnimation) { isFolded = folded }
+        } else {
+            isFolded = folded
         }
     }
 
