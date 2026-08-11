@@ -22,6 +22,10 @@ struct ToolActivityGroupView: View {
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
+    /// Natural height of the runs list, measured rather than estimated — the
+    /// same discipline as `PlanTimelineView`: an estimated per-row constant
+    /// under-measures wrapped rows and silently defeats the cap.
+    @State private var measuredRunsHeight: CGFloat?
 
     private var palette: ChatPalette {
         ChatPalette(
@@ -66,7 +70,7 @@ struct ToolActivityGroupView: View {
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
 
             if isExpanded {
-                runsList
+                boundedRunsList
                     .padding(.leading, 8)
                     .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
             }
@@ -116,6 +120,68 @@ struct ToolActivityGroupView: View {
             return String(localized: "\(running) running")
         }
         return String(localized: "\(running) running · \(done) done")
+    }
+
+    /// The runs list, capped to `maximumVisibleRows` and scrollable beyond
+    /// that, so a long turn cannot wall off the transcript.
+    ///
+    /// A 68-tool turn used to render all 68 rows inline — roughly four screens
+    /// of tool rows sitting between the summary and the answer. The cap is
+    /// eight rows, matching the summary row's eight result dots, so the two
+    /// surfaces describe the same window of the turn.
+    ///
+    /// Structure mirrors `PlanTimelineView.expandedRows`: a group at or under
+    /// the cap renders with no scroll view, no measurement, and no view state
+    /// at all — the overwhelmingly common case lays out exactly as before.
+    /// Only a longer group takes the scrolling path, and that path's height is
+    /// never optional, because a `ScrollView` given no height takes everything
+    /// offered — which is precisely how the original overflow looked.
+    @ViewBuilder
+    private var boundedRunsList: some View {
+        if group.toolCalls.count <= Self.maximumVisibleRows {
+            runsList
+        } else {
+            ScrollView(.vertical) {
+                runsList
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ToolRunsHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
+            }
+            .frame(height: scrollWindowHeight, alignment: .top)
+            // A live group appends rows at the bottom; anchor there so the
+            // newest tool stays visible while the turn runs. Settled groups
+            // read top-down like any other record.
+            .defaultScrollAnchor(isRunning ? .bottom : .top)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.automatic)
+            .onPreferenceChange(ToolRunsHeightKey.self) { height in
+                guard height > 0 else { return }
+                measuredRunsHeight = height
+            }
+        }
+    }
+
+    /// How many tool rows stay visible before the list scrolls. Deliberately
+    /// the same eight as `TurnActivitySummaryRow`'s result-dot cap.
+    static let maximumVisibleRows = 8
+
+    /// Bounded window height for the scrolling path. Never nil — see
+    /// `boundedRunsList`. Falls back to a conservative constant until the
+    /// first measurement lands, so a rebuild that clears the measurement costs
+    /// one frame at the fallback height rather than an overflowing card. The
+    /// per-row height comes from the measured content, so the window
+    /// self-calibrates to Dynamic Type, wrapped previews, and rows the reader
+    /// has expanded inline.
+    private var scrollWindowHeight: CGFloat {
+        ToolActivityListWindow.height(
+            measuredRowsHeight: measuredRunsHeight,
+            rowCount: group.toolCalls.count
+        )
     }
 
     /// Expanded body: sequential calls at the base level, parallel batches
@@ -385,5 +451,33 @@ private struct CardRowReveal: ViewModifier {
                 ),
                 value: isVisible
             )
+    }
+}
+
+/// Reports the natural height of a group's runs list, so the scroll window
+/// can size itself from measured rows rather than an estimate.
+private struct ToolRunsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+/// Pure sizing rule for the capped tool list. Non-private so the unit suite
+/// can pin the arithmetic without rendering a view.
+enum ToolActivityListWindow {
+    /// Fallback window height until the first measurement lands: eight rows at
+    /// a compact row's ~28pt plus spacing. Deliberately conservative — one
+    /// frame at a slightly-short window beats one frame of overflow.
+    static let fallbackHeight: CGFloat = 240
+
+    /// Bounded height for the scrolling window. Never nil by design: a
+    /// `ScrollView` given no height takes everything offered.
+    static func height(measuredRowsHeight: CGFloat?, rowCount: Int) -> CGFloat {
+        guard let measuredRowsHeight, measuredRowsHeight > 0, rowCount > 0 else {
+            return fallbackHeight
+        }
+        let averageRowHeight = measuredRowsHeight / CGFloat(rowCount)
+        return averageRowHeight * CGFloat(ToolActivityGroupView.maximumVisibleRows)
     }
 }

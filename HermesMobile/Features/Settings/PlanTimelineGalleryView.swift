@@ -236,8 +236,28 @@ private struct PlanComposerDockView: View {
         case short, long, veryLong
     }
     @Environment(\.colorScheme) private var colorScheme
+    /// The real height this fixture's dock sits in. Production publishes this
+    /// from `ChatView`; nothing publishes it here, so without this the card
+    /// fell back to the 844pt environment default — taller than it should be
+    /// on some devices, shorter on others (iPhone 17 is 874pt) — and page 20
+    /// rendered the 20-step card behind the composer stand-in. Gallery-only
+    /// bug, but it made the long-plan pages untrustworthy as evidence.
+    @State private var dockHeight: CGFloat = 0
 
     var body: some View {
+        dockLayout
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.onAppear { dockHeight = proxy.size.height }
+                        .onChange(of: proxy.size.height) { _, height in
+                            dockHeight = height
+                        }
+                }
+            }
+            .environment(\.planDockHeight, dockHeight > 0 ? dockHeight : 844)
+    }
+
+    private var dockLayout: some View {
         VStack(spacing: 0) {
             Spacer()
 

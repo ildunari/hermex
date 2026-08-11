@@ -316,6 +316,31 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: false, startsExpanded: true))
     }
 
+    /// The capped tool list must always get a bounded window: a `ScrollView`
+    /// given no height takes everything offered, which is exactly the 68-row
+    /// overflow this cap exists to prevent.
+    func testToolActivityListWindowIsAlwaysBounded() {
+        // No measurement yet — falls back to the conservative constant.
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: nil, rowCount: 68), ToolActivityListWindow.fallbackHeight)
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: 0, rowCount: 68), ToolActivityListWindow.fallbackHeight)
+        XCTAssertEqual(ToolActivityListWindow.height(measuredRowsHeight: 2000, rowCount: 0), ToolActivityListWindow.fallbackHeight)
+
+        // Measured: window is maximumVisibleRows worth of the average row.
+        let height = ToolActivityListWindow.height(measuredRowsHeight: 68 * 30, rowCount: 68)
+        XCTAssertEqual(height, CGFloat(ToolActivityGroupView.maximumVisibleRows) * 30)
+
+        // Self-calibrates: taller rows (Dynamic Type, wrapped previews) widen
+        // the window instead of clipping mid-row.
+        let tallRows = ToolActivityListWindow.height(measuredRowsHeight: 20 * 52, rowCount: 20)
+        XCTAssertEqual(tallRows, CGFloat(ToolActivityGroupView.maximumVisibleRows) * 52)
+    }
+
+    /// Eight, deliberately matching the summary row's result-dot cap so the
+    /// collapsed and expanded surfaces describe the same window of the turn.
+    func testToolActivityVisibleRowCapMatchesSummaryDots() {
+        XCTAssertEqual(ToolActivityGroupView.maximumVisibleRows, 8)
+    }
+
     func testCardStartExpandedKeysAreStableAndDistinct() {
         XCTAssertEqual(
             ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey,
