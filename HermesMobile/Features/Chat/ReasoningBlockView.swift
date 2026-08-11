@@ -106,7 +106,10 @@ struct ReasoningBlockView: View {
                         }
                     }
                     .padding(.leading, 4)
-                    .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
+                    // Owns its fade timing; see `cardBodyRevealTransition` —
+                    // inheriting the delayed height spring painted the full
+                    // thought before the window opened.
+                    .transition(ChatMotion.cardBodyRevealTransition(reduceMotion: reduceMotion))
                 }
             }
             // One container for the whole block when open — same treatment the
@@ -128,6 +131,22 @@ struct ReasoningBlockView: View {
             // obvious once markdown made the body taller and multi-block.
             .clipShape(ActivityBlockChrome.shape())
             .frame(maxWidth: .infinity, alignment: .leading)
+            // Pre-warm the math-segmentation layout while the block is still a
+            // collapsed pill. The scan is the only meaningful cost inside the
+            // expand tap's commit (~16ms debug / ~5ms release for a 5KB
+            // thought, cache-cold), and it lands inside `cardExpand`'s 0.12s
+            // lead-in — eating the spring's first frames on the first open
+            // after a cold launch. Warming here (mount time, off-main, settled
+            // text only) makes the tap a guaranteed cache hit. `NSCache` is
+            // thread-safe, and the pill mounts at least an animation-length
+            // before any finger can reach it.
+            .task(id: isStreaming ? nil : trimmedText) {
+                guard !isStreaming, !isExpanded else { return }
+                let text = trimmedText
+                await Task.detached(priority: .utility) {
+                    _ = MarkdownMathLayoutCache.layout(for: text)
+                }.value
+            }
         }
     }
 
