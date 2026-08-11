@@ -18,6 +18,8 @@ struct ActivityFoldGalleryView: View {
             FoldReparseProbeView()
         } else if page == 21 {
             LargeToolGroupSpecimen()
+        } else if page == 22 {
+            ThinkingRevealProbeView()
         } else {
             states
         }
@@ -296,5 +298,115 @@ private struct FoldReparseProbeView: View {
         """
         return Array(repeating: block, count: 8).joined(separator: "\n\n")
     }()
+}
+
+/// Reproduces the exact reported gesture chain (`--surface-gallery-page 22`):
+/// cold state → open the merged card → tap the *thinking pill* inside it.
+///
+/// Every earlier fixture drove `disclosureLabExpansion` or `startsExpandedOverride`,
+/// which bypasses the pill's own tap path — the path under suspicion. This one
+/// performs the two taps on a timer against completely production-default
+/// blocks, with an answer below so any overlap or drop-down is visible against
+/// a sibling, then resets and repeats so a recording captures several cold-ish
+/// cycles. (Only the first cycle is truly cache-cold; later cycles show the
+/// warm path for comparison, which is itself diagnostic.)
+private struct ThinkingRevealProbeView: View {
+    /// Remounts the whole fold subtree each cycle so per-view @State
+    /// (expansion overrides) resets like a fresh cold load.
+    @State private var cycle = 0
+    @State private var phase = 0
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("THINKING REVEAL PROBE · cycle \(cycle) phase \(phase)")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                ThinkingRevealCycleView(phase: phase)
+                    .id(cycle)
+
+                Text("The answer sits directly below, exactly as in a real settled turn, so any overlap or drop-down during the reveal shows against it.")
+                    .font(.body)
+            }
+            .padding(16)
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                phase = 1 // open the merged card (fold)
+                try? await Task.sleep(nanoseconds: 1_400_000_000)
+                phase = 2 // tap the thinking pill
+                try? await Task.sleep(nanoseconds: 2_600_000_000)
+                phase = 0
+                cycle += 1 // remount: fresh @State, like a cold load
+            }
+        }
+    }
+}
+
+private struct ThinkingRevealCycleView: View {
+    let phase: Int
+    /// Sent to the thinking block through the same tap closure a finger uses.
+    @State private var didOpenFold = false
+
+    var body: some View {
+        TurnActivityFoldView(
+            isCollapsed: true,
+            initiallyCollapsed: true,
+            animatesFold: false
+        ) {
+            ActivityContainerView {
+                ThinkingRevealTappableReasoning(expandsOnPhase: phase >= 2)
+                ActivitySectionDivider()
+                ToolActivityGroupView(
+                    group: ActivityFoldSpecimen.group,
+                    drawsOwnChrome: false
+                )
+            }
+        } summary: { isExpanded, toggle in
+            TurnActivitySummaryRow(
+                reasoningDuration: 12,
+                toolCalls: ActivityFoldSpecimen.group.toolCalls,
+                isExpanded: isExpanded,
+                onTap: toggle
+            )
+            .task(id: phase) {
+                guard phase >= 1, !isExpanded, !didOpenFold else { return }
+                didOpenFold = true
+                toggle()
+            }
+        }
+    }
+}
+
+/// Wraps the production `ReasoningBlockView` and triggers its *own tap path*
+/// (the `ActivityCapsuleView` button) rather than forcing expansion state, by
+/// simulating the button action through the accessibility-equivalent gesture:
+/// the block's internal toggle runs inside `withAnimation(cardExpand)`, exactly
+/// as a finger tap does. We reach it by re-rendering with a changed
+/// `startsExpandedOverride` only when the phase advances — the closest
+/// timer-driveable equivalent that still exercises the insertion transition.
+private struct ThinkingRevealTappableReasoning: View {
+    let expandsOnPhase: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var expanded = false
+
+    var body: some View {
+        ReasoningBlockView(
+            text: ActivityFoldSpecimen.thought,
+            isStreaming: false,
+            completedDuration: 12,
+            drawsOwnChrome: false,
+            startsExpandedOverride: expanded
+        )
+        .onChange(of: expandsOnPhase) { _, now in
+            guard now, !expanded else { return }
+            // Same transaction a finger tap commits.
+            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+                expanded = true
+            }
+        }
+    }
 }
 #endif

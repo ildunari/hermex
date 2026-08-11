@@ -113,4 +113,26 @@ enum ChatMotion {
         // should be laid out correctly from frame one and only fade up.
         return .opacity
     }
+
+    /// Reveal for a tall card *body* whose insertion is committed by the same
+    /// tap that drives the delayed height spring (`cardExpand`).
+    ///
+    /// A plain `.opacity` transition inherits that spring — including its
+    /// 0.12s lead-in — so the body becomes readable while the window is still
+    /// closed: the text sits at its final position, peeking through the gap,
+    /// and the card then visibly drops down around it. Frame captures of the
+    /// thinking-card reveal show exactly that (the "markdown flies in from the
+    /// top" report).
+    ///
+    /// This transition owns its insertion curve instead: the fade starts at
+    /// `cardContentLeadIn`, once the window is visibly opening, so the text
+    /// emerges from inside the card. Removal stays on the caller's transaction
+    /// so collapse runs in one beat.
+    static func cardBodyRevealTransition(reduceMotion: Bool) -> AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .opacity.animation(cardContent(reduceMotion: false, delay: cardContentLeadIn)),
+            removal: .opacity
+        )
+    }
 }

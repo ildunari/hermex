@@ -26,6 +26,8 @@ struct SurfaceGalleryView: View {
             ActivityFoldGalleryView(page: 16)
         } else if page == 21 {
             ActivityFoldGalleryView(page: 21)
+        } else if page == 22 {
+            ActivityFoldGalleryView(page: 22)
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {

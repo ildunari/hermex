@@ -158,43 +158,55 @@ struct PlanTimelineView: View {
 
     // MARK: - Expanded checklist
 
-    /// The checklist, capped to `maximumVisibleRows` and scrollable beyond that,
-    /// so a long plan cannot push its own collapse control off the screen.
+    /// The checklist, always inside a bounded scroll window, so a long plan
+    /// cannot push its own collapse control off the screen.
     ///
     /// The card is docked above the composer and grows upward, so before this
     /// an eight-step plan ran off the top of the display: the trailing rows
     /// were clipped and the header — the only way to close it — went with them.
     /// The plan could be opened and then never collapsed.
-    @ViewBuilder
+    ///
+    /// **Why the window is unconditional.** The first cap keyed the scroll
+    /// path on *step count* (> `maximumVisibleRows`), which left the short
+    /// path completely unbounded — a seven-step plan whose rows wrap at a
+    /// large type size, or a card caught by a squeezed dock (keyboard up,
+    /// Split View), could still overrun the composer with no way to scroll or
+    /// close (the field report: rows cut off behind the composer, header
+    /// unreachable, nothing scrollable). The window's height equals the
+    /// content's natural height whenever it fits, so a short plan lays out
+    /// pixel-identically to the old path; the `ScrollView` only actually
+    /// scrolls (`basedOnSize`) when the content genuinely exceeds the window.
+    ///
+    /// Tapping anywhere in the rows area also collapses the card — the header
+    /// must never be the only way out again.
     private var expandedRows: some View {
-        if state.todos.count <= Self.maximumVisibleRows {
-            // Short plan — the overwhelmingly common case. No scroll view, no
-            // measurement, no view state: it lays out exactly as it did before
-            // any of this existed, and cannot be affected by a rebuild.
+        ScrollView(.vertical) {
             paddedRows
-        } else {
-            ScrollView(.vertical) {
-                paddedRows
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: PlanRowsHeightKey.self,
-                                value: proxy.size.height
-                            )
-                        }
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: PlanRowsHeightKey.self,
+                            value: proxy.size.height
+                        )
                     }
-            }
-            // Never nil. A ScrollView is greedy, so an absent height means it
-            // takes everything offered — which is how the original bug looked.
-            // `scrollHeight` always returns a bounded value, so a rebuild that
-            // clears the measurement costs at most one frame at the fallback
-            // height rather than an overflow.
-            .frame(height: scrollHeight, alignment: .top)
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.automatic)
-            .onPreferenceChange(PlanRowsHeightKey.self) { height in
-                guard height > 0 else { return }
-                measuredRowsHeight = height
+                }
+        }
+        // Never nil. A ScrollView is greedy, so an absent height means it
+        // takes everything offered — which is how the original bug looked.
+        // `windowHeight` always returns a bounded value, so a rebuild that
+        // clears the measurement costs at most one frame at the estimated
+        // height rather than an overflow.
+        .frame(height: windowHeight, alignment: .top)
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.automatic)
+        .onPreferenceChange(PlanRowsHeightKey.self) { height in
+            guard height > 0 else { return }
+            measuredRowsHeight = height
+        }
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+                isExpanded = false
             }
         }
     }
@@ -220,38 +232,46 @@ struct PlanTimelineView: View {
     /// common size. Seven is the point where the curve flattens.
     static let maximumVisibleRows = 7
 
-    /// Height of the scrolling checklist, used only when the plan is longer
-    /// than `maximumVisibleRows`.
+    /// Height of the checklist's scroll window — used for every expanded plan.
     ///
     /// **Never optional.** A `ScrollView` is greedy: give it no height and it
     /// takes everything offered, which is exactly how the original overflow
-    /// looked. So this always returns a bounded value — the measured
-    /// `maximumVisibleRows` worth of rows once a measurement exists, and a
-    /// conservative share of the dock before then. A view rebuild that clears
-    /// the measurement (leaving and re-entering a session, returning from the
-    /// background) therefore costs at most one frame at the fallback height
-    /// rather than an overflowing card.
+    /// looked. So this always returns a bounded value: the smaller of the
+    /// content's natural height (a fitting plan renders identically to an
+    /// unwindowed one), `maximumVisibleRows` worth of measured rows, and a
+    /// share of the dock the card actually sits in. Before the first
+    /// measurement lands it estimates from the row count, clamped by the same
+    /// dock ceiling, so a rebuild that clears the measurement (leaving and
+    /// re-entering a session, returning from the background) costs at most one
+    /// frame at the estimate rather than an overflowing card.
     ///
     /// The per-row height comes from the *measured* content rather than a
     /// constant, so it self-calibrates to Dynamic Type and to rows that wrap
     /// onto a second line. An earlier attempt assumed 34pt per row; rows wrap
     /// often enough that the estimate came in under the cap and silently
     /// defeated it, so the card rendered exactly as broken as before.
-    private var scrollHeight: CGFloat {
+    private var windowHeight: CGFloat {
         let ceiling = max(120, availableHeight * Self.maximumContainerFraction)
 
         guard let measuredRowsHeight, state.todos.count > 0 else {
-            return ceiling
+            // Pre-measurement estimate: enough for the visible rows at a
+            // conservative 34pt each. One frame later the real measurement
+            // replaces it; clamping to the ceiling keeps even the estimate
+            // from overrunning a squeezed dock.
+            let estimatedRows = min(state.todos.count, Self.maximumVisibleRows)
+            let chrome = ActivityBlockChrome.topPadding + ActivityBlockChrome.bottomPadding
+            return min(CGFloat(estimatedRows) * 34 + chrome, ceiling)
         }
 
         let chrome = ActivityBlockChrome.topPadding + ActivityBlockChrome.bottomPadding
         let averageRowHeight = max(1, (measuredRowsHeight - chrome) / CGFloat(state.todos.count))
         let capped = averageRowHeight * CGFloat(Self.maximumVisibleRows) + chrome
 
-        // Also bounded by the space the dock actually has: seven rows of
-        // wrapped text at an accessibility type size can still exceed a small
-        // phone.
-        return min(capped, ceiling)
+        // Bounded by all three: natural content height (fitting plans render
+        // unscrolled at exact size), the row cap, and the space the dock
+        // actually has — seven rows of wrapped text at an accessibility type
+        // size can still exceed a small phone.
+        return min(measuredRowsHeight, capped, ceiling)
     }
 
     /// Share of the dock's available height the open plan may occupy. The

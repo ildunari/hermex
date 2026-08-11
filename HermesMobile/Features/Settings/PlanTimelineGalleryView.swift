@@ -255,6 +255,13 @@ private struct PlanComposerDockView: View {
                 }
             }
             .environment(\.planDockHeight, dockHeight > 0 ? dockHeight : 844)
+            // Auto-open shortly after launch so the expanded state — the whole
+            // point of the long-plan pages — is capturable from the CLI, which
+            // cannot tap.
+            .task {
+                try? await Task.sleep(nanoseconds: 1_200_000_000)
+                withAnimation(ChatMotion.cardExpand(reduceMotion: false)) { isExpanded = true }
+            }
     }
 
     private var dockLayout: some View {
