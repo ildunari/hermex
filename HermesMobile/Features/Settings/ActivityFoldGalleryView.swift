@@ -16,6 +16,8 @@ struct ActivityFoldGalleryView: View {
     var body: some View {
         if page == 16 {
             FoldReparseProbeView()
+        } else if page == 21 {
+            LargeToolGroupSpecimen()
         } else {
             states
         }
@@ -130,6 +132,30 @@ private struct ActivityFoldSpecimen: View {
         }
         return ToolCallGroup.live(anchorMessageID: "fold-anchor", toolCalls: calls)
     }()
+
+    /// A turn that ran 68 tools — the size Kosta actually hits on long agent
+    /// runs. The six-call fixture above is why the unbounded expanded body was
+    /// never visible in review: six rows fit anywhere.
+    static let largeGroup: ToolCallGroup = {
+        let names = [
+            "read_file", "search_files", "execute_code", "web_search",
+            "skill_view", "write_file", "git_diff", "list_dir"
+        ]
+        let calls = (0..<68).map { index in
+            ToolCall(
+                id: "large-\(index)",
+                name: names[index % names.count],
+                preview: index % 4 == 0 ? "HermesMobile/Features/Chat/ChatViewModel.swift" : nil,
+                args: nil,
+                duration: Double(index % 5) + 0.6,
+                isError: index % 23 == 0,
+                isCompleted: true,
+                // Two parallel batches early, the rest sequential.
+                batchIndex: index < 4 ? 0 : index
+            )
+        }
+        return ToolCallGroup.live(anchorMessageID: "large-anchor", toolCalls: calls)
+    }()
 }
 
 /// Reproduces the production sibling arrangement — an activity fold and a long
@@ -140,6 +166,60 @@ private struct ActivityFoldSpecimen: View {
 /// gallery page rendering a card alone cannot show it. Note it does *not*
 /// fully reproduce production: this passes a constant string, so SwiftUI can
 /// skip the renderer regardless of the guard. Judge the real fix on device.
+/// The activity card for a turn that ran 68 tools, expanded, sitting above an
+/// answer — i.e. the arrangement from a real long agent run.
+private struct LargeToolGroupSpecimen: View {
+    @State private var didExpand = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("ACTIVITY · 68 TOOLS")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+
+                TurnActivityFoldView(
+                    isCollapsed: true,
+                    initiallyCollapsed: true,
+                    animatesFold: false
+                ) {
+                    ActivityContainerView {
+                        ReasoningBlockView(
+                            text: ActivityFoldSpecimen.thought,
+                            isStreaming: false,
+                            completedDuration: 12,
+                            drawsOwnChrome: false
+                        )
+
+                        ActivitySectionDivider()
+
+                        ToolActivityGroupView(
+                            group: ActivityFoldSpecimen.largeGroup,
+                            drawsOwnChrome: false
+                        )
+                    }
+                } summary: { isExpanded, toggle in
+                    TurnActivitySummaryRow(
+                        reasoningDuration: 12,
+                        toolCalls: ActivityFoldSpecimen.largeGroup.toolCalls,
+                        isExpanded: isExpanded,
+                        onTap: toggle
+                    )
+                    .task(id: didExpand) {
+                        guard !isExpanded, !didExpand else { return }
+                        didExpand = true
+                        toggle()
+                    }
+                }
+
+                Text("The answer follows the activity card, exactly as it does in a real turn.")
+                    .font(.body)
+            }
+            .padding(16)
+        }
+    }
+}
+
 private struct FoldReparseProbeView: View {
     @State private var isCollapsed = true
 
