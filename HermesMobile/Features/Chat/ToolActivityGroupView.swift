@@ -13,8 +13,8 @@ struct ToolActivityGroupView: View {
     /// and its beam, so the block must not draw a competing one.
     var drawsOwnChrome: Bool = true
     /// Default expansion when the reader has not toggled this block. See
-    /// `ReasoningBlockView.startsExpandedOverride` — inside the unified card
-    /// the sections mount open so one tap reveals the turn's work.
+    /// `ReasoningBlockView.startsExpandedOverride` — production passes nil so
+    /// sections open as pills; debug galleries force `true`.
     var startsExpandedOverride: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme

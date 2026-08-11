@@ -729,8 +729,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
                 ReasoningBlockView(
                     text: group.text,
-                    drawsOwnChrome: !isHistorical,
-                    startsExpandedOverride: isHistorical ? true : nil
+                    drawsOwnChrome: !isHistorical
                 )
             }
         }
@@ -743,8 +742,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
                 completedDuration: lastReasoningDuration,
-                drawsOwnChrome: !isHistorical,
-                startsExpandedOverride: isHistorical ? true : nil
+                drawsOwnChrome: !isHistorical
             )
         }
     }
@@ -755,8 +753,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(toolCallGroups) { group in
                 ToolActivityGroupView(
                     group: group,
-                    drawsOwnChrome: !isHistorical,
-                    startsExpandedOverride: isHistorical ? true : nil
+                    drawsOwnChrome: !isHistorical
                 )
             }
         }
@@ -771,8 +768,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                     toolCalls: liveToolCalls
                 ),
                 isPhaseActive: isToolPhaseActive,
-                drawsOwnChrome: !isHistorical,
-                startsExpandedOverride: isHistorical ? true : nil
+                drawsOwnChrome: !isHistorical
             )
         }
     }

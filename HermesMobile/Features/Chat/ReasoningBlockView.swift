@@ -12,11 +12,14 @@ struct ReasoningBlockView: View {
     var drawsOwnChrome: Bool = true
     /// Default expansion when the reader has not toggled this block.
     ///
-    /// Inside the end-of-turn unified card, opening the card is already the
-    /// gesture that says "show me the work" — leaving the sections as pills
-    /// makes that a two-tap disclosure into an empty-looking box. The container
-    /// passes `true` so its sections mount open; standalone blocks keep the
-    /// user's `thinkingCardsStartExpanded` setting.
+    /// Production always passes nil now — the merged card's sections open as
+    /// collapsed pills that follow the user's `thinkingCardsStartExpanded`
+    /// setting, the same as standalone blocks. Mounting them open was tried
+    /// and reverted: the fold inserts its subtree with an opacity transition,
+    /// so a pre-expanded markdown body pops in at full height instead of
+    /// revealing inline (the pill's own tap animates correctly because its
+    /// clipped frame interpolates). Debug galleries still pass `true` to
+    /// render the expanded treatment directly.
     var startsExpandedOverride: Bool?
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
