@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// The agent's plan, as a collapsed progress pill that opens into a checklist.
 ///
@@ -28,13 +29,13 @@ struct PlanTimelineView: View {
     /// the container widens before its contents arrive. See `ChatMotion`.
     @State private var chromeExpanded = false
 
+    /// Natural height of the checklist, measured rather than estimated.
+    @State private var measuredRowsHeight: CGFloat?
+
     var body: some View {
         VStack(spacing: 0) {
             if isExpanded {
-                rows
-                    .padding(.horizontal, ActivityBlockChrome.horizontalPadding)
-                    .padding(.top, ActivityBlockChrome.topPadding)
-                    .padding(.bottom, ActivityBlockChrome.bottomPadding)
+                expandedRows
             }
 
             header
@@ -152,6 +153,78 @@ struct PlanTimelineView: View {
     }
 
     // MARK: - Expanded checklist
+
+    /// The checklist, height-capped so a long plan cannot push its own collapse
+    /// control off the screen.
+    ///
+    /// The card is docked above the composer and grows upward, so before this
+    /// an eight-step plan ran off the top of the display: the trailing rows
+    /// were clipped and the header — the only way to close it — went with them.
+    /// The plan could be opened and then never collapsed.
+    ///
+    /// The cap is a fraction of the screen rather than a fixed point value so it
+    /// holds across device sizes and Dynamic Type, where a fixed height would
+    /// either clip large text or waste space on small text. Short plans are
+    /// unaffected: `ScrollView` hugs its content, so the common three-to-five
+    /// step case renders exactly as before, with no scrolling and no inset.
+    @ViewBuilder
+    private var expandedRows: some View {
+        let cap = Self.maximumRowsHeight(for: screenHeight)
+
+        ScrollView(.vertical) {
+            rows
+                .padding(.horizontal, ActivityBlockChrome.horizontalPadding)
+                .padding(.top, ActivityBlockChrome.topPadding)
+                .padding(.bottom, ActivityBlockChrome.bottomPadding)
+                .background {
+                    // Measure what the checklist actually wants to be. Rows wrap
+                    // to two lines often enough that a per-row estimate is wrong
+                    // in the common case, and guessing low silently defeats the
+                    // cap.
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: PlanRowsHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                }
+        }
+        // Take the measured height, clamped to the cap: short plans render
+        // exactly as before (no scrolling, no wasted space), long plans stop at
+        // the cap and scroll inside it.
+        .frame(height: min(measuredRowsHeight ?? cap, cap))
+        .scrollBounceBehavior(.basedOnSize)
+        .scrollIndicators(.automatic)
+        .onPreferenceChange(PlanRowsHeightKey.self) { height in
+            guard height > 0 else { return }
+            measuredRowsHeight = height
+        }
+    }
+
+    /// Fraction of the screen the open checklist may occupy before it scrolls.
+    /// Leaves room for the composer beneath it and transcript above, so the card
+    /// still reads as an inline status surface rather than a sheet.
+    private static let maximumHeightFraction: CGFloat = 0.38
+
+    static func maximumRowsHeight(for screenHeight: CGFloat) -> CGFloat {
+        max(160, screenHeight * maximumHeightFraction)
+    }
+
+    /// Height of the window the card is docked in.
+    ///
+    /// Read from the active scene rather than `UIScreen.main`, which is
+    /// deprecated and reports the wrong bounds in Split View on iPad.
+    private var screenHeight: CGFloat {
+        let scene = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first { $0.activationState == .foregroundActive }
+            ?? UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .first
+
+        return scene?.screen.bounds.height ?? 844
+    }
+
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -457,5 +530,14 @@ private struct PlanProgressRing: View {
             reduceMotion ? .easeOut(duration: 0.10) : .smooth(duration: 0.32, extraBounce: 0),
             value: fraction
         )
+    }
+}
+
+/// Carries the checklist's natural height up so the card can clamp it.
+private struct PlanRowsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
