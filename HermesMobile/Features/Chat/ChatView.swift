@@ -314,6 +314,9 @@ struct ChatView: View {
     @State private var gitToastState = GitActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
+    /// Distance from the top of the window to the bottom of the composer dock —
+    /// i.e. the vertical space the plan card is allowed to grow into.
+    @State private var dockAvailableHeight: CGFloat = 844
     @State private var composerIsFocused = false
     @State private var didCompleteInitialAppearance = false
     @State private var isInitialComposerFocusContentReady = false
@@ -1116,6 +1119,23 @@ struct ChatView: View {
             messageComposer
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+        // Publish the height the dock actually sits in, so the plan card can
+        // bound itself against that rather than against the whole screen —
+        // which is wrong in Split View and with the keyboard raised.
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(
+                        key: ChatDockHeightKey.self,
+                        value: proxy.frame(in: .global).maxY
+                    )
+            }
+        }
+        .environment(\.planDockHeight, dockAvailableHeight)
+        .onPreferenceChange(ChatDockHeightKey.self) { maxY in
+            guard maxY > 0 else { return }
+            dockAvailableHeight = maxY
+        }
     }
 
     @ViewBuilder
@@ -2456,5 +2476,15 @@ private extension SlashCommandExecutionResult {
         case .sendAsMessage, .unsupported, .needsSubArg:
             false
         }
+    }
+}
+
+/// Distance from the top of the window to the bottom of the composer dock, which
+/// is the vertical space the plan card may grow into.
+private struct ChatDockHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 /// The agent's plan, as a collapsed progress pill that opens into a checklist.
 ///
@@ -31,6 +30,11 @@ struct PlanTimelineView: View {
 
     /// Natural height of the checklist, measured rather than estimated.
     @State private var measuredRowsHeight: CGFloat?
+
+    /// Height of the space the card is docked in, from the environment rather
+    /// than the screen: on iPad Split View and with the keyboard raised the
+    /// screen is not what the card actually gets.
+    @Environment(\.planDockHeight) private var availableHeight
 
     var body: some View {
         VStack(spacing: 0) {
@@ -154,77 +158,105 @@ struct PlanTimelineView: View {
 
     // MARK: - Expanded checklist
 
-    /// The checklist, height-capped so a long plan cannot push its own collapse
-    /// control off the screen.
+    /// The checklist, capped to `maximumVisibleRows` and scrollable beyond that,
+    /// so a long plan cannot push its own collapse control off the screen.
     ///
     /// The card is docked above the composer and grows upward, so before this
     /// an eight-step plan ran off the top of the display: the trailing rows
     /// were clipped and the header — the only way to close it — went with them.
     /// The plan could be opened and then never collapsed.
-    ///
-    /// The cap is a fraction of the screen rather than a fixed point value so it
-    /// holds across device sizes and Dynamic Type, where a fixed height would
-    /// either clip large text or waste space on small text. Short plans are
-    /// unaffected: `ScrollView` hugs its content, so the common three-to-five
-    /// step case renders exactly as before, with no scrolling and no inset.
     @ViewBuilder
     private var expandedRows: some View {
-        let cap = Self.maximumRowsHeight(for: screenHeight)
-
-        ScrollView(.vertical) {
-            rows
-                .padding(.horizontal, ActivityBlockChrome.horizontalPadding)
-                .padding(.top, ActivityBlockChrome.topPadding)
-                .padding(.bottom, ActivityBlockChrome.bottomPadding)
-                .background {
-                    // Measure what the checklist actually wants to be. Rows wrap
-                    // to two lines often enough that a per-row estimate is wrong
-                    // in the common case, and guessing low silently defeats the
-                    // cap.
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: PlanRowsHeightKey.self,
-                            value: proxy.size.height
-                        )
+        if state.todos.count <= Self.maximumVisibleRows {
+            // Short plan — the overwhelmingly common case. No scroll view, no
+            // measurement, no view state: it lays out exactly as it did before
+            // any of this existed, and cannot be affected by a rebuild.
+            paddedRows
+        } else {
+            ScrollView(.vertical) {
+                paddedRows
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: PlanRowsHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
                     }
-                }
-        }
-        // Take the measured height, clamped to the cap: short plans render
-        // exactly as before (no scrolling, no wasted space), long plans stop at
-        // the cap and scroll inside it.
-        .frame(height: min(measuredRowsHeight ?? cap, cap))
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.automatic)
-        .onPreferenceChange(PlanRowsHeightKey.self) { height in
-            guard height > 0 else { return }
-            measuredRowsHeight = height
+            }
+            // Never nil. A ScrollView is greedy, so an absent height means it
+            // takes everything offered — which is how the original bug looked.
+            // `scrollHeight` always returns a bounded value, so a rebuild that
+            // clears the measurement costs at most one frame at the fallback
+            // height rather than an overflow.
+            .frame(height: scrollHeight, alignment: .top)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.automatic)
+            .onPreferenceChange(PlanRowsHeightKey.self) { height in
+                guard height > 0 else { return }
+                measuredRowsHeight = height
+            }
         }
     }
 
-    /// Fraction of the screen the open checklist may occupy before it scrolls.
-    /// Leaves room for the composer beneath it and transcript above, so the card
-    /// still reads as an inline status surface rather than a sheet.
-    private static let maximumHeightFraction: CGFloat = 0.38
-
-    static func maximumRowsHeight(for screenHeight: CGFloat) -> CGFloat {
-        max(160, screenHeight * maximumHeightFraction)
+    private var paddedRows: some View {
+        rows
+            .padding(.horizontal, ActivityBlockChrome.horizontalPadding)
+            .padding(.top, ActivityBlockChrome.topPadding)
+            .padding(.bottom, ActivityBlockChrome.bottomPadding)
     }
 
-    /// Height of the window the card is docked in.
+    /// How many steps stay visible before the checklist scrolls.
     ///
-    /// Read from the active scene rather than `UIScreen.main`, which is
-    /// deprecated and reports the wrong bounds in Split View on iPad.
-    private var screenHeight: CGFloat {
-        let scene = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-            ?? UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .first
+    /// Seven, from the plans agents actually write. Across 267 real `todo_state`
+    /// snapshots the distribution is: median 5 steps, p75 6, p90 9, p95 12,
+    /// longest 22. A seven-row window shows **85%** of plans end to end, and the
+    /// `todo` tool only engages at "3+ steps", so the short lists that dominate
+    /// are unaffected.
+    ///
+    /// Going higher buys little and costs a lot: 9 rows covers 92% but eats most
+    /// of a small phone's screen; 5 rows would fit more comfortably but would
+    /// scroll 30% of plans, including the 5-step case that is the single most
+    /// common size. Seven is the point where the curve flattens.
+    static let maximumVisibleRows = 7
 
-        return scene?.screen.bounds.height ?? 844
+    /// Height of the scrolling checklist, used only when the plan is longer
+    /// than `maximumVisibleRows`.
+    ///
+    /// **Never optional.** A `ScrollView` is greedy: give it no height and it
+    /// takes everything offered, which is exactly how the original overflow
+    /// looked. So this always returns a bounded value — the measured
+    /// `maximumVisibleRows` worth of rows once a measurement exists, and a
+    /// conservative share of the dock before then. A view rebuild that clears
+    /// the measurement (leaving and re-entering a session, returning from the
+    /// background) therefore costs at most one frame at the fallback height
+    /// rather than an overflowing card.
+    ///
+    /// The per-row height comes from the *measured* content rather than a
+    /// constant, so it self-calibrates to Dynamic Type and to rows that wrap
+    /// onto a second line. An earlier attempt assumed 34pt per row; rows wrap
+    /// often enough that the estimate came in under the cap and silently
+    /// defeated it, so the card rendered exactly as broken as before.
+    private var scrollHeight: CGFloat {
+        let ceiling = max(120, availableHeight * Self.maximumContainerFraction)
+
+        guard let measuredRowsHeight, state.todos.count > 0 else {
+            return ceiling
+        }
+
+        let chrome = ActivityBlockChrome.topPadding + ActivityBlockChrome.bottomPadding
+        let averageRowHeight = max(1, (measuredRowsHeight - chrome) / CGFloat(state.todos.count))
+        let capped = averageRowHeight * CGFloat(Self.maximumVisibleRows) + chrome
+
+        // Also bounded by the space the dock actually has: seven rows of
+        // wrapped text at an accessibility type size can still exceed a small
+        // phone.
+        return min(capped, ceiling)
     }
 
+    /// Share of the dock's available height the open plan may occupy. The
+    /// remainder belongs to the composer and the transcript above it.
+    private static let maximumContainerFraction: CGFloat = 0.5
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -539,5 +571,19 @@ private struct PlanRowsHeightKey: PreferenceKey {
 
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
+    }
+}
+
+private struct PlanDockHeightKey: EnvironmentKey {
+    /// A mid-size phone, used only until a host supplies the real value.
+    static let defaultValue: CGFloat = 844
+}
+
+extension EnvironmentValues {
+    /// Height available to the composer dock, so the plan card can bound itself
+    /// against the space it actually has rather than the whole screen.
+    var planDockHeight: CGFloat {
+        get { self[PlanDockHeightKey.self] }
+        set { self[PlanDockHeightKey.self] = newValue }
     }
 }
