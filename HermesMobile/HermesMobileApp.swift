@@ -54,6 +54,9 @@ struct HermesMobileApp: App {
                     ChatThemeLabView()
                 }
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+            } else if ProcessInfo.processInfo.arguments.contains("--model-picker-capture") {
+                ModelPickerCaptureHost()
+                    .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
             } else if ProcessInfo.processInfo.arguments.contains("--surface-gallery") {
                 NavigationStack {
                     SurfaceGalleryView()

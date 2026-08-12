@@ -154,6 +154,87 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(visibleOptions, [claude, missing, gemini])
     }
 
+    func testFullPickerRecentOptionsIncludeFavoritesInMRUOrder() {
+        let gpt = ModelCatalogOption(id: "gpt-5.5", displayName: "GPT-5.5", providerID: "openai")
+        let claude = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
+        let missing = ModelCatalogOption(id: "missing-model", displayName: "missing-model", providerID: "local")
+        let groups = [
+            ModelCatalogGroup(id: "openai", name: "OpenAI", providerID: "openai", models: [gpt]),
+            ModelCatalogGroup(id: "anthropic", name: "Anthropic", providerID: "anthropic", models: [claude])
+        ]
+
+        let visibleOptions = ModelRecentsStore.visibleAllRecentOptions(
+            in: groups,
+            recentKeys: [claude.favoriteKey, missing.favoriteKey, gpt.favoriteKey]
+        )
+
+        XCTAssertEqual(visibleOptions, [claude, missing, gpt])
+    }
+
+    func testUnifiedPickerSearchMatchesProviderPresentationAndExactIdentity() {
+        let openAI = ModelCatalogOption(id: "gpt-5.5-codex", displayName: "GPT-5.5 Codex", providerID: "openai-codex")
+        let kimi = ModelCatalogOption(id: "kimi-k2.5", displayName: "Kimi K2.5", providerID: "kimi-coding")
+        let options = [openAI, kimi]
+        let names = ["openai-codex": "Codex", "kimi-coding": "Moonshot"]
+
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "Codex", providerID: nil, providerDisplayNames: names),
+            [openAI]
+        )
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "kimi-k2.5", providerID: "kimi-coding", providerDisplayNames: names),
+            [kimi]
+        )
+        XCTAssertEqual(
+            ModelPickerCatalog.filteredOptions(options, query: "Moonshot", providerID: "openai-codex", providerDisplayNames: names),
+            []
+        )
+    }
+
+    func testProviderBrandCatalogHumanizesTechnicalNamesWithoutChangingIdentity() {
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "openai-codex", catalogName: "openai-codex"),
+            "OpenAI Codex"
+        )
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "fireworks", catalogName: "Fireworks AI"),
+            "Fireworks AI"
+        )
+        XCTAssertEqual(
+            ProviderBrandCatalog.displayName(providerID: "my-private-provider", catalogName: "my-private-provider"),
+            "My Private Provider"
+        )
+    }
+
+    func testProviderBrandCatalogMapsCachedOpenAIAndFireworksArtwork() {
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-codex")?.assetName, "ProviderOpenAI")
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-api")?.assetName, "ProviderOpenAI")
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "fireworks")?.assetName, "ProviderFireworks")
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "custom-private-provider"))
+    }
+
+    func testProviderAppearanceStoreScopesDisplayNamesByServerAndKeepsProviderIdentity() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceStoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearances",
+            artworkDirectory: directory
+        )
+
+        store.setDisplayName("Work Codex", serverID: "server-a", providerID: "openai-codex")
+        store.setDisplayName("Home Codex", serverID: "server-b", providerID: "openai-codex")
+
+        XCTAssertEqual(store.appearance(serverID: "server-a", providerID: "openai-codex").displayName, "Work Codex")
+        XCTAssertEqual(store.appearance(serverID: "server-b", providerID: "openai-codex").displayName, "Home Codex")
+        XCTAssertNil(store.appearance(serverID: "server-a", providerID: "openai").displayName)
+
+        store.reset(serverID: "server-a", providerID: "openai-codex")
+        XCTAssertFalse(store.appearance(serverID: "server-a", providerID: "openai-codex").hasOverride)
+        XCTAssertEqual(store.appearance(serverID: "server-b", providerID: "openai-codex").displayName, "Home Codex")
+    }
+
     func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {
         let custom = ModelCatalogOption(
             id: "moonshotai/kimi-k2-0905",

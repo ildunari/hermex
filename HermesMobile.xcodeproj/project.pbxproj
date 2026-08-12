@@ -95,6 +95,7 @@
 		C03910000000000000000015 /* SessionIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000015 /* SessionIdentityTests.swift */; };
 		C03910000000000000000016 /* TranscriptDisplayModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000016 /* TranscriptDisplayModelTests.swift */; };
 		D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000016 /* ActivityDisclosureUITests.swift */; };
+		D11100000000000000000019 /* ModelPickerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000018 /* ModelPickerUITests.swift */; };
 		C14300000000000000000003 /* StreamingMarkdownSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000004 /* StreamingMarkdownSupportTests.swift */; };
 		C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */; };
 		C04100000000000000000001 /* ChatComposerConfigLoader.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04100000000000000000002 /* ChatComposerConfigLoader.swift */; };
@@ -404,6 +405,7 @@
 		1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D11100000000000000000015 /* HermesMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D11100000000000000000016 /* ActivityDisclosureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityDisclosureUITests.swift; sourceTree = "<group>"; };
+		D11100000000000000000018 /* ModelPickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerUITests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B2 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
@@ -919,6 +921,7 @@
 			isa = PBXGroup;
 			children = (
 				D11100000000000000000016 /* ActivityDisclosureUITests.swift */,
+				D11100000000000000000018 /* ModelPickerUITests.swift */,
 			);
 			path = HermesMobileUITests;
 			sourceTree = "<group>";
@@ -1850,6 +1853,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */,
+				D11100000000000000000019 /* ModelPickerUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

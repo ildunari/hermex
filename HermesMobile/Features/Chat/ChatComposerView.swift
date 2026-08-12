@@ -464,7 +464,7 @@ struct MessageComposerView: View {
                     recentModelKeys = ModelRecentsStore.shared.removeRecent(for: option)
                 }
             )
-            .presentationDetents([.medium, .large])
+            .presentationDetents([.fraction(0.84), .large])
             .presentationDragIndicator(.visible)
             .task {
                 await onModelPickerOpen()
