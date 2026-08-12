@@ -148,7 +148,7 @@ struct PlanTimelineGalleryView: View {
     static let veryLongRun = TodoState(todos: (1...20).map { index in
         TodoItem(
             rawID: "\(index)",
-            content: "Step \(index): a task description long enough to wrap onto a second line on a phone",
+            content: "Step \(index): a task description long enough to wrap well beyond two lines on a phone, prove the trailing ellipsis appears, and make sure one unusually detailed task cannot take over the plan card",
             status: index < 4 ? .completed : (index == 4 ? .inProgress : .pending)
         )
     })
@@ -226,6 +226,7 @@ private struct PlanMotionLabView: View {
 /// below it, not against an empty page.
 private struct PlanComposerDockView: View {
     @State private var isExpanded = false
+    @State private var expandedInteractionPhase = 0
     /// Page 13 shows the five-step plan, 15 an eight-step one, 16 a twenty-step
     /// one. The long variants are the cases that exposed the expanded card
     /// growing past the top of the screen and taking its own collapse control
@@ -261,6 +262,16 @@ private struct PlanComposerDockView: View {
             .task {
                 try? await Task.sleep(nanoseconds: 1_200_000_000)
                 withAnimation(ChatMotion.cardExpand(reduceMotion: false)) { isExpanded = true }
+                if planLength == .veryLong {
+                    // Exercise the same public row-control path the user taps:
+                    // compact -> expanded -> compact. This leaves page 20 in
+                    // the accepted resting state while catching gesture/state
+                    // regressions in deterministic gallery recordings.
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    expandedInteractionPhase = 1
+                    try? await Task.sleep(nanoseconds: 900_000_000)
+                    expandedInteractionPhase = 2
+                }
             }
     }
 
@@ -288,7 +299,8 @@ private struct PlanComposerDockView: View {
 
             PlanTimelineView(
                 state: planState,
-                isExpanded: $isExpanded
+                isExpanded: $isExpanded,
+                debugRowInteractionPhase: expandedInteractionPhase
             )
             .padding(.bottom, 10)
 

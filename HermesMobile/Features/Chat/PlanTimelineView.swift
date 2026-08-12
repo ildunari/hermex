@@ -16,6 +16,12 @@ struct PlanTimelineView: View {
     /// plan on an idle session drives a 30fps timeline and a per-frame
     /// rasterization forever. That is a battery cost with nothing to report.
     var isLive: Bool = false
+#if DEBUG
+    /// Gallery-only deterministic interaction driver. Production always leaves
+    /// this at zero; page 20 advances 0 -> 1 -> 2 to prove a long task opens
+    /// and closes through the same local state path as a tap.
+    var debugRowInteractionPhase: Int = 0
+#endif
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -28,8 +34,15 @@ struct PlanTimelineView: View {
     /// the container widens before its contents arrive. See `ChatMotion`.
     @State private var chromeExpanded = false
 
-    /// Natural height of the checklist, measured rather than estimated.
-    @State private var measuredRowsHeight: CGFloat?
+    /// Natural height of each checklist row. Keeping the measurements separate
+    /// lets the scroll window stop after exactly five tasks even when one row
+    /// wraps or has been opened to show its full text.
+    @State private var measuredRowHeights: [Int: CGFloat] = [:]
+
+    /// Rows start as compact two-line summaries. Expansion belongs to this
+    /// surface rather than the snapshot model because it is presentation state
+    /// and should reset when the whole plan is dismissed.
+    @State private var expandedRowOffsets: Set<Int> = []
 
     /// Height of the space the card is docked in, from the environment rather
     /// than the screen: on iPad Split View and with the keyboard raised the
@@ -83,7 +96,24 @@ struct PlanTimelineView: View {
             withAnimation(ChatMotion.cardChrome(reduceMotion: reduceMotion)) {
                 chromeExpanded = expanded
             }
+            if !expanded {
+                expandedRowOffsets.removeAll()
+            }
         }
+        .onChange(of: state.todos.count) { _, count in
+            expandedRowOffsets = expandedRowOffsets.filter { $0 < count }
+            measuredRowHeights = measuredRowHeights.filter { $0.key < count }
+        }
+#if DEBUG
+        .onChange(of: debugRowInteractionPhase) { _, phase in
+            guard !state.todos.isEmpty else { return }
+            if phase == 1 {
+                if !expandedRowOffsets.contains(0) { toggleRowDetail(at: 0) }
+            } else if phase == 2 {
+                if expandedRowOffsets.contains(0) { toggleRowDetail(at: 0) }
+            }
+        }
+#endif
         .onAppear { chromeExpanded = isExpanded }
         .accessibilityElement(children: .contain)
     }
@@ -177,19 +207,9 @@ struct PlanTimelineView: View {
     /// pixel-identically to the old path; the `ScrollView` only actually
     /// scrolls (`basedOnSize`) when the content genuinely exceeds the window.
     ///
-    /// Tapping anywhere in the rows area also collapses the card — the header
-    /// must never be the only way out again.
     private var expandedRows: some View {
         ScrollView(.vertical) {
             paddedRows
-                .background {
-                    GeometryReader { proxy in
-                        Color.clear.preference(
-                            key: PlanRowsHeightKey.self,
-                            value: proxy.size.height
-                        )
-                    }
-                }
         }
         // Never nil. A ScrollView is greedy, so an absent height means it
         // takes everything offered — which is how the original bug looked.
@@ -197,16 +217,13 @@ struct PlanTimelineView: View {
         // clears the measurement costs at most one frame at the estimated
         // height rather than an overflow.
         .frame(height: windowHeight, alignment: .top)
+        .scrollClipDisabled(false)
         .scrollBounceBehavior(.basedOnSize)
         .scrollIndicators(.automatic)
-        .onPreferenceChange(PlanRowsHeightKey.self) { height in
-            guard height > 0 else { return }
-            measuredRowsHeight = height
-        }
-        .contentShape(Rectangle())
-        .onTapGesture {
-            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
-                isExpanded = false
+        .onPreferenceChange(PlanRowHeightsKey.self) { heights in
+            guard !heights.isEmpty else { return }
+            withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
+                measuredRowHeights.merge(heights) { _, latest in latest }
             }
         }
     }
@@ -218,65 +235,33 @@ struct PlanTimelineView: View {
             .padding(.bottom, ActivityBlockChrome.bottomPadding)
     }
 
-    /// How many steps stay visible before the checklist scrolls.
-    ///
-    /// Seven, from the plans agents actually write. Across 267 real `todo_state`
-    /// snapshots the distribution is: median 5 steps, p75 6, p90 9, p95 12,
-    /// longest 22. A seven-row window shows **85%** of plans end to end, and the
-    /// `todo` tool only engages at "3+ steps", so the short lists that dominate
-    /// are unaffected.
-    ///
-    /// Going higher buys little and costs a lot: 9 rows covers 92% but eats most
-    /// of a small phone's screen; 5 rows would fit more comfortably but would
-    /// scroll 30% of plans, including the 5-step case that is the single most
-    /// common size. Seven is the point where the curve flattens.
-    static let maximumVisibleRows = 7
+    /// Five tasks stay visible before the checklist scrolls. This keeps the
+    /// card compact enough to leave useful transcript context on a phone.
+    static let maximumVisibleRows = PlanTimelineLayout.maximumVisibleRows
 
     /// Height of the checklist's scroll window — used for every expanded plan.
     ///
     /// **Never optional.** A `ScrollView` is greedy: give it no height and it
     /// takes everything offered, which is exactly how the original overflow
     /// looked. So this always returns a bounded value: the smaller of the
-    /// content's natural height (a fitting plan renders identically to an
-    /// unwindowed one), `maximumVisibleRows` worth of measured rows, and a
+    /// compact content height (a fitting plan renders identically to an
+    /// unwindowed one), the first `maximumVisibleRows` measured rows, and a
     /// share of the dock the card actually sits in. Before the first
     /// measurement lands it estimates from the row count, clamped by the same
     /// dock ceiling, so a rebuild that clears the measurement (leaving and
     /// re-entering a session, returning from the background) costs at most one
     /// frame at the estimate rather than an overflowing card.
     ///
-    /// The per-row height comes from the *measured* content rather than a
-    /// constant, so it self-calibrates to Dynamic Type and to rows that wrap
-    /// onto a second line. An earlier attempt assumed 34pt per row; rows wrap
-    /// often enough that the estimate came in under the cap and silently
-    /// defeated it, so the card rendered exactly as broken as before.
+    /// The first five row heights are measured separately rather than averaged
+    /// across the whole plan, so an expanded task or Dynamic Type wrapping
+    /// cannot make the nominal five-task window accidentally show six.
     private var windowHeight: CGFloat {
-        let ceiling = max(120, availableHeight * Self.maximumContainerFraction)
-
-        guard let measuredRowsHeight, state.todos.count > 0 else {
-            // Pre-measurement estimate: enough for the visible rows at a
-            // conservative 34pt each. One frame later the real measurement
-            // replaces it; clamping to the ceiling keeps even the estimate
-            // from overrunning a squeezed dock.
-            let estimatedRows = min(state.todos.count, Self.maximumVisibleRows)
-            let chrome = ActivityBlockChrome.topPadding + ActivityBlockChrome.bottomPadding
-            return min(CGFloat(estimatedRows) * 34 + chrome, ceiling)
-        }
-
-        let chrome = ActivityBlockChrome.topPadding + ActivityBlockChrome.bottomPadding
-        let averageRowHeight = max(1, (measuredRowsHeight - chrome) / CGFloat(state.todos.count))
-        let capped = averageRowHeight * CGFloat(Self.maximumVisibleRows) + chrome
-
-        // Bounded by all three: natural content height (fitting plans render
-        // unscrolled at exact size), the row cap, and the space the dock
-        // actually has — seven rows of wrapped text at an accessibility type
-        // size can still exceed a small phone.
-        return min(measuredRowsHeight, capped, ceiling)
+        PlanTimelineLayout.windowHeight(
+            rowHeights: measuredRowHeights,
+            todoCount: state.todos.count,
+            availableHeight: availableHeight
+        )
     }
-
-    /// Share of the dock's available height the open plan may occupy. The
-    /// remainder belongs to the composer and the transcript above it.
-    private static let maximumContainerFraction: CGFloat = 0.5
 
     private var rows: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -292,8 +277,19 @@ struct PlanTimelineView: View {
                     // A row stays `in_progress` forever if the stream dies
                     // before a final snapshot, so the spin follows session
                     // liveness rather than the row's status alone.
-                    isLive: isLive
+                    isLive: isLive,
+                    isDetailExpanded: expandedRowOffsets.contains(index),
+                    onToggleDetail: { toggleRowDetail(at: index) },
+                    onCollapsePlan: collapsePlan
                 )
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: PlanRowHeightsKey.self,
+                            value: [index: proxy.size.height]
+                        )
+                    }
+                }
                 .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
                 .animation(
                     ChatMotion.cardContent(
@@ -304,6 +300,22 @@ struct PlanTimelineView: View {
                     value: isExpanded
                 )
             }
+        }
+    }
+
+    private func toggleRowDetail(at index: Int) {
+        withAnimation(ChatMotion.quickState(reduceMotion: reduceMotion)) {
+            if expandedRowOffsets.contains(index) {
+                expandedRowOffsets.remove(index)
+            } else {
+                expandedRowOffsets.insert(index)
+            }
+        }
+    }
+
+    private func collapsePlan() {
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            isExpanded = false
         }
     }
 
@@ -413,6 +425,9 @@ private struct PlanRowView: View {
     let reduceMotion: Bool
     /// Session still streaming; see `PlanTimelineView.isLive`.
     var isLive: Bool = false
+    let isDetailExpanded: Bool
+    let onToggleDetail: () -> Void
+    let onCollapsePlan: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: 9) {
@@ -432,17 +447,39 @@ private struct PlanRowView: View {
                 text: todo.content,
                 isStruck: todo.status.isResolved,
                 color: todo.status.isResolved ? palette.textTertiary : palette.textPrimary,
-                reduceMotion: reduceMotion
+                reduceMotion: reduceMotion,
+                isExpanded: isDetailExpanded,
+                onToggleDetail: onToggleDetail
             )
             .frame(maxWidth: PlanTimelineView.maximumWidth, alignment: .leading)
 
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 5)
+        .frame(minHeight: 44, alignment: .top)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if isDetailExpanded {
+                onToggleDetail()
+            } else {
+                onCollapsePlan()
+            }
+        }
         // Status is otherwise conveyed only by symbol shape and color, neither
         // of which VoiceOver reads.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Step \(index), \(statusDescription): \(todo.content)")
+        .accessibilityHint(
+            isDetailExpanded
+                ? "Double tap to show only the first two lines."
+                : "Double tap to show the full step."
+        )
+        .accessibilityIdentifier("plan-step-\(index)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { onToggleDetail() }
+        .accessibilityAction(
+            named: "Collapse plan",
+            onCollapsePlan
+        )
     }
 
     private var statusDescription: String {
@@ -533,12 +570,38 @@ private struct PlanRowLabel: View {
     let isStruck: Bool
     let color: Color
     let reduceMotion: Bool
+    let isExpanded: Bool
+    let onToggleDetail: () -> Void
 
     var body: some View {
         Text(text)
             .font(AppFont.footnote())
             .foregroundStyle(color)
+            .lineLimit(isExpanded ? nil : 2)
+            .truncationMode(.tail)
             .fixedSize(horizontal: false, vertical: true)
+            .overlay(alignment: .bottomTrailing) {
+                if !isExpanded {
+                    Button(action: onToggleDetail) {
+                        // SwiftUI owns the actual trailing ellipsis. Overlay a
+                        // clear 88x44pt target around that location so a thumb
+                        // does not have to land on three tiny glyphs.
+                        Color.clear
+                            .frame(width: 88, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // Once open, the task itself is the collapse target; the user
+                // no longer has to chase an ellipsis that is no longer shown.
+                if isExpanded {
+                    onToggleDetail()
+                }
+            }
             .overlay(alignment: .topLeading) {
                 GeometryReader { proxy in
                     Capsule()
@@ -585,12 +648,45 @@ private struct PlanProgressRing: View {
     }
 }
 
-/// Carries the checklist's natural height up so the card can clamp it.
-private struct PlanRowsHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
+/// Carries each checklist row's natural height up so the card can stop after
+/// exactly five rows instead of estimating from one average height.
+private struct PlanRowHeightsKey: PreferenceKey {
+    static let defaultValue: [Int: CGFloat] = [:]
 
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
+    static func reduce(value: inout [Int: CGFloat], nextValue: () -> [Int: CGFloat]) {
+        value.merge(nextValue()) { _, latest in latest }
+    }
+}
+
+/// Pure plan-window sizing, separated so row-count, wrapped-text, and squeezed
+/// dock edge cases can be verified without snapshot-testing SwiftUI internals.
+enum PlanTimelineLayout {
+    static let maximumVisibleRows = 5
+    static let maximumContainerFraction: CGFloat = 0.5
+    static let minimumWindowHeight: CGFloat = 120
+    static let estimatedRowHeight: CGFloat = 44
+    static let topChrome = ActivityBlockChrome.topPadding
+    static let bottomChrome = ActivityBlockChrome.bottomPadding
+    static let verticalChrome = topChrome + bottomChrome
+
+    static func windowHeight(
+        rowHeights: [Int: CGFloat],
+        todoCount: Int,
+        availableHeight: CGFloat
+    ) -> CGFloat {
+        let ceiling = max(minimumWindowHeight, availableHeight * maximumContainerFraction)
+        let visibleCount = min(max(0, todoCount), maximumVisibleRows)
+        guard visibleCount > 0 else { return 0 }
+
+        let visibleHeights = (0..<visibleCount).compactMap { rowHeights[$0] }
+        let contentHeight: CGFloat
+        let chrome = todoCount <= maximumVisibleRows ? verticalChrome : topChrome
+        if visibleHeights.count == visibleCount {
+            contentHeight = visibleHeights.reduce(0, +) + chrome
+        } else {
+            contentHeight = CGFloat(visibleCount) * estimatedRowHeight + chrome
+        }
+        return min(contentHeight, ceiling)
     }
 }
 

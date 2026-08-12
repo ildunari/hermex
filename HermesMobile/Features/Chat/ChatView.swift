@@ -537,6 +537,12 @@ struct ChatView: View {
                     .environment(\.layoutDirection, chatLayoutDirection)
             }
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
+            // Simultaneous rather than a transparent hit-testing layer: a tap
+            // anywhere on the conversation canvas dismisses the plan while
+            // scrolling and existing transcript controls remain interactive.
+            .simultaneousGesture(
+                TapGesture().onEnded { collapseExpandedPlan() }
+            )
 
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
@@ -1114,8 +1120,18 @@ struct ChatView: View {
             planTimelineLayer
 
             messageComposer
+                .simultaneousGesture(
+                    TapGesture().onEnded { collapseExpandedPlan() }
+                )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+    }
+
+    private func collapseExpandedPlan() {
+        guard viewModel.isPlanExpanded else { return }
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            viewModel.isPlanExpanded = false
+        }
     }
 
     @ViewBuilder
