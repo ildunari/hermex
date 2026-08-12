@@ -62,11 +62,29 @@ is the acceptance artifact.
   `docs/design/screenshots/model-picker-before-after-dark.png`.
 - Native long-press menu and editor captures are exported from the passing
   `ModelPickerUITests/testProviderLongPressOffersAppearanceEditor` result bundle.
-- The UI test asserts the provider's immutable ID remains visible in the editor.
+- The deterministic UI test expands **Provider Details** and asserts the
+  provider's immutable ID remains visible and unchanged in the editor.
 
 No unresolved visual blocker remains from the baseline comparison. The remaining
 review decision is product taste: whether to keep the exact model-ID metadata in
 the primary list or reveal it only on demand.
+
+## Independent release-gate review
+
+The final independent review found no P0 issue and two P1s, both resolved before
+release:
+
+- Provider image imports now use file-backed Photos/Files transfer, reject inputs
+  above 20 MB or 100 megapixels, and downsample through ImageIO to a 512-pixel PNG
+  away from the main actor before preview or persistence.
+- Provider cards switch to wider, self-sizing horizontal content at accessibility
+  Dynamic Type sizes. A deterministic XXXL UI test verifies the selected provider
+  remains visible and tappable.
+
+The same pass also removed the no-op **Edit** accessibility action from **All
+Providers**, reconciles provider scopes after catalog changes, scrolls the active
+provider into view, reports missing custom artwork as the rendered default state,
+and replaced live-server-dependent UI tests with a deterministic DEBUG fixture.
 
 ## Provider editor second-pass audit
 
