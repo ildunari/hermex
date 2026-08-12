@@ -1354,6 +1354,7 @@ private extension MarkdownUI.Theme {
         let minorHeadingTop: CGFloat = isReasoning ? 10 : 16
         let minorHeadingBottom: CGFloat = isReasoning ? 3 : 4
         let paragraphBottom: CGFloat = isReasoning ? 7 : 12
+        let thematicBreakMargin: CGFloat = isReasoning ? 8 : 16
         let bodyColor = isReasoning ? palette.textSecondary : palette.textPrimary
 
         return MarkdownUI.Theme()
@@ -1512,7 +1513,7 @@ private extension MarkdownUI.Theme {
                         )
                     )
                     .frame(height: 1)
-                    .markdownMargin(top: 16, bottom: 16)
+                    .markdownMargin(top: thematicBreakMargin, bottom: thematicBreakMargin)
             }
     }
 }

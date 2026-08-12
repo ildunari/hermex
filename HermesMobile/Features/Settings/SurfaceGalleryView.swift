@@ -30,6 +30,8 @@ struct SurfaceGalleryView: View {
             ActivityFoldGalleryView(page: 22)
         } else if page == 23 {
             PlanTimelineGalleryView(page: 23)
+        } else if page == 24 {
+            ThinkingMarkdownGalleryView()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -541,5 +543,44 @@ struct SurfaceGalleryView: View {
     )
 
     private static let markerText = "[Context compaction] Earlier transcript context remains available through the session summary."
+}
+
+/// Field-reproduction fixture for provider reasoning that arrives as a ledger
+/// of standalone bold status lines followed by prose. Page 24 deliberately
+/// uses the real `ReasoningBlockView`, so before/after screenshots exercise the
+/// production markdown path rather than a design mock.
+private struct ThinkingMarkdownGalleryView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Text("THINKING MARKDOWN · PROVIDER PAYLOAD")
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+
+                ReasoningBlockView(
+                    text: Self.providerReasoning,
+                    completedDuration: 18.4,
+                    startsExpandedOverride: true
+                )
+            }
+            .padding(16)
+        }
+    }
+
+    private static let providerReasoning = """
+    **Refining arm and delt exercise selection**
+    **Adjusting Push and Pull workout structure**
+    **Planning exercise rotation across passes**
+
+    I’ve confirmed the source already has the right skeleton: each original week contains an A strength lineage and a B pump lineage. The key is to rehome most direct arm work instead of stacking two huge arm days on top; otherwise the apparent specialization becomes mostly junk volume and weakens the following pull/push sessions.
+
+    **Recommending 8-day rolling workout split**
+    **Defining strength and hypertrophy session roles**
+    **Planning flexible rest days in workout sequence**
+
+    **Adjusting workout sequencing and fatigue management**
+    **Evaluating 12-day training cycle feasibility**
+    **Planning 4-week mesocycle rotations**
+    """
 }
 #endif

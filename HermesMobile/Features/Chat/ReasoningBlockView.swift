@@ -47,6 +47,7 @@ struct ReasoningBlockView: View {
 
     var body: some View {
         if let trimmedText {
+            let presentedText = ReasoningMarkdownPresentation.formatted(trimmedText)
             VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
                 // `isStreaming` is fed from `ChatViewModel.isReasoningPhaseActive`
                 // at the live call sites (ChatTranscriptView): the orb/beam
@@ -94,7 +95,7 @@ struct ReasoningBlockView: View {
                             // multi-line construct. That also means the reveal is
                             // one fade rather than a per-paragraph stagger.
                             MarkdownRenderer(
-                                content: trimmedText,
+                                content: presentedText,
                                 isStreaming: isStreaming,
                                 typographyRole: .reasoning
                             )
@@ -146,9 +147,9 @@ struct ReasoningBlockView: View {
             // text only) makes the tap a guaranteed cache hit. `NSCache` is
             // thread-safe, and the pill mounts at least an animation-length
             // before any finger can reach it.
-            .task(id: isStreaming ? nil : trimmedText) {
+            .task(id: isStreaming ? nil : presentedText) {
                 guard !isStreaming, !isExpanded else { return }
-                let text = trimmedText
+                let text = presentedText
                 await Task.detached(priority: .utility) {
                     _ = MarkdownMathLayoutCache.layout(for: text)
                 }.value
@@ -180,6 +181,84 @@ struct ReasoningBlockView: View {
     private var trimmedText: String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+/// Presentation-only normalization for provider reasoning ledgers.
+///
+/// Several providers emit progress as consecutive standalone `**bold**` lines.
+/// CommonMark treats a single newline as a soft break, so those lines collapse
+/// into one dense paragraph. Only runs of two or more exact bold-only lines are
+/// recognized here: they receive hard line breaks and a thematic rule at the
+/// boundary to adjacent prose/ledger blocks. Ordinary emphasis, real headings,
+/// lists, and fenced code retain their original Markdown semantics.
+enum ReasoningMarkdownPresentation {
+    static func formatted(_ content: String) -> String {
+        let blocks = markdownBlocks(in: content)
+        guard blocks.contains(where: \.isStatusLedger) else { return content }
+
+        return blocks.enumerated().map { index, block in
+            let rendered = block.isStatusLedger
+                ? block.lines.joined(separator: "  \n")
+                : block.lines.joined(separator: "\n")
+            guard index > 0 else { return rendered }
+
+            let previous = blocks[index - 1]
+            let separator = previous.isStatusLedger || block.isStatusLedger
+                ? "\n\n---\n\n"
+                : "\n\n"
+            return separator + rendered
+        }.joined()
+    }
+
+    private static func markdownBlocks(in content: String) -> [Block] {
+        var blocks: [Block] = []
+        var currentLines: [String] = []
+        var isInsideFence = false
+
+        func flushCurrentBlock() {
+            guard !currentLines.isEmpty else { return }
+            blocks.append(Block(lines: currentLines))
+            currentLines = []
+        }
+
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if isFenceDelimiter(trimmed) {
+                currentLines.append(line)
+                isInsideFence.toggle()
+            } else if !isInsideFence, trimmed.isEmpty {
+                flushCurrentBlock()
+            } else {
+                currentLines.append(line)
+            }
+        }
+        flushCurrentBlock()
+        return blocks
+    }
+
+    private static func isFenceDelimiter(_ line: String) -> Bool {
+        line.hasPrefix("```") || line.hasPrefix("~~~")
+    }
+
+    private struct Block {
+        let lines: [String]
+
+        var isStatusLedger: Bool {
+            lines.count >= 2 && lines.allSatisfy(Self.isStandaloneBoldLine)
+        }
+
+        private static func isStandaloneBoldLine(_ line: String) -> Bool {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.count > 4,
+                  trimmed.hasPrefix("**"),
+                  trimmed.hasSuffix("**")
+            else { return false }
+
+            let inner = trimmed.dropFirst(2).dropLast(2)
+                .trimmingCharacters(in: .whitespaces)
+            return !inner.isEmpty && !inner.contains("**")
+        }
     }
 }
 

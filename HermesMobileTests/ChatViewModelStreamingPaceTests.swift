@@ -433,9 +433,61 @@ final class StreamActivitySignalTests: XCTestCase {
         // Resumed reasoning keeps the same phase; the final answer ends it.
         streamClient.emit(.reasoning(" and step two"))
         XCTAssertEqual(viewModel.turnPhase, .reasoning)
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(viewModel.liveReasoningText, "Step one and step two")
         streamClient.emit(.token("Answer"))
         XCTAssertEqual(viewModel.turnPhase, .respondingText)
         XCTAssertFalse(viewModel.isReasoningPhaseActive)
+    }
+
+    @MainActor
+    func testReasoningResumingAfterToolPreservesMarkdownBlockBoundary() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Inspect and continue")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("The previous reasoning ends here."))
+        streamClient.emit(.toolStarted(ToolStreamEvent(
+            eventType: "tool.started",
+            name: "read_file",
+            preview: "Reading source",
+            args: nil,
+            duration: nil,
+            isError: nil
+        )))
+        streamClient.emit(.reasoning("**Recommending the next step**"))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            "The previous reasoning ends here.\n\n**Recommending the next step**"
+        )
+    }
+
+    @MainActor
+    func testReasoningResumingAfterCompletionOnlyToolPreservesBoundary() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Recover and continue")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("Reasoning before recovered completion."))
+        streamClient.emit(.toolCompleted(ToolStreamEvent(
+            eventType: "tool.completed",
+            name: "read_file",
+            preview: "Read source",
+            args: nil,
+            duration: 0.2,
+            isError: false
+        )))
+        streamClient.emit(.reasoning("**Continuing after recovery**"))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            "Reasoning before recovered completion.\n\n**Continuing after recovery**"
+        )
     }
 
     @MainActor
