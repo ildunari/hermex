@@ -300,7 +300,7 @@ struct ChatView: View {
     @State private var showEditDiscardConfirmation = false
     @State private var regenerateContext: MessageActionContext?
     @State private var showRegenerateDiscardConfirmation = false
-    @State private var selectableResponseText: SelectableResponseText?
+    @State private var selectableResponseText: SelectableTextPresentation?
     @State private var attachmentPreviewItem: ChatAttachmentPreviewItem?
     @State private var transcriptMediaPreviewItem: TranscriptMediaPreviewItem?
     @State private var pendingProfileSelection: ProfileSummary?
@@ -676,7 +676,7 @@ struct ChatView: View {
                 ChatView(session: session, server: server, onAPIError: onAPIError)
             }
             .fullScreenCover(item: $selectableResponseText) { selectableText in
-                SelectableResponseTextView(selection: selectableText)
+                SelectableTextPresentationView(selection: selectableText)
             }
             .sheet(item: $attachmentPreviewItem) { item in
                 ChatAttachmentPreviewView(
@@ -1239,7 +1239,7 @@ struct ChatView: View {
                 }
             },
             onSelectText: { context in
-                selectableResponseText = SelectableResponseText(context: context)
+                selectableResponseText = SelectableTextPresentation(context: context)
             },
             onRegenerate: beginRegenerateResponse,
             onEdit: beginEditMessage,
