@@ -10,16 +10,14 @@ final class ModelPickerUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "--model-picker-capture",
+            "--model-picker-fixture",
             "--model-picker-palette", "warm",
-            "--model-picker-server", "http://100.69.228.58:8787"
         ]
         app.launch()
 
         let provider = app.descendants(matching: .any)
             .matching(identifier: "model-picker.provider.openai-codex").firstMatch
-        guard provider.waitForExistence(timeout: 15) else {
-            throw XCTSkip("The live catalog did not expose openai-codex.")
-        }
+        XCTAssertTrue(provider.waitForExistence(timeout: 10))
 
         addScreenshot(named: "model-picker")
 
@@ -37,6 +35,10 @@ final class ModelPickerUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Provider ID"].exists)
         addScreenshot(named: "provider-editor")
 
+        app.buttons["Provider Details"].tap()
+        XCTAssertTrue(app.staticTexts["Provider ID"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.staticTexts["openai-codex"].exists)
+
         let chooseImage = app.descendants(matching: .any)
             .matching(identifier: "model-picker.choose-image").firstMatch
         chooseImage.tap()
@@ -49,16 +51,14 @@ final class ModelPickerUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "--model-picker-capture",
+            "--model-picker-fixture",
             "--model-picker-palette", "standard",
-            "--model-picker-server", "http://100.69.228.58:8787"
         ]
         app.launch()
 
         let provider = app.descendants(matching: .any)
             .matching(identifier: "model-picker.provider.openai-codex").firstMatch
-        guard provider.waitForExistence(timeout: 15) else {
-            throw XCTSkip("The live catalog did not expose openai-codex.")
-        }
+        XCTAssertTrue(provider.waitForExistence(timeout: 10))
 
         addScreenshot(named: "model-picker-standard")
         provider.press(forDuration: 1.0)
@@ -70,6 +70,25 @@ final class ModelPickerUITests: XCTestCase {
             .matching(identifier: "model-picker.provider-editor").firstMatch
         XCTAssertTrue(editor.waitForExistence(timeout: 5))
         addScreenshot(named: "provider-editor-standard")
+    }
+
+    func testProviderCardsRemainUsableAtLargestAccessibilityTextSize() {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--model-picker-capture",
+            "--model-picker-fixture",
+            "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"
+        ]
+        app.launch()
+
+        let provider = app.descendants(matching: .any)
+            .matching(identifier: "model-picker.provider.openai-codex").firstMatch
+        XCTAssertTrue(provider.waitForExistence(timeout: 10))
+        XCTAssertTrue(provider.isHittable)
+        XCTAssertGreaterThan(provider.frame.width, 170)
+        provider.tap()
+        XCTAssertTrue(provider.isSelected)
+        addScreenshot(named: "model-picker-accessibility-xxxl")
     }
 
     private func addScreenshot(named name: String) {

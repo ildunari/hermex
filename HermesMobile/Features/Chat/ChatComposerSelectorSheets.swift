@@ -2,6 +2,8 @@ import SwiftUI
 import PhotosUI
 import UniformTypeIdentifiers
 import UIKit
+import ImageIO
+import CoreTransferable
 
 #if DEBUG
 /// Signed-simulator visual QA host for the production model picker. It fetches
@@ -52,6 +54,27 @@ struct ModelPickerCaptureHost: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private func loadCatalog() async {
+        if ProcessInfo.processInfo.arguments.contains("--model-picker-fixture") {
+            let codex = ModelCatalogOption(
+                id: "gpt-5.5-codex",
+                displayName: "GPT-5.5 Codex",
+                providerID: "openai-codex"
+            )
+            fixture = ModelPickerCaptureFixture(
+                modelGroups: [
+                    ModelCatalogGroup(id: "openai-codex", name: "openai-codex", providerID: "openai-codex", models: [codex]),
+                    ModelCatalogGroup(id: "fireworks", name: "fireworks", providerID: "fireworks", models: [
+                        ModelCatalogOption(id: "accounts/fireworks/models/qwen3-coder", displayName: "Qwen3 Coder", providerID: "fireworks")
+                    ]),
+                    ModelCatalogGroup(id: "custom", name: "custom-private-provider", providerID: "custom-private-provider", models: [
+                        ModelCatalogOption(id: "local-model", displayName: "Local Model", providerID: "custom-private-provider")
+                    ])
+                ],
+                selectedModelID: codex.id,
+                selectedProviderID: codex.providerID
+            )
+            return
+        }
         guard let serverURL else { return }
         guard let response = try? await APIClient(baseURL: serverURL).models() else { return }
         let groups = response.catalogGroups
@@ -92,6 +115,7 @@ struct ComposerModelPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @State private var searchText = ""
     @State private var selectedView = ModelPickerViewMode.all
@@ -131,6 +155,9 @@ struct ComposerModelPickerSheet: View {
                 prompt: "Search providers & models"
             )
             .onAppear { initializeProviderScopesIfNeeded() }
+            .onChange(of: providers.map(\.providerID)) { _, providerIDs in
+                reconcileProviderScopes(validProviderIDs: Set(providerIDs))
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done") { dismiss() }
@@ -170,20 +197,26 @@ struct ComposerModelPickerSheet: View {
                 .textCase(.uppercase)
                 .padding(.horizontal, 18)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    providerCard(ModelPickerProvider(
-                        providerID: allProvidersScope,
-                        catalogName: String(localized: "All Providers"),
-                        modelCount: allViewOptions.count
-                    ))
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        providerCard(ModelPickerProvider(
+                            providerID: allProvidersScope,
+                            catalogName: String(localized: "All Providers"),
+                            modelCount: allViewOptions.count
+                        ))
 
-                    ForEach(providers) { provider in
-                        providerCard(provider)
+                        ForEach(providers) { provider in
+                            providerCard(provider)
+                        }
                     }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 14)
                 }
-                .padding(.horizontal, 16)
-                        .padding(.bottom, 14)
+                .onAppear { scrollSelectedProviderIntoView(using: proxy, animated: false) }
+                .onChange(of: selectedProviderScope) { _, _ in
+                    scrollSelectedProviderIntoView(using: proxy, animated: true)
+                }
             }
         }
     }
@@ -196,37 +229,8 @@ struct ComposerModelPickerSheet: View {
         return Button {
             providerScopeByView[selectedView] = provider.providerID
         } label: {
-            ZStack {
-                VStack(spacing: 6) {
-                    if isAllProviders {
-                        Image(systemName: "square.grid.2x2")
-                            .font(.system(size: 21, weight: .medium))
-                            .foregroundStyle(isSelected ? pickerAccent : .secondary)
-                            .frame(width: 36, height: 36)
-                    } else {
-                        ProviderArtworkView(
-                            providerID: provider.providerID,
-                            serverScopeID: serverScopeID,
-                            store: appearanceStore,
-                            size: 38
-                        )
-                        .id("\(provider.providerID)-\(presentationRevision)")
-                    }
-
-                    Text(displayName)
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                        .minimumScaleFactor(0.88)
-
-                    Text("\(provider.modelCount) models")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                }
-                .frame(width: 102, height: 94)
-            }
-            .frame(width: 102, height: 94)
+            providerCardContent(provider, displayName: displayName, isAllProviders: isAllProviders, isSelected: isSelected)
+            .frame(width: dynamicTypeSize.isAccessibilitySize ? 188 : 102)
             .appSurfaceBackground(
                 isSelected ? .inset : .surface,
                 opacity: isSelected ? 0.76 : 0.84,
@@ -262,9 +266,77 @@ struct ComposerModelPickerSheet: View {
                 providerContextMenu(provider)
             }
         }
-        .accessibilityAction(named: String(localized: "Edit")) {
-            guard !isAllProviders else { return }
-            editedProvider = provider
+        .accessibilityActions {
+            if !isAllProviders {
+                Button("Edit") { editedProvider = provider }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func providerCardContent(
+        _ provider: ModelPickerProvider,
+        displayName: String,
+        isAllProviders: Bool,
+        isSelected: Bool
+    ) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            HStack(spacing: 12) {
+                providerArtwork(provider, isAllProviders: isAllProviders, isSelected: isSelected, size: 38)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(displayName)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.58)
+                        .allowsTightening(true)
+                    Text("\(provider.modelCount) models")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.58)
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(minHeight: 88)
+        } else {
+            VStack(spacing: 6) {
+                providerArtwork(provider, isAllProviders: isAllProviders, isSelected: isSelected, size: 38)
+                Text(displayName)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+                Text("\(provider.modelCount) models")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 94)
+        }
+    }
+
+    @ViewBuilder
+    private func providerArtwork(
+        _ provider: ModelPickerProvider,
+        isAllProviders: Bool,
+        isSelected: Bool,
+        size: CGFloat
+    ) -> some View {
+        if isAllProviders {
+            Image(systemName: "square.grid.2x2")
+                .font(.system(size: 21, weight: .medium))
+                .foregroundStyle(isSelected ? pickerAccent : .secondary)
+                .frame(width: size, height: size)
+        } else {
+            ProviderArtworkView(
+                providerID: provider.providerID,
+                serverScopeID: serverScopeID,
+                store: appearanceStore,
+                size: size
+            )
+            .id("\(provider.providerID)-\(presentationRevision)")
         }
     }
 
@@ -290,6 +362,8 @@ struct ComposerModelPickerSheet: View {
         HStack(alignment: .firstTextBaseline) {
             Text(resultTitle)
                 .font(.headline)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.62 : 1)
 
             Spacer(minLength: 12)
 
@@ -350,7 +424,8 @@ struct ComposerModelPickerSheet: View {
                             Text(option.displayName)
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(.primary)
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.62 : 1)
 
                         }
 
@@ -359,6 +434,7 @@ struct ComposerModelPickerSheet: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .truncationMode(.middle)
+                            .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.62 : 1)
                     }
 
                     Spacer(minLength: 0)
@@ -555,6 +631,26 @@ struct ComposerModelPickerSheet: View {
             : allProvidersScope
         providerScopeByView[.favorites] = allProvidersScope
         providerScopeByView[.recent] = allProvidersScope
+    }
+
+    private func reconcileProviderScopes(validProviderIDs: Set<String>) {
+        for mode in ModelPickerViewMode.allCases {
+            guard let scope = providerScopeByView[mode],
+                  !scope.isEmpty,
+                  !validProviderIDs.contains(scope)
+            else { continue }
+            providerScopeByView[mode] = allProvidersScope
+        }
+    }
+
+    private func scrollSelectedProviderIntoView(using proxy: ScrollViewProxy, animated: Bool) {
+        let target = selectedProviderScope
+        let action = { proxy.scrollTo(target, anchor: .center) }
+        if animated {
+            withAnimation(.snappy(duration: 0.24), action)
+        } else {
+            action()
+        }
     }
 
     private func providerDisplayName(_ provider: ModelPickerProvider) -> String {
@@ -800,29 +896,78 @@ struct ProviderAppearanceStore: @unchecked Sendable {
         try? FileManager.default.removeItem(at: artworkDirectory.appendingPathComponent(fileName))
     }
 
-    private func scaledSize(for size: CGSize, maximumDimension: CGFloat) -> CGSize {
-        guard size.width > 0, size.height > 0 else { return CGSize(width: maximumDimension, height: maximumDimension) }
-        let scale = min(maximumDimension / max(size.width, size.height), 1)
-        return CGSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
-    }
-
     private func preparedArtwork(_ data: Data) throws -> (fileName: String, data: Data) {
-        guard let source = UIImage(data: data) else { throw ProviderArtworkImportError.invalidImage }
-        let targetSize = scaledSize(for: source.size, maximumDimension: 512)
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let normalized = renderer.image { _ in
-            source.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-        guard let pngData = normalized.pngData() else { throw ProviderArtworkImportError.invalidImage }
-        return ("\(UUID().uuidString).png", pngData)
+        ("\(UUID().uuidString).png", try ProviderArtworkProcessor.normalizedPNG(from: data))
     }
 }
 
 enum ProviderArtworkImportError: LocalizedError {
     case invalidImage
+    case imageTooLarge
 
     var errorDescription: String? {
-        String(localized: "That file could not be read as an image.")
+        switch self {
+        case .invalidImage:
+            String(localized: "That file could not be read as an image.")
+        case .imageTooLarge:
+            String(localized: "Choose an image smaller than 20 MB and 100 megapixels.")
+        }
+    }
+}
+
+enum ProviderArtworkProcessor {
+    static let maximumInputBytes = 20 * 1_024 * 1_024
+    static let maximumPixelCount = 100_000_000
+    static let maximumOutputDimension = 512
+
+    static func normalizedPNG(from data: Data) throws -> Data {
+        guard !data.isEmpty, data.count <= maximumInputBytes else {
+            throw ProviderArtworkImportError.imageTooLarge
+        }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetCount(source) > 0,
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
+              let height = properties[kCGImagePropertyPixelHeight] as? NSNumber
+        else { throw ProviderArtworkImportError.invalidImage }
+
+        let pixelCount = width.int64Value.multipliedReportingOverflow(by: height.int64Value)
+        guard !pixelCount.overflow, pixelCount.partialValue > 0,
+              pixelCount.partialValue <= Int64(maximumPixelCount)
+        else { throw ProviderArtworkImportError.imageTooLarge }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumOutputDimension,
+            kCGImageSourceShouldCacheImmediately: true
+        ]
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            throw ProviderArtworkImportError.invalidImage
+        }
+        let normalized = UIImage(cgImage: thumbnail)
+        guard let pngData = normalized.pngData() else { throw ProviderArtworkImportError.invalidImage }
+        return pngData
+    }
+
+    static func normalizedPNG(fromFileAt url: URL) throws -> Data {
+        let values = try url.resourceValues(forKeys: [.fileSizeKey])
+        if let fileSize = values.fileSize, fileSize > maximumInputBytes {
+            throw ProviderArtworkImportError.imageTooLarge
+        }
+        return try normalizedPNG(from: Data(contentsOf: url, options: .mappedIfSafe))
+    }
+}
+
+struct ProviderArtworkTransfer: Transferable, Sendable {
+    let normalizedPNG: Data
+
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(importedContentType: .image) { received in
+            ProviderArtworkTransfer(
+                normalizedPNG: try ProviderArtworkProcessor.normalizedPNG(fromFileAt: received.file)
+            )
+        }
     }
 }
 
@@ -1178,12 +1323,11 @@ private struct ProviderAppearanceEditor: View {
                 guard let item else { return }
                 Task {
                     do {
-                        guard let data = try await item.loadTransferable(type: Data.self) else {
+                        guard let artwork = try await item.loadTransferable(type: ProviderArtworkTransfer.self) else {
                             throw ProviderArtworkImportError.invalidImage
                         }
-                        guard UIImage(data: data) != nil else { throw ProviderArtworkImportError.invalidImage }
                         await MainActor.run {
-                            pendingArtworkData = data
+                            pendingArtworkData = artwork.normalizedPNG
                             restoresDefaultArtwork = false
                             errorMessage = nil
                             selectedPhoto = nil
@@ -1197,14 +1341,25 @@ private struct ProviderAppearanceEditor: View {
                 do {
                     let url = try result.get()
                     let hasAccess = url.startAccessingSecurityScopedResource()
-                    defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-                    let data = try Data(contentsOf: url)
-                    guard UIImage(data: data) != nil else { throw ProviderArtworkImportError.invalidImage }
-                    pendingArtworkData = data
-                    restoresDefaultArtwork = false
-                    errorMessage = nil
+                    Task {
+                        defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
+                        do {
+                            let normalized = try await Task.detached(priority: .userInitiated) {
+                                try ProviderArtworkProcessor.normalizedPNG(fromFileAt: url)
+                            }.value
+                            await MainActor.run {
+                                pendingArtworkData = normalized
+                                restoresDefaultArtwork = false
+                                errorMessage = nil
+                            }
+                        } catch {
+                            await MainActor.run { errorMessage = error.localizedDescription }
+                        }
+                    }
                 } catch {
-                    errorMessage = error.localizedDescription
+                    if !Self.isUserCancellation(error) {
+                        errorMessage = error.localizedDescription
+                    }
                 }
             }
             .accessibilityIdentifier(ModelPickerAccessibilityID.providerEditor)
@@ -1367,7 +1522,7 @@ private struct ProviderAppearanceEditor: View {
     private var imageStatusText: String {
         if pendingArtworkData != nil { return String(localized: "New image selected") }
         if restoresDefaultArtwork { return String(localized: "Default image") }
-        if store.appearance(serverID: serverScopeID, providerID: provider.providerID).artworkFileName != nil {
+        if store.artworkImage(serverID: serverScopeID, providerID: provider.providerID) != nil {
             return String(localized: "Custom image")
         }
         return String(localized: "Default image")
@@ -1418,6 +1573,11 @@ private struct ProviderAppearanceEditor: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private static func isUserCancellation(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }
 }
 

@@ -256,6 +256,30 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.appearance(serverID: "server", providerID: "provider").displayName, "Original")
     }
 
+    func testProviderArtworkProcessorRejectsOversizedInputBeforeDecode() {
+        let oversized = Data(count: ProviderArtworkProcessor.maximumInputBytes + 1)
+
+        XCTAssertThrowsError(try ProviderArtworkProcessor.normalizedPNG(from: oversized)) { error in
+            guard case ProviderArtworkImportError.imageTooLarge = error else {
+                return XCTFail("Expected imageTooLarge, got \(error)")
+            }
+        }
+    }
+
+    func testProviderArtworkProcessorDownsamplesToBoundedPNG() throws {
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1_200, height: 600))
+        let image = renderer.image { context in
+            UIColor.systemOrange.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1_200, height: 600))
+        }
+        let input = try XCTUnwrap(image.jpegData(compressionQuality: 0.8))
+
+        let output = try ProviderArtworkProcessor.normalizedPNG(from: input)
+        let normalized = try XCTUnwrap(UIImage(data: output))
+
+        XCTAssertLessThanOrEqual(max(normalized.size.width, normalized.size.height), 512)
+    }
+
     func testProviderAppearanceApplyCanRestoreNameAndArtworkTogether() throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("ProviderAppearanceRestoreTests-\(UUID().uuidString)", isDirectory: true)
