@@ -33,7 +33,7 @@ is the acceptance artifact.
 - OpenAI, Fireworks, and Kimi produce distinct silhouettes in the first viewport.
   The OpenAI/Codex mark is monochrome; the official Fireworks purple is preserved.
 - The native long-press menu stays anchored to the provider card. VoiceOver has an
-  explicit Edit Appearance action so context-menu discovery is not the only path.
+  explicit Edit action so context-menu discovery is not the only path.
 - The editor presents human-readable display name separately from read-only,
   copyable Provider ID. Artwork actions cover Photos, Files, bundled automatic,
   deterministic fallback, and reset without touching connection credentials.

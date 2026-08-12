@@ -210,7 +210,7 @@ users.
 
 Recommended actions:
 
-1. **Edit Appearance** — opens the provider editor.
+1. **Edit** — opens the provider editor.
 2. **Set Current Model as Default** — conditional. Show only when the current
    model belongs to this provider and its exact server identifier can be sent
    unambiguously through the verified default-model API. Do not create a

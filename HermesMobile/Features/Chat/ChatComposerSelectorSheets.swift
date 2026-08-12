@@ -261,7 +261,7 @@ struct ComposerModelPickerSheet: View {
                 providerContextMenu(provider)
             }
         }
-        .accessibilityAction(named: String(localized: "Edit Appearance")) {
+        .accessibilityAction(named: String(localized: "Edit")) {
             guard !isAllProviders else { return }
             editedProvider = provider
         }
@@ -272,7 +272,7 @@ struct ComposerModelPickerSheet: View {
         Button {
             editedProvider = provider
         } label: {
-            Label("Edit Appearance", systemImage: "paintbrush")
+            Label("Edit", systemImage: "paintbrush")
         }
 
         if appearanceStore.appearance(serverID: serverScopeID, providerID: provider.providerID).hasOverride {

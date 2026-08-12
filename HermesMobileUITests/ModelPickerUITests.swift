@@ -23,10 +23,10 @@ final class ModelPickerUITests: XCTestCase {
         addScreenshot(named: "model-picker")
 
         provider.press(forDuration: 1.0)
-        let editAppearance = app.buttons["Edit Appearance"]
-        XCTAssertTrue(editAppearance.waitForExistence(timeout: 5))
+        let edit = app.buttons["Edit"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 5))
         addScreenshot(named: "provider-context-menu")
-        editAppearance.tap()
+        edit.tap()
 
         let editor = app.descendants(matching: .any)
             .matching(identifier: "model-picker.provider-editor").firstMatch
