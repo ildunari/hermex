@@ -67,3 +67,25 @@ is the acceptance artifact.
 No unresolved visual blocker remains from the baseline comparison. The remaining
 review decision is product taste: whether to keep the exact model-ID metadata in
 the primary list or reveal it only on demand.
+
+## Provider editor second-pass audit
+
+The original editor was structurally safe but read like a developer settings
+form. A fresh signed-simulator audit found and resolved these issues:
+
+| Finding | Resolution |
+| --- | --- |
+| `Identity` led with routing language instead of the user's task. | A clearly labeled **Name** card places the editable field first and explains where the name appears. |
+| Four thumbnail actions competed at the same hierarchy. | One full-width **Choose Image** control opens the same native menu pattern as the composer attachment button, with **Photos**, **Choose File**, and contextual **Restore Default Image**. |
+| Provider ID looked like a primary editable field. | Technical routing information moved under collapsed **Provider Details** and remains selectable but read-only. |
+| Name saved only on Done while image changes saved immediately, so Cancel was misleading. | Name and image are staged in the editor; **Save** commits both and **Cancel** commits neither. |
+| An image write failure could leave the new name saved. | The appearance store prepares and writes the image before persisting the combined name/image snapshot; invalid image data leaves the original appearance unchanged. |
+| `Choose Image` wrapped inside a narrow trailing capsule. | The chooser became a full-width row beneath the image preview/status. |
+| Disclosure tint fell back to system blue. | Technical details use the screen's neutral primary tint. |
+| Restore was destructive-looking and visually detached. | **Restore Defaults** is now a quiet, bordered secondary action and applies only after Save. |
+| Picker selection assumed the Warm palette. | Warm uses bronze state colors; Standard uses graphite state colors. Both screens use `ChatPalette` semantic surfaces and neither restores a blue outline. |
+
+Current audit evidence is produced by `ModelPickerUITests` for Warm and Standard
+picker/editor states plus the open image menu. Screenshot evidence cannot prove
+VoiceOver reading order or keyboard behavior, so those remain covered by semantic
+labels/identifiers and runtime interaction tests rather than visual claims.

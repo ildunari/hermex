@@ -235,6 +235,49 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.appearance(serverID: "server-b", providerID: "openai-codex").displayName, "Home Codex")
     }
 
+    func testProviderAppearanceApplyRejectsBadImageWithoutChangingName() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceAtomicTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-atomic",
+            artworkDirectory: directory
+        )
+        store.setDisplayName("Original", serverID: "server", providerID: "provider")
+
+        XCTAssertThrowsError(try store.apply(
+            displayName: "Replacement",
+            artworkData: Data("not-an-image".utf8),
+            restoresDefaultArtwork: false,
+            serverID: "server",
+            providerID: "provider"
+        ))
+        XCTAssertEqual(store.appearance(serverID: "server", providerID: "provider").displayName, "Original")
+    }
+
+    func testProviderAppearanceApplyCanRestoreNameAndArtworkTogether() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceRestoreTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-restore",
+            artworkDirectory: directory
+        )
+        store.setDisplayName("Custom", serverID: "server", providerID: "provider")
+
+        try store.apply(
+            displayName: nil,
+            artworkData: nil,
+            restoresDefaultArtwork: true,
+            serverID: "server",
+            providerID: "provider"
+        )
+
+        XCTAssertFalse(store.appearance(serverID: "server", providerID: "provider").hasOverride)
+    }
+
     func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {
         let custom = ModelCatalogOption(
             id: "moonshotai/kimi-k2-0905",

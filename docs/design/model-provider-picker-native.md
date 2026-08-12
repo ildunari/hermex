@@ -229,13 +229,10 @@ Open a native form sheet titled “Edit Provider.”
 Fields and actions:
 
 - Artwork preview.
-- Display Name: editable local override.
-- Provider ID: read-only technical identity.
-- Artwork source:
-  - Automatic: bundled brand asset when available, otherwise fallback.
-  - Custom Image: imported from Photos or Files and copied into app-owned storage.
-  - Fallback: deterministic Hermex fallback.
-- Reset Name, Reset Artwork, or Reset All Appearance.
+- Name: an obvious editable local override with a plain explanation of where it appears.
+- Image: one attachment-style **Choose Image** menu for Photos, Files, and restoring the bundled default.
+- Provider Details: collapsed by default, with Provider ID as read-only technical identity.
+- Restore Defaults: stages the original name and bundled artwork, then applies them on Save.
 - Manage Connection & Models: navigates to the existing provider-settings/status
   surface rather than duplicating credential controls in this editor.
 

@@ -92,6 +92,7 @@ struct ComposerModelPickerSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @State private var searchText = ""
     @State private var selectedView = ModelPickerViewMode.all
     @State private var providerScopeByView: [ModelPickerViewMode: String] = [:]
@@ -144,7 +145,7 @@ struct ComposerModelPickerSheet: View {
                 store: appearanceStore,
                 onChange: { presentationRevision += 1 }
             )
-            .presentationDetents([.large])
+            .presentationDetents([.fraction(0.78), .large])
         }
         .sheet(isPresented: $showsCustomModelEntry) {
             CustomModelEntrySheet(
@@ -492,11 +493,18 @@ struct ComposerModelPickerSheet: View {
     }
 
     private var pickerAccent: Color {
-        Color(hexRGB: colorScheme == .dark ? "#D4A875" : "#9A6A43") ?? .brown
+        pickerAccentPalette.selection
     }
 
     private var pickerAccentForeground: Color {
-        colorScheme == .dark ? .black : .white
+        pickerAccentPalette.selectionForeground
+    }
+
+    private var pickerAccentPalette: ChatPaletteAccent {
+        ChatPaletteAccent.resolved(
+            temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue),
+            colorScheme: colorScheme
+        )
     }
 
     private var resultTitle: String {
@@ -698,16 +706,9 @@ struct ProviderAppearanceStore: @unchecked Sendable {
     }
 
     func importArtwork(_ data: Data, serverID: String, providerID: String) throws {
-        guard let source = UIImage(data: data) else { throw ProviderArtworkImportError.invalidImage }
-        let targetSize = scaledSize(for: source.size, maximumDimension: 512)
-        let renderer = UIGraphicsImageRenderer(size: targetSize)
-        let normalized = renderer.image { _ in
-            source.draw(in: CGRect(origin: .zero, size: targetSize))
-        }
-        guard let pngData = normalized.pngData() else { throw ProviderArtworkImportError.invalidImage }
+        let (fileName, pngData) = try preparedArtwork(data)
 
         try FileManager.default.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
-        let fileName = "\(UUID().uuidString).png"
         try pngData.write(to: artworkDirectory.appendingPathComponent(fileName), options: .atomic)
 
         var value = appearance(serverID: serverID, providerID: providerID)
@@ -715,6 +716,47 @@ struct ProviderAppearanceStore: @unchecked Sendable {
         value.artworkFileName = fileName
         value.usesFallback = false
         save(value, serverID: serverID, providerID: providerID)
+    }
+
+    func apply(
+        displayName: String?,
+        artworkData: Data?,
+        restoresDefaultArtwork: Bool,
+        serverID: String,
+        providerID: String
+    ) throws {
+        let currentValue = appearance(serverID: serverID, providerID: providerID)
+        let prepared = try artworkData.map(preparedArtwork)
+
+        if let prepared {
+            try FileManager.default.createDirectory(at: artworkDirectory, withIntermediateDirectories: true)
+            do {
+                try prepared.data.write(
+                    to: artworkDirectory.appendingPathComponent(prepared.fileName),
+                    options: .atomic
+                )
+            } catch {
+                removeArtworkFile(named: prepared.fileName)
+                throw error
+            }
+        }
+
+        var value = currentValue
+        let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        value.displayName = trimmed?.isEmpty == false ? trimmed : nil
+        if let prepared {
+            value.artworkFileName = prepared.fileName
+            value.usesFallback = false
+        } else if restoresDefaultArtwork {
+            value.artworkFileName = nil
+            value.usesFallback = false
+        }
+        save(value, serverID: serverID, providerID: providerID)
+
+        if (prepared != nil || restoresDefaultArtwork),
+           currentValue.artworkFileName != value.artworkFileName {
+            removeArtworkFile(named: currentValue.artworkFileName)
+        }
     }
 
     func artworkImage(serverID: String, providerID: String) -> UIImage? {
@@ -763,6 +805,17 @@ struct ProviderAppearanceStore: @unchecked Sendable {
         let scale = min(maximumDimension / max(size.width, size.height), 1)
         return CGSize(width: max(1, size.width * scale), height: max(1, size.height * scale))
     }
+
+    private func preparedArtwork(_ data: Data) throws -> (fileName: String, data: Data) {
+        guard let source = UIImage(data: data) else { throw ProviderArtworkImportError.invalidImage }
+        let targetSize = scaledSize(for: source.size, maximumDimension: 512)
+        let renderer = UIGraphicsImageRenderer(size: targetSize)
+        let normalized = renderer.image { _ in
+            source.draw(in: CGRect(origin: .zero, size: targetSize))
+        }
+        guard let pngData = normalized.pngData() else { throw ProviderArtworkImportError.invalidImage }
+        return ("\(UUID().uuidString).png", pngData)
+    }
 }
 
 enum ProviderArtworkImportError: LocalizedError {
@@ -778,16 +831,20 @@ private struct ProviderArtworkView: View {
     let serverScopeID: String
     let store: ProviderAppearanceStore
     let size: CGFloat
+    var usesStoredArtwork = true
 
     var body: some View {
         let appearance = store.appearance(serverID: serverScopeID, providerID: providerID)
-        let bundledArtwork = appearance.usesFallback ? nil : ProviderBrandCatalog.artwork(for: providerID)
+        let bundledArtwork = usesStoredArtwork && appearance.usesFallback
+            ? nil
+            : ProviderBrandCatalog.artwork(for: providerID)
 
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.32, style: .continuous)
                 .fill(bundledArtwork == nil ? providerColor.opacity(0.13) : Color.primary.opacity(0.055))
 
-            if let image = store.artworkImage(serverID: serverScopeID, providerID: providerID) {
+            if usesStoredArtwork,
+               let image = store.artworkImage(serverID: serverScopeID, providerID: providerID) {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
@@ -1035,101 +1092,72 @@ private struct ProviderAppearanceEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var displayName: String
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showsPhotoPicker = false
     @State private var showsFileImporter = false
     @State private var errorMessage: String?
-    @State private var artworkRevision = 0
+    @State private var pendingArtworkData: Data?
+    @State private var restoresDefaultArtwork = false
+    @State private var restoresDefaultName = false
+    @State private var showsProviderDetails = false
 
     init(provider: ModelPickerProvider, serverScopeID: String, store: ProviderAppearanceStore, onChange: @escaping () -> Void) {
         self.provider = provider
         self.serverScopeID = serverScopeID
         self.store = store
         self.onChange = onChange
-        _displayName = State(initialValue: store.appearance(serverID: serverScopeID, providerID: provider.providerID).displayName
+        let appearance = store.appearance(serverID: serverScopeID, providerID: provider.providerID)
+        _displayName = State(initialValue: appearance.displayName
             ?? ProviderBrandCatalog.displayName(providerID: provider.providerID, catalogName: provider.catalogName))
+        _restoresDefaultName = State(initialValue: appearance.displayName == nil)
     }
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    HStack(spacing: 16) {
-                        ProviderArtworkView(providerID: provider.providerID, serverScopeID: serverScopeID, store: store, size: 64)
-                            .id(artworkRevision)
-
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(displayName.isEmpty
-                                ? ProviderBrandCatalog.displayName(providerID: provider.providerID, catalogName: provider.catalogName)
-                                : displayName)
-                                .font(.headline)
-                            Text(provider.providerID)
-                                .font(.caption.monospaced())
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                    }
-                    .padding(.vertical, 6)
-                }
-
-                Section {
-                    TextField("Display Name", text: $displayName)
-                    LabeledContent("Provider ID") {
-                        Text(provider.providerID)
-                            .font(.subheadline.monospaced())
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
-                    }
-                } header: {
-                    Text("Identity")
-                } footer: {
-                    Text("Routing identity can’t be changed.")
-                }
-
-                Section("Thumbnail") {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("Choose from Photos", systemImage: "photo")
-                    }
+            ScrollView {
+                VStack(spacing: 20) {
+                    previewCard
+                    nameCard
+                    imageCard
+                    providerDetailsCard
 
                     Button {
-                        showsFileImporter = true
+                        displayName = defaultDisplayName
+                        pendingArtworkData = nil
+                        restoresDefaultArtwork = true
+                        restoresDefaultName = true
+                        errorMessage = nil
                     } label: {
-                        Label("Choose from Files", systemImage: "folder")
+                        Label("Restore Defaults", systemImage: "arrow.counterclockwise")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: 48)
                     }
-
-                    Button {
-                        store.useAutomaticArtwork(serverID: serverScopeID, providerID: provider.providerID)
-                        didChangeArtwork()
-                    } label: {
-                        Label("Use Automatic", systemImage: "wand.and.stars")
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .appSurfaceBackground(
+                        .surface,
+                        opacity: 0.56,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .stroke(Color.primary.opacity(0.055), lineWidth: 0.6)
+                            .allowsHitTesting(false)
                     }
+                    .accessibilityHint("Restores the original name and image after you save.")
 
-                    Button {
-                        store.useFallbackArtwork(serverID: serverScopeID, providerID: provider.providerID)
-                        didChangeArtwork()
-                    } label: {
-                        Label("Use Hermex Fallback", systemImage: "hexagon")
+                    if let errorMessage {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote)
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 4)
                     }
                 }
-
-                if let errorMessage {
-                    Section {
-                        Text(errorMessage).foregroundStyle(.red)
-                    }
-                }
-
-                Section {
-                    Button("Reset All Appearance", role: .destructive) {
-                        store.reset(serverID: serverScopeID, providerID: provider.providerID)
-                        displayName = ProviderBrandCatalog.displayName(
-                            providerID: provider.providerID,
-                            catalogName: provider.catalogName
-                        )
-                        didChangeArtwork()
-                    }
-                } footer: {
-                    Text("Connection credentials and model configuration remain in Settings › Providers.")
-                }
+                .padding(.horizontal, 18)
+                .padding(.top, 12)
+                .padding(.bottom, 28)
             }
-            .scrollContentBackground(.hidden)
             .appSurfaceBackground(.canvas)
             .navigationTitle("Edit Provider")
             .navigationBarTitleDisplayMode(.inline)
@@ -1138,12 +1166,13 @@ private struct ProviderAppearanceEditor: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") {
-                        store.setDisplayName(displayName, serverID: serverScopeID, providerID: provider.providerID)
-                        onChange()
-                        dismiss()
-                    }
+                    Button("Save", action: save)
+                        .disabled(displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
+            }
+            .photosPicker(isPresented: $showsPhotoPicker, selection: $selectedPhoto, matching: .images)
+            .onChange(of: displayName) { _, newValue in
+                restoresDefaultName = newValue == defaultDisplayName
             }
             .onChange(of: selectedPhoto) { _, item in
                 guard let item else { return }
@@ -1152,8 +1181,13 @@ private struct ProviderAppearanceEditor: View {
                         guard let data = try await item.loadTransferable(type: Data.self) else {
                             throw ProviderArtworkImportError.invalidImage
                         }
-                        try store.importArtwork(data, serverID: serverScopeID, providerID: provider.providerID)
-                        await MainActor.run { didChangeArtwork() }
+                        guard UIImage(data: data) != nil else { throw ProviderArtworkImportError.invalidImage }
+                        await MainActor.run {
+                            pendingArtworkData = data
+                            restoresDefaultArtwork = false
+                            errorMessage = nil
+                            selectedPhoto = nil
+                        }
                     } catch {
                         await MainActor.run { errorMessage = error.localizedDescription }
                     }
@@ -1164,8 +1198,11 @@ private struct ProviderAppearanceEditor: View {
                     let url = try result.get()
                     let hasAccess = url.startAccessingSecurityScopedResource()
                     defer { if hasAccess { url.stopAccessingSecurityScopedResource() } }
-                    try store.importArtwork(Data(contentsOf: url), serverID: serverScopeID, providerID: provider.providerID)
-                    didChangeArtwork()
+                    let data = try Data(contentsOf: url)
+                    guard UIImage(data: data) != nil else { throw ProviderArtworkImportError.invalidImage }
+                    pendingArtworkData = data
+                    restoresDefaultArtwork = false
+                    errorMessage = nil
                 } catch {
                     errorMessage = error.localizedDescription
                 }
@@ -1175,10 +1212,256 @@ private struct ProviderAppearanceEditor: View {
         .adaptiveFormPresentation()
     }
 
-    private func didChangeArtwork() {
-        errorMessage = nil
-        artworkRevision += 1
-        onChange()
+    private var previewCard: some View {
+        ProviderEditorCard {
+            HStack(spacing: 16) {
+                artworkPreview(size: 68)
+
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(previewDisplayName)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+
+                    Text("Preview in the model picker")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var nameCard: some View {
+        ProviderEditorCard(title: "Name") {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("Provider name", text: $displayName)
+                    .font(.body.weight(.medium))
+                    .textInputAutocapitalization(.words)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 50)
+                    .appSurfaceBackground(
+                        .inset,
+                        opacity: 0.74,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .accessibilityLabel("Provider name")
+                    .accessibilityIdentifier("model-picker.provider-name")
+
+                Text("This is the name shown in the model picker.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var imageCard: some View {
+        ProviderEditorCard(title: "Image") {
+            VStack(spacing: 14) {
+                HStack(spacing: 14) {
+                    artworkPreview(size: 54)
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Provider image")
+                            .font(.subheadline.weight(.semibold))
+                        Text(imageStatusText)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 0)
+                }
+
+                Divider()
+                imagePickerMenu
+            }
+        }
+    }
+
+    private var imagePickerMenu: some View {
+        ChatUIKitMenuButton(horizontalPadding: 6, verticalPadding: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "photo.badge.plus")
+                Text("Choose Image")
+                Image(systemName: "chevron.down")
+                    .font(.caption2.weight(.semibold))
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .adaptiveGlass(
+                .regular,
+                isInteractive: true,
+                fallbackMaterial: .ultraThinMaterial,
+                in: Capsule()
+            )
+            .clipShape(Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(Color.primary.opacity(0.07), lineWidth: 0.5)
+                    .allowsHitTesting(false)
+            }
+        } menu: {
+            imageMenu()
+        }
+        .accessibilityLabel("Choose provider image")
+        .accessibilityIdentifier("model-picker.choose-image")
+    }
+
+    private var providerDetailsCard: some View {
+        ProviderEditorCard {
+            DisclosureGroup(isExpanded: $showsProviderDetails) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Divider()
+                    Text("Provider ID")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(provider.providerID)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Text("Used for routing and can’t be changed here.")
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+                .padding(.top, 8)
+            } label: {
+                Label("Provider Details", systemImage: "info.circle")
+                    .font(.subheadline.weight(.semibold))
+            }
+            .tint(.primary)
+        }
+    }
+
+    @ViewBuilder
+    private func artworkPreview(size: CGFloat) -> some View {
+        if let pendingArtworkData, let image = UIImage(data: pendingArtworkData) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFill()
+                .frame(width: size, height: size)
+                .clipShape(RoundedRectangle(cornerRadius: size * 0.30, style: .continuous))
+        } else {
+            ProviderArtworkView(
+                providerID: provider.providerID,
+                serverScopeID: serverScopeID,
+                store: store,
+                size: size,
+                usesStoredArtwork: !restoresDefaultArtwork
+            )
+        }
+    }
+
+    private var defaultDisplayName: String {
+        ProviderBrandCatalog.displayName(providerID: provider.providerID, catalogName: provider.catalogName)
+    }
+
+    private var previewDisplayName: String {
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? defaultDisplayName : trimmed
+    }
+
+    private var imageStatusText: String {
+        if pendingArtworkData != nil { return String(localized: "New image selected") }
+        if restoresDefaultArtwork { return String(localized: "Default image") }
+        if store.appearance(serverID: serverScopeID, providerID: provider.providerID).artworkFileName != nil {
+            return String(localized: "Custom image")
+        }
+        return String(localized: "Default image")
+    }
+
+    private func imageMenu() -> UIMenu {
+        var children: [UIMenuElement] = [
+            UIAction(title: String(localized: "Photos"), image: UIImage(systemName: "photo.on.rectangle")) { _ in
+                Task { @MainActor in showsPhotoPicker = true }
+            },
+            UIAction(title: String(localized: "Choose File"), image: UIImage(systemName: "folder")) { _ in
+                Task { @MainActor in showsFileImporter = true }
+            }
+        ]
+
+        let hasReplaceableImage = pendingArtworkData != nil
+            || store.appearance(serverID: serverScopeID, providerID: provider.providerID).artworkFileName != nil
+        if !restoresDefaultArtwork, hasReplaceableImage {
+            children.append(UIMenu(
+                title: "",
+                options: [.displayInline],
+                children: [
+                    UIAction(title: String(localized: "Restore Default Image"), image: UIImage(systemName: "arrow.counterclockwise")) { _ in
+                        Task { @MainActor in
+                            pendingArtworkData = nil
+                            restoresDefaultArtwork = true
+                            errorMessage = nil
+                        }
+                    }
+                ]
+            ))
+        }
+
+        return UIMenu(title: "", children: children)
+    }
+
+    private func save() {
+        do {
+            try store.apply(
+                displayName: restoresDefaultName ? nil : displayName,
+                artworkData: pendingArtworkData,
+                restoresDefaultArtwork: restoresDefaultArtwork,
+                serverID: serverScopeID,
+                providerID: provider.providerID
+            )
+            onChange()
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
+private struct ProviderEditorCard<Content: View>: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorScheme) private var colorScheme
+
+    let title: String?
+    @ViewBuilder let content: Content
+
+    init(title: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+
+        VStack(alignment: .leading, spacing: 9) {
+            if let title {
+                Text(title)
+                    .textCase(.uppercase)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
+            }
+
+            content
+                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    shape.fill(
+                ChatPalette.appChrome(colorScheme: colorScheme).surface.opacity(reduceTransparency ? 1 : 0.40)
+                    )
+                }
+                .adaptiveGlass(.regular, fallbackMaterial: .regularMaterial, in: shape)
+                .clipShape(shape)
+                .overlay {
+                    shape
+                        .stroke(Color.primary.opacity(colorSchemeContrast == .increased ? 0.16 : 0.06), lineWidth: 0.7)
+                        .allowsHitTesting(false)
+                }
+        }
     }
 }
 
