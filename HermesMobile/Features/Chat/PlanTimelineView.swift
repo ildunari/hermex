@@ -128,6 +128,8 @@ struct PlanTimelineView: View {
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(isExpanded ? "Double tap to collapse the plan." : "Double tap to expand the plan.")
+        // Stable handle for UI tests; the label carries a live step count.
+        .accessibilityIdentifier(ActivityAccessibilityID.planHeader)
     }
 
     @ViewBuilder
@@ -209,6 +211,9 @@ struct PlanTimelineView: View {
                 isExpanded = false
             }
         }
+        // Lets a UI test address the scrolling checklist directly — both to
+        // assert it is bounded and to drive a real scroll gesture inside it.
+        .accessibilityIdentifier(ActivityAccessibilityID.planRowsScroll)
     }
 
     private var paddedRows: some View {

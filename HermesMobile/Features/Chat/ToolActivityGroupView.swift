@@ -68,6 +68,8 @@ struct ToolActivityGroupView: View {
             )
             .accessibilityLabel(activityAccessibilityLabel)
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+            // Stable handle for UI tests; the label carries a live tool count.
+            .accessibilityIdentifier(ActivityAccessibilityID.toolsHeader)
 
             if isExpanded {
                 boundedRunsList
@@ -163,6 +165,9 @@ struct ToolActivityGroupView: View {
                 guard height > 0 else { return }
                 measuredRunsHeight = height
             }
+            // Lets a UI test address the capped list directly — both to assert
+            // it is bounded and to drive a real scroll gesture inside it.
+            .accessibilityIdentifier(ActivityAccessibilityID.toolRunsScroll)
         }
     }
 

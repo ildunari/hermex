@@ -70,6 +70,8 @@ struct ReasoningBlockView: View {
                     chrome: isExpanded ? .none : .pill
                 )
                 .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+                // Stable handle for UI tests; the label carries a duration.
+                .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
 
                 if isExpanded {
                     // Quiet indented body: a thin rail with the thought hanging
@@ -110,6 +112,10 @@ struct ReasoningBlockView: View {
                     // inheriting the delayed height spring painted the full
                     // thought before the window opened.
                     .transition(ChatMotion.cardBodyRevealTransition(reduceMotion: reduceMotion))
+                    // Lets a UI test assert the thought body actually mounted,
+                    // rather than inferring it from the header's chevron.
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier(ActivityAccessibilityID.thinkingBody)
                 }
             }
             // One container for the whole block when open — same treatment the

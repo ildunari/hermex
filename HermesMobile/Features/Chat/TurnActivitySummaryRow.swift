@@ -79,6 +79,9 @@ struct TurnActivitySummaryRow: View {
         // so the raw summary text hides a failed turn from VoiceOver entirely.
         .accessibilityLabel(accessibilityText)
         .accessibilityHint(isExpanded ? "Double tap to collapse activity." : "Double tap to expand activity.")
+        // Stable handle for UI tests: the label changes with duration and tool
+        // count, so tests cannot address this row by text.
+        .accessibilityIdentifier(ActivityAccessibilityID.turnSummaryRow)
     }
 
     private var accessibilityText: String {
