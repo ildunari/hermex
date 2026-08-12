@@ -13,6 +13,7 @@ struct ModelPickerCaptureHost: View {
     @State private var fixture: ModelPickerCaptureFixture?
     @State private var favoriteModelKeys: [ModelFavoriteKey] = []
     @State private var recentModelKeys: [ModelFavoriteKey] = []
+    @State private var favoriteProviderIDs: [String] = []
 
     var body: some View {
         ChatPalette.appChrome(colorScheme: colorScheme).chatBackground
@@ -24,6 +25,7 @@ struct ModelPickerCaptureHost: View {
                     selectedModelProviderID: fixture.selectedProviderID,
                     favoriteModelKeys: favoriteModelKeys,
                     recentModelKeys: recentModelKeys,
+                    favoriteProviderIDs: favoriteProviderIDs,
                     onSelect: { option in
                         self.fixture = ModelPickerCaptureFixture(
                             modelGroups: fixture.modelGroups,
@@ -36,6 +38,13 @@ struct ModelPickerCaptureHost: View {
                             favoriteModelKeys.remove(at: index)
                         } else {
                             favoriteModelKeys.append(option.favoriteKey)
+                        }
+                    },
+                    onToggleProviderFavorite: { providerID in
+                        if let index = favoriteProviderIDs.firstIndex(of: providerID) {
+                            favoriteProviderIDs.remove(at: index)
+                        } else {
+                            favoriteProviderIDs.append(providerID)
                         }
                     },
                     onDeleteSavedCustom: { option in
@@ -109,8 +118,10 @@ struct ComposerModelPickerSheet: View {
     let selectedModelProviderID: String?
     let favoriteModelKeys: [ModelFavoriteKey]
     let recentModelKeys: [ModelFavoriteKey]
+    let favoriteProviderIDs: [String]
     let onSelect: (ModelCatalogOption) -> Void
     let onToggleFavorite: (ModelCatalogOption) -> Void
+    let onToggleProviderFavorite: (String) -> Void
     let onDeleteSavedCustom: (ModelCatalogOption) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -155,8 +166,11 @@ struct ComposerModelPickerSheet: View {
                 prompt: "Search providers & models"
             )
             .onAppear { initializeProviderScopesIfNeeded() }
-            .onChange(of: providers.map(\.providerID)) { _, providerIDs in
-                reconcileProviderScopes(validProviderIDs: Set(providerIDs))
+            .onChange(of: displayedProviders.map(\.providerID)) { _, providerIDs in
+                reconcileProviderScope(for: selectedView, validProviderIDs: Set(providerIDs))
+            }
+            .onChange(of: selectedView) { _, mode in
+                reconcileProviderScope(for: mode, validProviderIDs: Set(displayedProviders.map(\.providerID)))
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -203,16 +217,18 @@ struct ComposerModelPickerSheet: View {
                         providerCard(ModelPickerProvider(
                             providerID: allProvidersScope,
                             catalogName: String(localized: "All Providers"),
-                            modelCount: allViewOptions.count
+                            modelCount: viewOptions.count
                         ))
 
-                        ForEach(providers) { provider in
+                        ForEach(displayedProviders) { provider in
                             providerCard(provider)
                         }
                     }
                     .padding(.horizontal, 16)
                     .padding(.bottom, 14)
+                    .background(HorizontalScrollAxisGuard())
                 }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
                 .onAppear { scrollSelectedProviderIntoView(using: proxy, animated: false) }
                 .onChange(of: selectedProviderScope) { _, _ in
                     scrollSelectedProviderIntoView(using: proxy, animated: true)
@@ -253,6 +269,15 @@ struct ComposerModelPickerSheet: View {
                         .padding(7)
                 }
             }
+            .overlay(alignment: .topLeading) {
+                if !isAllProviders, isProviderFavorite(provider.providerID) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(Color.yellow)
+                        .padding(9)
+                        .accessibilityHidden(true)
+                }
+            }
             .shadow(color: Color.black.opacity(isSelected ? 0.06 : 0.025), radius: isSelected ? 7 : 3, y: 2)
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
@@ -268,6 +293,9 @@ struct ComposerModelPickerSheet: View {
         }
         .accessibilityActions {
             if !isAllProviders {
+                Button(isProviderFavorite(provider.providerID) ? "Remove from Favorites" : "Add to Favorites") {
+                    toggleProviderFavorite(provider.providerID)
+                }
                 Button("Edit") { editedProvider = provider }
             }
         }
@@ -342,6 +370,15 @@ struct ComposerModelPickerSheet: View {
 
     @ViewBuilder
     private func providerContextMenu(_ provider: ModelPickerProvider) -> some View {
+        Button {
+            toggleProviderFavorite(provider.providerID)
+        } label: {
+            Label(
+                isProviderFavorite(provider.providerID) ? "Remove from Favorites" : "Add to Favorites",
+                systemImage: isProviderFavorite(provider.providerID) ? "star.slash" : "star"
+            )
+        }
+
         Button {
             editedProvider = provider
         } label: {
@@ -536,6 +573,12 @@ struct ComposerModelPickerSheet: View {
         return result
     }
 
+    private var displayedProviders: [ModelPickerProvider] {
+        guard selectedView == .favorites else { return providers }
+        let favorites = Set(favoriteProviderIDs)
+        return providers.filter { favorites.contains($0.providerID) }
+    }
+
     private var storedCustomOptions: [ModelCatalogOption] {
         let catalogKeys = Set(modelGroups.flatMap(\.models).map(\.favoriteKey))
         var seen = Set<ModelFavoriteKey>()
@@ -633,14 +676,12 @@ struct ComposerModelPickerSheet: View {
         providerScopeByView[.recent] = allProvidersScope
     }
 
-    private func reconcileProviderScopes(validProviderIDs: Set<String>) {
-        for mode in ModelPickerViewMode.allCases {
-            guard let scope = providerScopeByView[mode],
-                  !scope.isEmpty,
-                  !validProviderIDs.contains(scope)
-            else { continue }
-            providerScopeByView[mode] = allProvidersScope
-        }
+    private func reconcileProviderScope(for mode: ModelPickerViewMode, validProviderIDs: Set<String>) {
+        guard let scope = providerScopeByView[mode],
+              !scope.isEmpty,
+              !validProviderIDs.contains(scope)
+        else { return }
+        providerScopeByView[mode] = allProvidersScope
     }
 
     private func scrollSelectedProviderIntoView(using proxy: ScrollViewProxy, animated: Bool) {
@@ -677,8 +718,112 @@ struct ComposerModelPickerSheet: View {
         favoriteModelKeys.contains(option.favoriteKey)
     }
 
+    private func isProviderFavorite(_ providerID: String) -> Bool {
+        favoriteProviderIDs.contains(providerID)
+    }
+
+    private func toggleProviderFavorite(_ providerID: String) {
+        onToggleProviderFavorite(providerID)
+        if selectedView == .favorites, selectedProviderScope == providerID {
+            providerScopeByView[.favorites] = allProvidersScope
+        }
+    }
+
     private func isSavedCustomOption(_ option: ModelCatalogOption) -> Bool {
         !modelGroups.flatMap(\.models).contains { $0.favoriteKey == option.favoriteKey }
+    }
+}
+
+private struct HorizontalScrollAxisGuard: UIViewRepresentable {
+    func makeUIView(context: Context) -> HorizontalScrollAxisGuardView {
+        HorizontalScrollAxisGuardView()
+    }
+
+    func updateUIView(_ uiView: HorizontalScrollAxisGuardView, context: Context) {
+        uiView.attachToNearestScrollViewIfNeeded()
+    }
+
+    static func dismantleUIView(_ uiView: HorizontalScrollAxisGuardView, coordinator: ()) {
+        uiView.detach()
+    }
+}
+
+@MainActor
+private final class HorizontalScrollAxisGuardView: UIView {
+    private weak var guardedScrollView: UIScrollView?
+    private var offsetObservation: NSKeyValueObservation?
+    private let verticalPanShield = UIPanGestureRecognizer()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = .clear
+        verticalPanShield.delegate = self
+        verticalPanShield.cancelsTouchesInView = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        attachToNearestScrollViewIfNeeded()
+    }
+
+    func attachToNearestScrollViewIfNeeded() {
+        guard let scrollView = sequence(first: superview, next: { $0?.superview })
+            .first(where: { $0 is UIScrollView }) as? UIScrollView else { return }
+
+        guard scrollView !== guardedScrollView else {
+            clampVerticalOffset()
+            return
+        }
+
+        detach()
+        guardedScrollView = scrollView
+        scrollView.alwaysBounceVertical = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.isDirectionalLockEnabled = true
+        scrollView.addGestureRecognizer(verticalPanShield)
+        offsetObservation = scrollView.observe(\.contentOffset, options: [.new]) { [weak self] _, _ in
+            Task { @MainActor [weak self] in self?.clampVerticalOffset() }
+        }
+        clampVerticalOffset()
+    }
+
+    func detach() {
+        if let view = verticalPanShield.view {
+            view.removeGestureRecognizer(verticalPanShield)
+        }
+        offsetObservation = nil
+        guardedScrollView = nil
+    }
+
+    private func clampVerticalOffset() {
+        guard let scrollView = guardedScrollView else { return }
+        let pinnedY = -scrollView.adjustedContentInset.top
+        guard abs(scrollView.contentOffset.y - pinnedY) > 0.5 else { return }
+        scrollView.contentOffset.y = pinnedY
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === verticalPanShield,
+              let scrollView = guardedScrollView else { return super.gestureRecognizerShouldBegin(gestureRecognizer) }
+        let velocity = verticalPanShield.velocity(in: scrollView)
+        return abs(velocity.y) > abs(velocity.x)
+    }
+}
+
+extension HorizontalScrollAxisGuardView: UIGestureRecognizerDelegate {
+    nonisolated func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        MainActor.assumeIsolated {
+            otherGestureRecognizer === guardedScrollView?.panGestureRecognizer
+        }
     }
 }
 
