@@ -152,6 +152,7 @@ struct MessageComposerView: View {
     @State private var optimisticWorkspacePath: String?
     @State private var favoriteModelKeys = ModelFavoritesStore.shared.favoriteKeys
     @State private var recentModelKeys = ModelRecentsStore.shared.recentKeys
+    @State private var favoriteProviderIDs: [String] = []
     @State private var keyboardIsVisible = false
     @State private var shouldRestoreFocusAfterPresentation = false
     @State private var deferredUploadFocusPhase: DeferredUploadFocusPhase = .none
@@ -452,12 +453,20 @@ struct MessageComposerView: View {
                 selectedModelProviderID: selectedModelProviderID,
                 favoriteModelKeys: favoriteModelKeys,
                 recentModelKeys: recentModelKeys,
+                favoriteProviderIDs: favoriteProviderIDs,
                 onSelect: { option in
                     selectModel(option)
                     showsAllModelsSheet = false
                 },
                 onToggleFavorite: { option in
                     favoriteModelKeys = ModelFavoritesStore.shared.toggleFavorite(for: option)
+                },
+                onToggleProviderFavorite: { providerID in
+                    let serverID = ServerRegistry.shared.activeServerID ?? "unscoped-server"
+                    favoriteProviderIDs = ProviderFavoritesStore.shared.toggleFavorite(
+                        providerID: providerID,
+                        serverID: serverID
+                    )
                 },
                 onDeleteSavedCustom: { option in
                     favoriteModelKeys = ModelFavoritesStore.shared.removeFavorite(for: option)
@@ -835,6 +844,8 @@ struct MessageComposerView: View {
             onSelectModel: selectModel
         ) {
             prepareForComposerPresentation()
+            let serverID = ServerRegistry.shared.activeServerID ?? "unscoped-server"
+            favoriteProviderIDs = ProviderFavoritesStore.shared.favoriteProviderIDs(serverID: serverID)
             showsAllModelsSheet = true
         }
     }

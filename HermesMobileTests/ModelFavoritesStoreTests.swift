@@ -30,6 +30,29 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertEqual(store.favoriteKeys, favoriteKeys)
     }
 
+    func testProviderFavoritesAreOrderedDeduplicatedAndServerScoped() {
+        let store = ProviderFavoritesStore(defaults: defaults, storageKey: "provider-favorites")
+
+        store.save([" openai-codex ", "fireworks", "openai-codex", "  "], serverID: "work")
+        store.save(["anthropic"], serverID: "home")
+
+        XCTAssertEqual(store.favoriteProviderIDs(serverID: "work"), ["openai-codex", "fireworks"])
+        XCTAssertEqual(store.favoriteProviderIDs(serverID: "home"), ["anthropic"])
+        XCTAssertTrue(store.isFavorite(providerID: "fireworks", serverID: "work"))
+        XCTAssertFalse(store.isFavorite(providerID: "fireworks", serverID: "home"))
+    }
+
+    func testProviderFavoriteToggleAddsAndRemovesExactProvider() {
+        let store = ProviderFavoritesStore(defaults: defaults, storageKey: "provider-favorites-toggle")
+
+        XCTAssertEqual(store.toggleFavorite(providerID: "openai-codex", serverID: "server"), ["openai-codex"])
+        XCTAssertEqual(
+            store.toggleFavorite(providerID: "fireworks", serverID: "server"),
+            ["openai-codex", "fireworks"]
+        )
+        XCTAssertEqual(store.toggleFavorite(providerID: "openai-codex", serverID: "server"), ["fireworks"])
+    }
+
     func testToggleFavoriteRemovesExistingFavorite() {
         let store = ModelFavoritesStore(defaults: defaults, storageKey: "favorites")
         let option = ModelCatalogOption(id: "claude-sonnet-4.5", displayName: "Claude Sonnet 4.5", providerID: "anthropic")
