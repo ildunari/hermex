@@ -184,6 +184,15 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(ChatPaletteTemperature.storedValue(nil), .warm)
     }
 
+    func testPickerAccentTracksWarmAndStandardPaletteWithoutSystemBlue() {
+        let warmLight = ChatPaletteAccent.resolved(temperature: .warm, colorScheme: .light)
+        let standardLight = ChatPaletteAccent.resolved(temperature: .standard, colorScheme: .light)
+
+        XCTAssertNotEqual(warmLight.selection, standardLight.selection)
+        XCTAssertEqual(warmLight.selectionForeground, .white)
+        XCTAssertEqual(standardLight.selectionForeground, .white)
+    }
+
     /// The temperature axis must stay independent of the dark-canvas depth
     /// choice: Black still resolves to a pure-black canvas under Standard.
     func testTemperatureAndBackgroundStyleAreIndependent() {

@@ -28,6 +28,27 @@ enum ChatPaletteTemperature: String, CaseIterable, Identifiable {
     }
 }
 
+/// Interactive-state colors that follow the Warm/Standard surface preference.
+/// Standard remains neutral instead of falling back to the system blue accent.
+struct ChatPaletteAccent {
+    let selection: Color
+    let selectionForeground: Color
+
+    static func resolved(temperature: ChatPaletteTemperature, colorScheme: ColorScheme) -> Self {
+        if temperature.usesWarmSurfaces {
+            return Self(
+                selection: Color(hexRGB: colorScheme == .dark ? "#D4A875" : "#9A6A43") ?? .brown,
+                selectionForeground: colorScheme == .dark ? .black : .white
+            )
+        }
+
+        return Self(
+            selection: Color(hexRGB: colorScheme == .dark ? "#C7C7CC" : "#4A4A4F") ?? .secondary,
+            selectionForeground: colorScheme == .dark ? .black : .white
+        )
+    }
+}
+
 enum ChatBackgroundStyle: String, CaseIterable, Identifiable {
     case warm
     case black

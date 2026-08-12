@@ -57,6 +57,7 @@ struct HermesMobileApp: App {
             } else if ProcessInfo.processInfo.arguments.contains("--model-picker-capture") {
                 ModelPickerCaptureHost()
                     .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+                    .onAppear { applyModelPickerCapturePaletteIfRequested() }
             } else if ProcessInfo.processInfo.arguments.contains("--surface-gallery") {
                 NavigationStack {
                     SurfaceGalleryView()
@@ -82,4 +83,17 @@ struct HermesMobileApp: App {
             SidebarCommands()
         }
     }
+    #if DEBUG
+    private func applyModelPickerCapturePaletteIfRequested() {
+        let arguments = ProcessInfo.processInfo.arguments
+        guard let index = arguments.firstIndex(of: "--model-picker-palette"),
+              arguments.index(after: index) < arguments.endIndex,
+              let temperature = ChatPaletteTemperature(
+                rawValue: arguments[arguments.index(after: index)]
+              )
+        else { return }
+        UserDefaults.standard.set(temperature.rawValue, forKey: ChatPaletteTemperature.storageKey)
+    }
+
+    #endif
 }
