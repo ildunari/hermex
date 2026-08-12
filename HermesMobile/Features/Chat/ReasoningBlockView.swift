@@ -214,7 +214,7 @@ enum ReasoningMarkdownPresentation {
     private static func markdownBlocks(in content: String) -> [Block] {
         var blocks: [Block] = []
         var currentLines: [String] = []
-        var isInsideFence = false
+        var openFence: Fence?
 
         func flushCurrentBlock() {
             guard !currentLines.isEmpty else { return }
@@ -224,10 +224,14 @@ enum ReasoningMarkdownPresentation {
 
         for line in content.components(separatedBy: "\n") {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if isFenceDelimiter(trimmed) {
+            if let fence = Fence.parse(trimmed) {
                 currentLines.append(line)
-                isInsideFence.toggle()
-            } else if !isInsideFence, trimmed.isEmpty {
+                if let activeFence = openFence, activeFence.matchesClosing(fence) {
+                    openFence = nil
+                } else if openFence == nil {
+                    openFence = fence
+                }
+            } else if openFence == nil, trimmed.isEmpty {
                 flushCurrentBlock()
             } else {
                 currentLines.append(line)
@@ -237,8 +241,27 @@ enum ReasoningMarkdownPresentation {
         return blocks
     }
 
-    private static func isFenceDelimiter(_ line: String) -> Bool {
-        line.hasPrefix("```") || line.hasPrefix("~~~")
+    private struct Fence {
+        let marker: Character
+        let length: Int
+        let hasInfoString: Bool
+
+        static func parse(_ line: String) -> Fence? {
+            guard let marker = line.first, marker == "`" || marker == "~" else { return nil }
+            let length = line.prefix { $0 == marker }.count
+            guard length >= 3 else { return nil }
+            return Fence(
+                marker: marker,
+                length: length,
+                hasInfoString: !line.dropFirst(length).trimmingCharacters(in: .whitespaces).isEmpty
+            )
+        }
+
+        func matchesClosing(_ candidate: Fence) -> Bool {
+            candidate.marker == marker
+                && candidate.length >= length
+                && !candidate.hasInfoString
+        }
     }
 
     private struct Block {
@@ -257,7 +280,10 @@ enum ReasoningMarkdownPresentation {
 
             let inner = trimmed.dropFirst(2).dropLast(2)
                 .trimmingCharacters(in: .whitespaces)
-            return !inner.isEmpty && !inner.contains("**")
+            return !inner.isEmpty
+                && !inner.contains("**")
+                && !inner.hasPrefix("*")
+                && !inner.hasSuffix("*")
         }
     }
 }

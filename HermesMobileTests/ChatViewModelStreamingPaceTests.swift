@@ -117,6 +117,49 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 
     @MainActor
+    func testToolBoundaryDoesNotBypassAssistantWordPacing() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeStalledDrainViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Stream and inspect")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.token("alpha beta gamma"))
+        _ = try await observeAssistantContent(viewModel, until: "alpha ")
+        streamClient.emit(.toolStarted(ToolStreamEvent(
+            eventType: "tool.started",
+            name: "read_file",
+            preview: "Reading source",
+            args: nil,
+            duration: nil,
+            isError: nil
+        )))
+
+        XCTAssertEqual(
+            assistantContent(of: viewModel),
+            "alpha ",
+            "tool-start boundaries must not dump the pending assistant token backlog"
+        )
+
+        streamClient.emit(.toolCompleted(ToolStreamEvent(
+            eventType: "tool.completed",
+            name: "read_file",
+            preview: "Read source",
+            args: nil,
+            duration: 0.1,
+            isError: false
+        )))
+        XCTAssertEqual(
+            assistantContent(of: viewModel),
+            "alpha ",
+            "tool-completion boundaries must not dump the pending assistant token backlog"
+        )
+
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
+    }
+
+    @MainActor
     func testPacedContentConvergesByteIdenticalToUnpacedJoin() async throws {
         let streamClient = PacingSpySSEStreamingClient()
         let viewModel = try makeViewModel(
