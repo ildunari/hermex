@@ -144,6 +144,19 @@ struct ModelRecentsStore: @unchecked Sendable {
             .map { key in optionsByKey[key] ?? key.fallbackOption }
     }
 
+    /// Full-picker recents intentionally include starred models. The compact
+    /// composer menu keeps using `visibleRecentOptions` above so its Favorites
+    /// and Recent sections remain de-duplicated.
+    static func visibleAllRecentOptions(
+        in groups: [ModelCatalogGroup],
+        recentKeys: [ModelFavoriteKey]
+    ) -> [ModelCatalogOption] {
+        let optionsByKey = groups.catalogOptionsByFavoriteKey()
+
+        return limitedDeduplicated(recentKeys, limit: recentKeys.count)
+            .map { key in optionsByKey[key] ?? key.fallbackOption }
+    }
+
     private static func limitedDeduplicated(_ keys: [ModelFavoriteKey], limit: Int) -> [ModelFavoriteKey] {
         var seen = Set<ModelFavoriteKey>()
         var result: [ModelFavoriteKey] = []
