@@ -216,32 +216,53 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         XCTAssertNotEqual(warm.chatBackground, Color.white)
     }
 
-    /// The whole point of `GitStatusPalette` is measurable legibility on the warm
-    /// ivory card, so assert the actual WCAG ratio rather than just "not the old
-    /// color" — a future re-tune that looks nice but washes out should fail here.
-    func testGitStatusChipsClearContrastOnTheirSurfaces() {
+    /// The whole point of `GitStatusPalette` is measurable legibility, so assert the
+    /// real WCAG ratio. The chip label sits on `tint.opacity(chipFillOpacity)`
+    /// composited over the card, NOT on the bare card — measuring against the bare
+    /// card overstates contrast by ~0.8 and would let a washed-out chip pass.
+    func testGitStatusChipsClearContrastOnTheirCompositedFill() {
         let lightCard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm).surface
         let darkCard = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm).surface
         let kinds: [GitFile.ChangeKind] = [.added, .deleted, .renamed, .conflict, .modified]
 
         for kind in kinds {
-            let light = GitStatusPalette.tint(for: kind, colorScheme: .light)
-            let lightRatio = Self.contrastRatio(light, lightCard)
-            XCTAssertGreaterThanOrEqual(
-                lightRatio, 4.5,
-                "light \(kind) chip only reaches \(lightRatio):1 on the warm card"
-            )
-
-            let dark = GitStatusPalette.tint(for: kind, colorScheme: .dark)
-            let darkRatio = Self.contrastRatio(dark, darkCard)
-            XCTAssertGreaterThanOrEqual(
-                darkRatio, 4.5,
-                "dark \(kind) chip only reaches \(darkRatio):1 on the warm card"
-            )
+            for (scheme, card) in [(ColorScheme.light, lightCard), (ColorScheme.dark, darkCard)] {
+                let tint = GitStatusPalette.tint(for: kind, colorScheme: scheme)
+                let fill = Self.composite(
+                    tint,
+                    over: card,
+                    alpha: GitStatusPalette.chipFillOpacity(scheme)
+                )
+                let ratio = Self.contrastRatio(tint, fill)
+                XCTAssertGreaterThanOrEqual(
+                    ratio, 4.5,
+                    "\(scheme) \(kind) chip reaches only \(ratio):1 on its own composited fill"
+                )
+            }
         }
+
+        // Diff counts sit directly on the canvas, with no capsule behind them.
+        let lightCanvas = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm).chatBackground
+        XCTAssertGreaterThanOrEqual(
+            Self.contrastRatio(GitStatusPalette.additions(.light), lightCanvas), 4.5
+        )
+        XCTAssertGreaterThanOrEqual(
+            Self.contrastRatio(GitStatusPalette.deletions(.light), lightCanvas), 4.5
+        )
 
         // The regression that motivated the palette: system yellow on the warm card.
         XCTAssertLessThan(Self.contrastRatio(.yellow, lightCard), 2.0)
+    }
+
+    /// Source-over composite of `color` at `alpha` onto an opaque `background`.
+    private static func composite(_ color: Color, over background: Color, alpha: Double) -> Color {
+        let (r1, g1, b1) = components(color)
+        let (r2, g2, b2) = components(background)
+        return Color(
+            red: alpha * r1 + (1 - alpha) * r2,
+            green: alpha * g1 + (1 - alpha) * g2,
+            blue: alpha * b1 + (1 - alpha) * b2
+        )
     }
 
     /// WCAG 2.1 relative-luminance contrast ratio.
@@ -252,13 +273,17 @@ final class ChatAppearanceSettingsTests: XCTestCase {
     }
 
     private static func relativeLuminance(_ color: Color) -> Double {
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
-        func channel(_ value: CGFloat) -> Double {
-            let v = Double(value)
-            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        let (r, g, b) = components(color)
+        func channel(_ v: Double) -> Double {
+            v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
         }
         return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
+
+    private static func components(_ color: Color) -> (Double, Double, Double) {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return (Double(r), Double(g), Double(b))
     }
 }
 

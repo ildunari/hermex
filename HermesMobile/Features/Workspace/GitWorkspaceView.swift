@@ -176,9 +176,9 @@ enum GitStatusPalette {
         case .deleted:
             return color(isDark ? "#F5978E" : "#B3261E")
         case .renamed:
-            return color(isDark ? "#96BAF8" : "#2B5FB8")
+            return color(isDark ? "#96BAF8" : "#25529F")
         case .conflict:
-            return color(isDark ? "#F3AC6C" : "#9A4B10")
+            return color(isDark ? "#F3AC6C" : "#8A430E")
         case .modified:
             return color(isDark ? "#E8BF6A" : "#7A5200")
         case .ignored, .unknown:
