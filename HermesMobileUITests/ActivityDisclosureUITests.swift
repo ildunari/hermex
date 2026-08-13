@@ -113,11 +113,72 @@ final class ActivityDisclosureUITests: XCTestCase {
             "Tapping the thinking pill should expose the pre-mounted thought body."
         )
 
-        thinkingHeader.tap()
+        body.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
         // Accessibility hides the retained renderer once the collapse finishes.
         XCTAssertTrue(
             body.waitForNonExistence(timeout: 5),
-            "Tapping again should hide the thought body."
+            "Tapping the expanded thought output should collapse it without returning to the header."
+        )
+    }
+
+    func testCompletedThinkingOutputIsBoundedScrollableAndCollapsesOnBodyTap() {
+        let app = launchGallery(page: 24)
+        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: false)
+    }
+
+    func testLiveThinkingOutputIsBoundedScrollableAndCollapsesOnBodyTap() {
+        let app = launchGallery(page: 25)
+        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: true)
+    }
+
+    func testThinkingOutputBoundsAtAccessibilityTextSize() {
+        let app = launchGallery(
+            page: 24,
+            additionalArguments: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ]
+        )
+        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: false)
+    }
+
+    private func assertLongThinkingOutputIsBoundedScrollableAndCollapsible(
+        in app: XCUIApplication,
+        startsAtBottom: Bool
+    ) {
+        let body = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-body").firstMatch
+        XCTAssertTrue(body.waitForExistence(timeout: 15), "The long Thought should open expanded.")
+        let header = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-header").firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+
+        let screenHeight = app.windows.firstMatch.frame.height
+        XCTAssertLessThanOrEqual(
+            body.frame.maxY - header.frame.minY,
+            screenHeight * 0.81,
+            "The complete expanded Thinking surface should occupy no more than about 80% of the viewport."
+        )
+
+        let firstText = body.descendants(matching: .staticText).firstMatch
+        XCTAssertTrue(firstText.waitForExistence(timeout: 5))
+        let firstTextY = firstText.frame.minY
+        if startsAtBottom {
+            body.swipeDown()
+        } else {
+            body.swipeUp()
+        }
+        XCTAssertNotEqual(
+            firstText.frame.minY,
+            firstTextY,
+            accuracy: 0.5,
+            "A long Thinking output should scroll inside the bounded card."
+        )
+
+        body.tap()
+        XCTAssertTrue(
+            body.waitForNonExistence(timeout: 5),
+            "Tapping anywhere in the expanded Thinking output should collapse it."
         )
     }
 

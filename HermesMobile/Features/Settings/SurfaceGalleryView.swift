@@ -31,7 +31,9 @@ struct SurfaceGalleryView: View {
         } else if page == 23 {
             PlanTimelineGalleryView(page: 23)
         } else if page == 24 {
-            ThinkingMarkdownGalleryView()
+            ThinkingMarkdownGalleryView(isStreaming: false)
+        } else if page == 25 {
+            ThinkingMarkdownGalleryView(isStreaming: true)
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -550,20 +552,26 @@ struct SurfaceGalleryView: View {
 /// uses the real `ReasoningBlockView`, so before/after screenshots exercise the
 /// production markdown path rather than a design mock.
 private struct ThinkingMarkdownGalleryView: View {
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("THINKING MARKDOWN · PROVIDER PAYLOAD")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
+    let isStreaming: Bool
 
-                ReasoningBlockView(
-                    text: Self.providerReasoning,
-                    completedDuration: 18.4,
-                    startsExpandedOverride: true
-                )
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(isStreaming ? "THINKING MARKDOWN · LIVE" : "THINKING MARKDOWN · COMPLETED")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+
+                    ReasoningBlockView(
+                        text: Self.providerReasoning,
+                        isStreaming: isStreaming,
+                        completedDuration: isStreaming ? nil : 18.4,
+                        startsExpandedOverride: true
+                    )
+                }
+                .padding(16)
             }
-            .padding(16)
+            .environment(\.activityDisclosureViewportHeight, viewport.size.height)
         }
     }
 
