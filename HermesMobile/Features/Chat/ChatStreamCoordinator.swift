@@ -59,7 +59,7 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorDidResetRecoveryState()
 
     @discardableResult
-    func streamCoordinatorAppendToken(_ text: String) -> Bool
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool
     @discardableResult
     func streamCoordinatorAppendInterimAssistant(_ payload: InterimAssistantStreamEvent) -> Bool
     @discardableResult
@@ -439,11 +439,11 @@ final class ChatStreamCoordinator {
         lastTransportActivityDate = Date()
 
         switch event {
-        case .token(let text):
+        case .token(let text, let phase):
             if showsLiveActivityResponseExcerpts {
                 liveActivityManager.update(.token(text))
             }
-            if delegate?.streamCoordinatorAppendToken(text) == true {
+            if delegate?.streamCoordinatorAppendToken(text, phase: phase) == true {
                 markProgress()
             }
         case .interimAssistant(let payload):

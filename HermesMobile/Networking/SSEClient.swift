@@ -65,7 +65,7 @@ final class SSEClient: SSEStreamingClient {
 }
 
 enum SSEEvent: Equatable {
-    case token(String)
+    case token(String, phase: AssistantStreamPhase = .provisional)
     case interimAssistant(InterimAssistantStreamEvent)
     case reasoning(String)
     case toolStarted(ToolStreamEvent)
@@ -83,6 +83,34 @@ enum SSEEvent: Equatable {
     case transportError(String)
     case heartbeat
     case ignored
+}
+
+enum AssistantStreamPhase: String, Equatable {
+    case provisional
+    case commentary
+    case finalAnswer = "final_answer"
+
+    init(serverValue: String?) {
+        self = serverValue.flatMap(Self.init(rawValue:)) ?? .provisional
+    }
+}
+
+private struct TokenStreamPayload: Decodable {
+    let text: String?
+    let phase: AssistantStreamPhase
+
+    enum CodingKeys: String, CodingKey {
+        case text
+        case phase
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        text = container.decodeLossyStringIfPresent(forKey: .text)
+        phase = AssistantStreamPhase(
+            serverValue: container.decodeLossyStringIfPresent(forKey: .phase)
+        )
+    }
 }
 
 struct TitleStreamEvent: Decodable, Equatable {
@@ -233,8 +261,13 @@ struct SSEEventDecoder {
 
         switch eventType {
         case "token":
-            let payload = decodePayload(TokenPayload.self, eventType: eventType, from: eventData, decoder: decoder)
-            return .token(payload?.text ?? "")
+            let payload = decodePayload(
+                TokenStreamPayload.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            )
+            return .token(payload?.text ?? "", phase: payload?.phase ?? .provisional)
         case "interim_assistant":
             let payload = decodePayload(
                 InterimAssistantStreamEvent.self,

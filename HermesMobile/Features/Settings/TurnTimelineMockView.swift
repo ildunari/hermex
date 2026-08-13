@@ -219,7 +219,7 @@ struct TurnTimelineMockView: View {
 
             panel(
                 "PROPOSED · live session",
-                note: "Blocks fold into one row when the first answer token lands. Tap to reopen."
+                note: "Blocks fold into one row when the first confirmed answer token lands. Tap to reopen."
             ) {
                 VStack(alignment: .leading, spacing: 12) {
                     summaryRow(
