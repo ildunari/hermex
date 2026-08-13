@@ -75,7 +75,10 @@ struct OnboardingConnectPage: View {
                 }
 
                 DisclosureGroup(isExpanded: $isShowingAdvanced) {
-                    CustomHeadersEditor(headers: $viewModel.customHeaders, style: .onboarding)
+                    CustomHeadersEditor(
+                        headers: $viewModel.customHeaders,
+                        style: .onboarding(accent: HeaderLogoColor.color(for: headerLogoColorHex))
+                    )
                         .padding(.top, 10)
                 } label: {
                     Label("Advanced", systemImage: "slider.horizontal.3")

@@ -210,10 +210,18 @@ final class ChatAppearanceSettingsTests: XCTestCase {
     func testLightWarmCanvasIsPerceptiblyOffWhiteAndKeepsRampOrder() {
         let warm = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm)
         let standard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .standard)
+        let expectedCanvas = Color(hexRGB: "#F7F4EE")
+        let expectedSurface = Color(hexRGB: "#EFEBE2")
+        let expectedInset = Color(hexRGB: "#E6E1D6")
+        let expectedBubble = Color(hexRGB: "#EAE5DA")
 
+        XCTAssertEqual(warm.chatBackground, expectedCanvas)
+        XCTAssertEqual(warm.surface, expectedSurface)
+        XCTAssertEqual(warm.surfaceInset, expectedInset)
+        XCTAssertEqual(warm.userBubble, expectedBubble)
         XCTAssertNotEqual(warm.chatBackground, standard.chatBackground)
         XCTAssertNotEqual(warm.surface, standard.surface)
-        XCTAssertNotEqual(warm.userBubble, standard.userBubble)
+        XCTAssertNotEqual(warm.chatBackground, Color(hexRGB: "#FAF9F7"))
         XCTAssertNotEqual(warm.chatBackground, Color.white)
     }
 }

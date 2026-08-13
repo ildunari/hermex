@@ -183,7 +183,7 @@ struct OnboardingView: View {
             Label("Connect", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(OnboardingPrimaryButtonStyle())
+        .buttonStyle(OnboardingPrimaryButtonStyle(accent: HeaderLogoColor.color(for: headerLogoColorHex)))
         .disabled(viewModel.isWorking || !canSubmitConnection)
     }
 
