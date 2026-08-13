@@ -46,6 +46,10 @@ struct ActivityContainerView<Content: View>: View {
         // into it instead of holding them.
         .background(ActivityBlockChrome.shape().fill(palette.surface.opacity(0.55)))
         .overlay(ActivityBlockChrome.shape().strokeBorder(palette.tableRule, lineWidth: 1))
+        // Secondary containment for disclosure animations: children still
+        // drive normal layout, but a transient SwiftUI render layer cannot
+        // paint through the Activity header or outside this shared boundary.
+        .clipShape(ActivityBlockChrome.shape())
         .borderBeam(
             style: beamStyle,
             shape: ActivityBlockChrome.shape(),

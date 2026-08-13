@@ -12,12 +12,17 @@ struct ToolActivityGroupView: View {
     /// When embedded in a merged activity card the parent owns the container
     /// and its beam, so the block must not draw a competing one.
     var drawsOwnChrome: Bool = true
+    /// Historical rows pre-mount their settled body while the outer Activity
+    /// details are open, then preserve the transcript's exact viewport when
+    /// the user expands this inner section. Live tool groups remain lazy.
+    var preparesHistoricalDisclosure: Bool = false
     /// Default expansion when the reader has not toggled this block. See
     /// `ReasoningBlockView.startsExpandedOverride` — production passes nil so
     /// sections open as pills; debug galleries force `true`.
     var startsExpandedOverride: Bool?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.preserveActivityExpansionPosition) private var preserveActivityExpansionPosition
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
@@ -26,6 +31,7 @@ struct ToolActivityGroupView: View {
     /// same discipline as `PlanTimelineView`: an estimated per-row constant
     /// under-measures wrapped rows and silently defeats the cap.
     @State private var measuredRunsHeight: CGFloat?
+    @State private var measuredBodyHeight: CGFloat = 0
 
     private var palette: ChatPalette {
         ChatPalette(
@@ -45,12 +51,20 @@ struct ToolActivityGroupView: View {
         )
     }
 
+    private var presentsExpandedBody: Bool {
+        isExpanded && measuredBodyHeight > 0
+    }
+
+    private var keepsBodyMounted: Bool {
+        preparesHistoricalDisclosure || isExpanded
+    }
+
     #if DEBUG
     @Environment(\.disclosureLabExpansion) private var disclosureLabExpansion
     #endif
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
+        VStack(alignment: .leading, spacing: presentsExpandedBody ? 8 : 0) {
             ActivityCapsuleView(
                 orbState: runningOrbState,
                 label: capsuleLabel,
@@ -59,20 +73,16 @@ struct ToolActivityGroupView: View {
                 completedIconColor: group.hasFailedTool ? .red : nil,
                 completedLabel: completedCapsuleLabel,
                 accessory: AnyView(headerTrailing),
-                onTap: {
-                    withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
-                        userToggledExpansion = !isExpanded
-                    }
-                },
-                chrome: isExpanded ? .none : .pill
+                onTap: toggleExpansion,
+                chrome: presentsExpandedBody ? .none : .pill
             )
             .accessibilityLabel(activityAccessibilityLabel)
             .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+            // Stable handle for UI tests; the label carries a live tool count.
+            .accessibilityIdentifier(ActivityAccessibilityID.toolsHeader)
 
-            if isExpanded {
-                boundedRunsList
-                    .padding(.leading, 8)
-                    .transition(ChatMotion.cardContentTransition(reduceMotion: reduceMotion))
+            if keepsBodyMounted {
+                toolBody
             }
         }
         // Expanded, the block is one bordered container carrying one beam;
@@ -82,7 +92,7 @@ struct ToolActivityGroupView: View {
         .modifier(
             ToolBlockChrome(
                 palette: palette,
-                isExpanded: isExpanded,
+                isExpanded: presentsExpandedBody,
                 drawsSurface: drawsOwnChrome,
                 reduceMotion: reduceMotion,
                 isActive: isRunning
@@ -94,6 +104,66 @@ struct ToolActivityGroupView: View {
         .clipShape(ActivityBlockChrome.shape())
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
+    }
+
+    private var toolBody: some View {
+        boundedRunsList
+            .padding(.leading, 8)
+            .opacity(presentsExpandedBody ? 1 : 0)
+            .animation(
+                ChatMotion.cardContent(
+                    reduceMotion: reduceMotion,
+                    delay: ChatMotion.cardContentLeadIn
+                ),
+                value: presentsExpandedBody
+            )
+            // Premeasure at the same width the rows receive once the outer
+            // ToolBlockChrome adds its expanded horizontal inset. Exchanging
+            // these insets in the same disclosure transaction prevents wrapped
+            // previews from forcing a late second height.
+            .padding(
+                .horizontal,
+                presentsExpandedBody ? 0 : ActivityBlockChrome.horizontalPadding
+            )
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: ToolBodyHeightKey.self,
+                        value: proxy.size.height
+                    )
+                }
+            }
+            .frame(height: presentsExpandedBody ? measuredBodyHeight : 0, alignment: .top)
+            .clipped()
+            .allowsHitTesting(presentsExpandedBody)
+            .accessibilityHidden(!presentsExpandedBody)
+            .onPreferenceChange(ToolBodyHeightKey.self, perform: updateMeasuredBodyHeight)
+    }
+
+    private func toggleExpansion() {
+        let willExpand = !isExpanded
+        if willExpand, preparesHistoricalDisclosure {
+            preserveActivityExpansionPosition()
+        }
+
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            userToggledExpansion = willExpand
+        }
+    }
+
+    private func updateMeasuredBodyHeight(_ height: CGFloat) {
+        guard height > 0, abs(height - measuredBodyHeight) > 0.5 else { return }
+        let firstMeasurement = measuredBodyHeight == 0
+        let animation: Animation? = if firstMeasurement, isExpanded {
+            ChatMotion.cardExpand(reduceMotion: reduceMotion)
+        } else if presentsExpandedBody {
+            ChatMotion.disclosure(reduceMotion: reduceMotion)
+        } else {
+            nil
+        }
+        withAnimation(animation) {
+            measuredBodyHeight = height
+        }
     }
 
     /// Live counts plus the disclosure chevron. "2 running · 2 waiting" is the
@@ -163,6 +233,9 @@ struct ToolActivityGroupView: View {
                 guard height > 0 else { return }
                 measuredRunsHeight = height
             }
+            // Lets a UI test address the capped list directly — both to assert
+            // it is bounded and to drive a real scroll gesture inside it.
+            .accessibilityIdentifier(ActivityAccessibilityID.toolRunsScroll)
         }
     }
 
@@ -204,7 +277,7 @@ struct ToolActivityGroupView: View {
                     .modifier(
                         CardRowReveal(
                             index: rowOffset(before: runOffset),
-                            isVisible: isExpanded,
+                            isVisible: presentsExpandedBody,
                             reduceMotion: reduceMotion
                         )
                     )
@@ -246,7 +319,7 @@ struct ToolActivityGroupView: View {
                     .modifier(
                         CardRowReveal(
                             index: rowOffset + index,
-                            isVisible: isExpanded,
+                            isVisible: presentsExpandedBody,
                             reduceMotion: reduceMotion
                         )
                     )
@@ -457,6 +530,13 @@ private struct CardRowReveal: ViewModifier {
 /// Reports the natural height of a group's runs list, so the scroll window
 /// can size itself from measured rows rather than an estimate.
 private struct ToolRunsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct ToolBodyHeightKey: PreferenceKey {
     static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
