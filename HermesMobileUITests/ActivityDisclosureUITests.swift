@@ -20,22 +20,44 @@ final class ActivityDisclosureUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    private func launchGallery(page: Int) -> XCUIApplication {
+    private func launchGallery(
+        page: Int,
+        additionalArguments: [String] = []
+    ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--surface-gallery", "--surface-gallery-page", "\(page)"]
+            + additionalArguments
         app.launch()
         return app
     }
 
     /// The reported bug: opening the merged card and then tapping the thinking
     /// pill inside it. Asserts the disclosure actually round-trips — the body
-    /// mounts on expand and is gone on collapse.
+    /// becomes exposed on expand and hidden on collapse — while sampling the
+    /// sibling geometry through the animation interval that originally glitched.
     ///
     /// Page 22 mounts the fold and its sections with production defaults, and
     /// drives the fold open on a timer; the *thinking* tap is what this test
     /// performs itself.
     func testThinkingSectionInsideMergedCardExpandsAndCollapses() {
         let app = launchGallery(page: 22)
+        assertThinkingDisclosureKeepsSiblingOrder(in: app)
+    }
+
+    /// The retained renderer must use the final card width even when Dynamic
+    /// Type makes the thought substantially taller before disclosure.
+    func testThinkingSectionExpansionAtAccessibilityTextSize() {
+        let app = launchGallery(
+            page: 22,
+            additionalArguments: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ]
+        )
+        assertThinkingDisclosureKeepsSiblingOrder(in: app)
+    }
+
+    private func assertThinkingDisclosureKeepsSiblingOrder(in app: XCUIApplication) {
 
         let thinkingHeader = app.descendants(matching: .any)
             .matching(identifier: "activity.thinking-header").firstMatch
@@ -51,17 +73,43 @@ final class ActivityDisclosureUITests: XCTestCase {
         // produced the markdown-pops-in-at-full-height artifact when it did not.
         XCTAssertFalse(body.exists, "The thinking section should start collapsed.")
 
-        thinkingHeader.tap()
+        let toolsHeader = app.descendants(matching: .any)
+            .matching(identifier: "activity.tools-header").firstMatch
         XCTAssertTrue(
-            body.waitForExistence(timeout: 5),
-            "Tapping the thinking pill should reveal the thought body."
+            toolsHeader.waitForExistence(timeout: 5),
+            "The tools sibling should remain mounted while Thought expands."
         )
 
         thinkingHeader.tap()
-        // `waitForNonExistence` keeps this robust against the collapse animation.
+
+        // The field failure lasted only ~0.5s: Thought disappeared and the
+        // tools sibling crossed through the Activity header before the final
+        // model geometry settled. Sample throughout that entire interval, not
+        // merely after `waitForExistence`, so a transient accessibility-layout
+        // regression fails here. Frame-video comparison remains the compositor-
+        // level acceptance gate because XCUI does not expose presentation layers.
+        let disclosureDeadline = Date().addingTimeInterval(0.75)
+        repeat {
+            XCTAssertTrue(thinkingHeader.exists, "Thought must stay mounted throughout expansion.")
+            XCTAssertTrue(toolsHeader.exists, "Tools must stay mounted throughout Thought expansion.")
+            XCTAssertGreaterThanOrEqual(
+                toolsHeader.frame.minY,
+                thinkingHeader.frame.maxY - 0.5,
+                "Tools must never cross above the Thought header during expansion."
+            )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < disclosureDeadline
+
+        XCTAssertTrue(
+            body.waitForExistence(timeout: 5),
+            "Tapping the thinking pill should expose the pre-mounted thought body."
+        )
+
+        thinkingHeader.tap()
+        // Accessibility hides the retained renderer once the collapse finishes.
         XCTAssertTrue(
             body.waitForNonExistence(timeout: 5),
-            "Tapping again should collapse the thought body."
+            "Tapping again should hide the thought body."
         )
     }
 

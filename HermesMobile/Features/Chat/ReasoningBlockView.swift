@@ -28,6 +28,10 @@ struct ReasoningBlockView: View {
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
+    /// The body's intrinsic height is measured while the section is collapsed.
+    /// Historical sections exist only while their outer Activity disclosure is
+    /// open, so this does not keep every transcript renderer alive.
+    @State private var measuredBodyHeight: CGFloat = 0
 
     private var isExpanded: Bool {
         #if DEBUG
@@ -41,6 +45,24 @@ struct ReasoningBlockView: View {
         )
     }
 
+    /// Do not change the header chrome or sibling flow until the persistent
+    /// Markdown body has reported one deterministic height. In normal use that
+    /// measurement lands while the reader is moving from the outer Activity
+    /// summary to this inner disclosure; the guard also makes an immediate tap
+    /// wait for a real size instead of animating through transient geometry.
+    private var presentsExpandedBody: Bool {
+        isExpanded && measuredBodyHeight > 0
+    }
+
+    /// Settled thoughts pre-mount while their outer Activity disclosure is
+    /// open. A collapsed *streaming* thought stays cheap: mounting Markdown on
+    /// every incoming reasoning delta would undo the transcript's collapsed-
+    /// card performance optimization. Its first explicit open mounts once,
+    /// measures, and then reveals.
+    private var keepsBodyMounted: Bool {
+        !isStreaming || isExpanded
+    }
+
     #if DEBUG
     @Environment(\.disclosureLabExpansion) private var disclosureLabExpansion
     #endif
@@ -48,7 +70,7 @@ struct ReasoningBlockView: View {
     var body: some View {
         if let trimmedText {
             let presentedText = ReasoningMarkdownPresentation.formatted(trimmedText)
-            VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
+            VStack(alignment: .leading, spacing: presentsExpandedBody ? 8 : 0) {
                 // `isStreaming` is fed from `ChatViewModel.isReasoningPhaseActive`
                 // at the live call sites (ChatTranscriptView): the orb/beam
                 // animate for the entire reasoning *step* — including long
@@ -68,62 +90,21 @@ struct ReasoningBlockView: View {
                     },
                     // Expanded, the block itself is the bordered container, so
                     // the header must not draw a competing pill inside it.
-                    chrome: isExpanded ? .none : .pill
+                    chrome: presentsExpandedBody ? .none : .pill
                 )
-                .accessibilityHint(isExpanded ? "Double tap to collapse details." : "Double tap to expand details.")
+                .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
                 // Stable handle for UI tests; the label carries a duration.
                 .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
 
-                if isExpanded {
-                    // Quiet indented body: a thin rail with the thought hanging
-                    // off it, matching the expanded tool block rather than
-                    // nesting a washed slab inside a card.
-                    HStack(alignment: .top, spacing: 12) {
-                        RoundedRectangle(cornerRadius: 1, style: .continuous)
-                            .fill(palette.tableRule)
-                            .frame(width: 2)
-
-                        // Paragraph-by-paragraph reveal so the thought fills the
-                        // card top-down, the same way tool rows do. Each block is
-                        // laid out in its final position from frame one and only
-                        // fades up — nothing travels into place.
-                        VStack(alignment: .leading, spacing: 6) {
-                            // One renderer for the whole thought rather than one
-                            // per paragraph: markdown blocks span paragraph
-                            // breaks (lists, fences), so splitting first would
-                            // parse each fragment out of context and break every
-                            // multi-line construct. That also means the reveal is
-                            // one fade rather than a per-paragraph stagger.
-                            MarkdownRenderer(
-                                content: presentedText,
-                                isStreaming: isStreaming,
-                                typographyRole: .reasoning
-                            )
-                            // Report full intrinsic height on the first layout
-                            // pass. Without this the renderer settles its height
-                            // over a frame or two *while* the card's own height
-                            // spring is running, so the text is laid out against
-                            // a moving container and visibly slides.
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .padding(.leading, 4)
-                    // Owns its fade timing; see `cardBodyRevealTransition` —
-                    // inheriting the delayed height spring painted the full
-                    // thought before the window opened.
-                    .transition(ChatMotion.cardBodyRevealTransition(reduceMotion: reduceMotion))
-                    // Lets a UI test assert the thought body actually mounted,
-                    // rather than inferring it from the header's chevron.
-                    .accessibilityElement(children: .contain)
-                    .accessibilityIdentifier(ActivityAccessibilityID.thinkingBody)
+                if keepsBodyMounted {
+                    reasoningBody(content: presentedText)
                 }
             }
             // One container for the whole block when open — same treatment the
             // tool block uses, so thinking and tools read as one family.
             .modifier(ReasoningBlockChrome(
                 palette: palette,
-                isExpanded: isExpanded,
+                isExpanded: presentsExpandedBody,
                 drawsSurface: drawsOwnChrome,
                 reduceMotion: reduceMotion
             ))
@@ -138,22 +119,82 @@ struct ReasoningBlockView: View {
             // obvious once markdown made the body taller and multi-block.
             .clipShape(ActivityBlockChrome.shape())
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Pre-warm the math-segmentation layout while the block is still a
-            // collapsed pill. The scan is the only meaningful cost inside the
-            // expand tap's commit (~16ms debug / ~5ms release for a 5KB
-            // thought, cache-cold), and it lands inside `cardExpand`'s 0.12s
-            // lead-in — eating the spring's first frames on the first open
-            // after a cold launch. Warming here (mount time, off-main, settled
-            // text only) makes the tap a guaranteed cache hit. `NSCache` is
-            // thread-safe, and the pill mounts at least an animation-length
-            // before any finger can reach it.
-            .task(id: isStreaming ? nil : presentedText) {
-                guard !isStreaming, !isExpanded else { return }
-                let text = presentedText
-                await Task.detached(priority: .utility) {
-                    _ = MarkdownMathLayoutCache.layout(for: text)
-                }.value
+        }
+    }
+
+    /// A stable, pre-mounted body whose intrinsic height is measured before an
+    /// inner disclosure tap. The outer Activity fold still owns lifetime: when
+    /// that fold is closed this entire view (including Markdown) is unmounted.
+    /// While the fold is open, collapsing Thought only clips this already-laid-
+    /// out body to zero, so the tools sibling sees one monotonic height spring
+    /// instead of the renderer's mount and measurement phases.
+    private func reasoningBody(content: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(palette.tableRule)
+                .frame(width: 2)
+
+            MarkdownRenderer(
+                content: content,
+                isStreaming: isStreaming,
+                typographyRole: .reasoning
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.leading, 4)
+        .opacity(presentsExpandedBody ? 1 : 0)
+        // Scope the delayed content curve to pixels only. Width-compensation
+        // below must inherit `cardExpand` with the outer block padding so the
+        // two insets cancel frame-for-frame throughout the spring.
+        .animation(
+            ChatMotion.cardContent(
+                reduceMotion: reduceMotion,
+                delay: ChatMotion.cardVerticalLeadIn
+            ),
+            value: presentsExpandedBody
+        )
+        // Collapsed measurement must use the *expanded* content width. The
+        // outer block adds 12pt per side only when presented; applying that
+        // inset internally before presentation and removing it atomically when
+        // the outer padding arrives gives Markdown the same width in both
+        // states, so wrapping cannot force a second late height correction.
+        .padding(
+            .horizontal,
+            presentsExpandedBody ? 0 : ActivityBlockChrome.horizontalPadding
+        )
+        // Measure before the outer frame clamps the body to zero.
+        .background {
+            GeometryReader { proxy in
+                Color.clear.preference(
+                    key: ReasoningBodyHeightKey.self,
+                    value: proxy.size.height
+                )
             }
+        }
+        .frame(height: presentsExpandedBody ? measuredBodyHeight : 0, alignment: .top)
+        .clipped()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier(ActivityAccessibilityID.thinkingBody)
+        .accessibilityHidden(!presentsExpandedBody)
+        .onPreferenceChange(ReasoningBodyHeightKey.self, perform: updateMeasuredBodyHeight)
+    }
+
+    private func updateMeasuredBodyHeight(_ height: CGFloat) {
+        guard height > 0, abs(height - measuredBodyHeight) > 0.5 else { return }
+        let firstMeasurement = measuredBodyHeight == 0
+        let animation: Animation? = if firstMeasurement, isExpanded {
+            ChatMotion.cardExpand(reduceMotion: reduceMotion)
+        } else if isStreaming, presentsExpandedBody {
+            ChatMotion.streamingFollow(reduceMotion: reduceMotion)
+        } else if presentsExpandedBody {
+            ChatMotion.disclosure(reduceMotion: reduceMotion)
+        } else {
+            nil
+        }
+
+        withAnimation(animation) {
+            measuredBodyHeight = height
         }
     }
 
@@ -181,6 +222,14 @@ struct ReasoningBlockView: View {
     private var trimmedText: String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct ReasoningBodyHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 
