@@ -26,12 +26,15 @@ struct SetupStepRow: View {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(accentForeground)
                 .frame(width: 23, height: 23)
                 .background(accent, in: Circle())
                 .padding(.top, 1)
@@ -175,11 +178,14 @@ struct OnboardingStatusBanner: View {
 
 struct OnboardingPrimaryButtonStyle: ButtonStyle {
     var accent: Color = HeaderLogoColor.color(for: HeaderLogoColor.defaultHex)
+    /// Onboarding labels sit directly on the accent fill, so a dark custom
+    /// header color must flip the label to white or the button reads as blank.
+    var accentForeground: Color = .black
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.black)
+            .foregroundStyle(accentForeground)
             .lineLimit(1)
             .minimumScaleFactor(0.78)
             .frame(maxWidth: .infinity)
@@ -268,7 +274,12 @@ struct OnboardingAgentPromptCard: View {
                     .font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(OnboardingPrimaryButtonStyle(accent: HeaderLogoColor.color(for: headerLogoColorHex)))
+            .buttonStyle(
+                OnboardingPrimaryButtonStyle(
+                    accent: HeaderLogoColor.color(for: headerLogoColorHex),
+                    accentForeground: HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+                )
+            )
             .accessibilityLabel(didCopyRecently ? String(localized: "Agent setup prompt copied") : String(localized: "Copy agent setup prompt"))
         }
         .padding(16)

@@ -10,6 +10,10 @@ struct OnboardingView: View {
     @FocusState private var focusedField: OnboardingConnectField?
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
+
     init(authManager: AuthManager, savedServer: URL? = nil) {
         self.authManager = authManager
         // A known server means a re-login, not first-run setup: skip the
@@ -103,7 +107,7 @@ struct OnboardingView: View {
                 Button(action: handlePrimaryAction) {
                     Text(OnboardingFlowPolicy.primaryButtonTitle(for: currentPage))
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.black)
+                        .foregroundStyle(accentForeground)
                         .lineLimit(1)
                         .minimumScaleFactor(0.78)
                         .frame(maxWidth: .infinity)
@@ -183,7 +187,12 @@ struct OnboardingView: View {
             Label("Connect", systemImage: "checkmark.circle.fill")
                 .frame(maxWidth: .infinity)
         }
-        .buttonStyle(OnboardingPrimaryButtonStyle(accent: HeaderLogoColor.color(for: headerLogoColorHex)))
+        .buttonStyle(
+            OnboardingPrimaryButtonStyle(
+                accent: HeaderLogoColor.color(for: headerLogoColorHex),
+                accentForeground: accentForeground
+            )
+        )
         .disabled(viewModel.isWorking || !canSubmitConnection)
     }
 
