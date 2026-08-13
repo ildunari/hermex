@@ -274,6 +274,10 @@ struct ChatView: View {
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
+    // Palette preferences read reactively so navigation chrome repaints as soon
+    // as the palette changes, rather than on the next incidental rebuild.
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     let session: SessionSummary
     let server: URL
@@ -584,7 +588,11 @@ struct ChatView: View {
         // surface reads as one continuous material instead of warm content
         // framed by cool system chrome.
         .toolbarBackground(
-            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground,
+            ChatPalette.appChrome(
+                colorScheme: colorScheme,
+                backgroundRawValue: chromeBackgroundRawValue,
+                temperatureRawValue: chromeTemperatureRawValue
+            ).chatBackground,
             for: .navigationBar
         )
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")

@@ -14,6 +14,7 @@ struct StreamingLabView: View {
     // knob below — invisible state the lab must make visible (see the #232
     // textSelection dead-cascade hunt).
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var wordsPerSecond = StreamingLabReplay.defaultWordsPerSecond
     @State private var fadeDuration = StreamingTextFadeLab.shared.fadeDuration
@@ -38,7 +39,7 @@ struct StreamingLabView: View {
                 proxy.scrollTo(Self.tailAnchorID, anchor: .bottom)
             }
         }
-        .background(Color(.systemBackground))
+        .appSurfaceBackground(.canvas)
         .navigationTitle("Streaming Lab")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: replayID) {
@@ -163,7 +164,7 @@ struct StreamingLabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(Color(.secondarySystemBackground))
+                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
         )
     }
 
