@@ -10,10 +10,10 @@ struct ReasoningBlockView: View {
     /// When embedded in a merged activity card the parent owns the container,
     /// so the block must not draw its own.
     var drawsOwnChrome: Bool = true
-    /// Historical transcript rows opt in so a tall Thought opens with its
-    /// tapped header visible and the body below it. Live reasoning leaves this
-    /// false because the transcript's follow-bottom policy owns its viewport.
-    var scrollsToHeaderOnExpand: Bool = false
+    /// Historical transcript rows opt in so a tall Thought grows below the
+    /// exact viewport position where its header was tapped. Live reasoning
+    /// leaves this false because follow-bottom owns its viewport.
+    var preservesViewportOnExpand: Bool = false
     /// Default expansion when the reader has not toggled this block.
     ///
     /// Production always passes nil now — the merged card's sections open as
@@ -28,12 +28,11 @@ struct ReasoningBlockView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.scrollToReasoningHeader) private var scrollToReasoningHeader
+    @Environment(\.preserveReasoningExpansionPosition) private var preserveReasoningExpansionPosition
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
-    @State private var disclosureScrollAnchorID = UUID().uuidString
     /// The body's intrinsic height is measured while the section is collapsed.
     /// Historical sections exist only while their outer Activity disclosure is
     /// open, so this does not keep every transcript renderer alive.
@@ -97,7 +96,6 @@ struct ReasoningBlockView: View {
                 .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
                 // Stable handle for UI tests; the label carries a duration.
                 .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
-                .id(disclosureScrollAnchorID)
 
                 if keepsBodyMounted {
                     reasoningBody(content: presentedText)
@@ -203,12 +201,15 @@ struct ReasoningBlockView: View {
 
     private func toggleExpansion() {
         let willExpand = !isExpanded
-        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
-            userToggledExpansion = willExpand
+        if willExpand, preservesViewportOnExpand {
+            // Capture before committing the height change. The transcript
+            // holds this exact content offset through the card spring rather
+            // than aligning the header to a different place on screen.
+            preserveReasoningExpansionPosition()
         }
 
-        if willExpand, scrollsToHeaderOnExpand {
-            scrollToReasoningHeader(disclosureScrollAnchorID)
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            userToggledExpansion = willExpand
         }
     }
 
@@ -239,14 +240,14 @@ struct ReasoningBlockView: View {
     }
 }
 
-private struct ReasoningExpansionScrollActionKey: EnvironmentKey {
-    static let defaultValue: (String) -> Void = { _ in }
+private struct ReasoningExpansionPositionActionKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
 }
 
 extension EnvironmentValues {
-    var scrollToReasoningHeader: (String) -> Void {
-        get { self[ReasoningExpansionScrollActionKey.self] }
-        set { self[ReasoningExpansionScrollActionKey.self] = newValue }
+    var preserveReasoningExpansionPosition: () -> Void {
+        get { self[ReasoningExpansionPositionActionKey.self] }
+        set { self[ReasoningExpansionPositionActionKey.self] = newValue }
     }
 }
 

@@ -7,6 +7,7 @@ struct ChatTranscriptView: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
+    @State private var disclosurePositionPreserver = ChatScrollPositionPreserver()
 
     let isLoading: Bool
     let errorMessage: String?
@@ -143,13 +144,14 @@ struct ChatTranscriptView: View {
                             viewportWidth: viewportWidth,
                             contentWidth: contentWidth
                         )
-                        .environment(\.scrollToReasoningHeader) { targetID in
-                            Task { @MainActor in
-                                await Task.yield()
-                                withAnimation(ChatMotion.scrollToLatest(reduceMotion: reduceMotion)) {
-                                    proxy.scrollTo(targetID, anchor: .top)
-                                }
-                            }
+                        .environment(\.preserveReasoningExpansionPosition) {
+                            disclosurePositionPreserver.preserveCurrentVerticalOffset(
+                                // The visible spring is ~0.5s, but cold tall
+                                // Markdown can deliver its final content-size
+                                // correction later. Hold through that tail;
+                                // any user drag cancels immediately.
+                                for: reduceMotion ? 0.35 : 1.25
+                            )
                         }
                     }
                     .defaultScrollAnchor(
@@ -333,6 +335,8 @@ struct ChatTranscriptView: View {
                 ChatScrollObserver(isStreaming: activeStreamID != nil) { metrics in
                     onUpdateScrollMetrics(metrics)
                 }
+
+                ChatScrollPositionPreserverView(controller: disclosurePositionPreserver)
 
                 ChatVerticalScrollAxisGuard()
             }
@@ -738,7 +742,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 ReasoningBlockView(
                     text: group.text,
                     drawsOwnChrome: !isHistorical,
-                    scrollsToHeaderOnExpand: isHistorical
+                    preservesViewportOnExpand: isHistorical
                 )
             }
         }

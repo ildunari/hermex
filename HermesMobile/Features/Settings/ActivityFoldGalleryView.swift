@@ -315,11 +315,11 @@ private struct ThinkingRevealProbeView: View {
     /// (expansion overrides) resets like a fresh cold load.
     @State private var cycle = 0
     @State private var phase = 0
+    @State private var disclosurePositionPreserver = ChatScrollPositionPreserver()
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 14) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
                 // Put the collapsed card near the viewport bottom, matching
                 // the reported historical-session position. The tall Thought
                 // then exceeds a full screen when opened, so a bottom-preserving
@@ -341,36 +341,36 @@ private struct ThinkingRevealProbeView: View {
 
                 Text("The answer sits directly below, exactly as in a real settled turn, so any overlap or drop-down during the reveal shows against it.")
                     .font(.body)
-                }
-                .padding(16)
             }
-            .defaultScrollAnchor(
-                ChatScrollPolicy.initialTranscriptAnchor,
-                for: .initialOffset
-            )
-            .defaultScrollAnchor(
-                ChatScrollPolicy.sizeChangeAnchor(
-                    shouldFollowLatestMessage: false,
-                    hasActiveStream: false
-                ),
-                for: .sizeChanges
-            )
-            .environment(\.scrollToReasoningHeader) { targetID in
-                Task { @MainActor in
-                    await Task.yield()
-                    withAnimation(ChatMotion.scrollToLatest(reduceMotion: false)) {
-                        proxy.scrollTo(targetID, anchor: .top)
-                    }
-                }
+            .padding(16)
+            .background {
+                // Same placement as ChatTranscriptView: the attachment view
+                // must be inside the ScrollView content hierarchy so it can
+                // discover the enclosing UIScrollView.
+                ChatScrollPositionPreserverView(controller: disclosurePositionPreserver)
             }
-            .task {
-                try? await Task.sleep(nanoseconds: 500_000_000)
-                guard !Task.isCancelled else { return }
-                // Open only the outer fold. The UI test performs the inner Thought
-                // press itself, which keeps the regression fixture deterministic
-                // even when a cold Markdown layout takes several seconds.
-                phase = 1
-            }
+        }
+        .defaultScrollAnchor(
+            ChatScrollPolicy.initialTranscriptAnchor,
+            for: .initialOffset
+        )
+        .defaultScrollAnchor(
+            ChatScrollPolicy.sizeChangeAnchor(
+                shouldFollowLatestMessage: false,
+                hasActiveStream: false
+            ),
+            for: .sizeChanges
+        )
+        .environment(\.preserveReasoningExpansionPosition) {
+            disclosurePositionPreserver.preserveCurrentVerticalOffset(for: 1.25)
+        }
+        .task {
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            // Open only the outer fold. The UI test performs the inner Thought
+            // press itself, which keeps the regression fixture deterministic
+            // even when a cold Markdown layout takes several seconds.
+            phase = 1
         }
     }
 }
@@ -428,7 +428,7 @@ private struct ThinkingRevealTappableReasoning: View {
             isStreaming: false,
             completedDuration: 12,
             drawsOwnChrome: false,
-            scrollsToHeaderOnExpand: true,
+            preservesViewportOnExpand: true,
             startsExpandedOverride: expanded
         )
         .onChange(of: expandsOnPhase) { _, now in

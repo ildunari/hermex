@@ -80,22 +80,25 @@ final class ActivityDisclosureUITests: XCTestCase {
             "The tools sibling should remain mounted while Thought expands."
         )
 
+        let initialHeaderMinY = thinkingHeader.frame.minY
         thinkingHeader.tap()
 
-        // The field failure lasted only ~0.5s: Thought disappeared and the
-        // tools sibling crossed through the Activity header before the final
-        // model geometry settled. Sample throughout that entire interval, not
-        // merely after `waitForExistence`, so a transient accessibility-layout
-        // regression fails here. Frame-video comparison remains the compositor-
-        // level acceptance gate because XCUI does not expose presentation layers.
-        let disclosureDeadline = Date().addingTimeInterval(0.75)
+        // Sample beyond both the ~0.5s visual disclosure and the 1.25s
+        // preservation window. This catches a late SwiftUI offset correction
+        // that would otherwise fire only after the position lock expired.
+        // Frame-video comparison remains the compositor-level acceptance gate
+        // because XCUI does not expose presentation layers.
+        let disclosureDeadline = Date().addingTimeInterval(1.5)
         repeat {
             XCTAssertTrue(thinkingHeader.exists, "Thought must stay mounted throughout expansion.")
             XCTAssertTrue(toolsHeader.exists, "Tools must stay mounted throughout Thought expansion.")
-            XCTAssertGreaterThanOrEqual(
+            XCTAssertEqual(
                 thinkingHeader.frame.minY,
-                app.windows.firstMatch.frame.minY - 0.5,
-                "Thought must keep its beginning visible instead of opening above the viewport."
+                initialHeaderMinY,
+                // The pill-to-card chrome itself has a designed 7pt inset
+                // exchange; anything beyond that is viewport movement.
+                accuracy: 8,
+                "Thought must open in place without moving the reader to a different viewport position."
             )
             XCTAssertGreaterThanOrEqual(
                 toolsHeader.frame.minY,
