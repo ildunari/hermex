@@ -331,7 +331,16 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
                 availableHeight: 800,
                 reservedHeight: 56
             ),
-            584
+            264
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 800,
+                reservedHeight: 56 + ReasoningBodyWindow.readerActionReservedHeight
+            ),
+            228,
+            "Overflowing previews must reserve room for the dedicated reader action."
         )
     }
 
@@ -342,7 +351,7 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
                 availableHeight: 0,
                 reservedHeight: 56
             ),
-            424
+            184
         )
         XCTAssertEqual(
             ReasoningBodyWindow.height(
@@ -351,7 +360,7 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
                 reservedHeight: 56
             ),
             24,
-            "The minimum readable window plus its header must never overflow the actual viewport."
+            "A tiny viewport may prioritize the minimum readable preview, but must remain viewport-bounded."
         )
         XCTAssertEqual(
             ReasoningBodyWindow.height(measuredContentHeight: 0, availableHeight: 800),

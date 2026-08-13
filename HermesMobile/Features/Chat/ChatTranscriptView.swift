@@ -438,7 +438,8 @@ struct ChatTranscriptView: View {
                         ReasoningBlockView(
                             text: liveReasoningText,
                             isStreaming: isReasoningActive,
-                            completedDuration: lastReasoningDuration
+                            completedDuration: lastReasoningDuration,
+                            preservesViewportOnExpand: true
                         )
                     }
 
@@ -527,7 +528,10 @@ struct ChatTranscriptView: View {
     private func reasoningBlocks(anchorMessageID: String?) -> some View {
         if showsThinkingAndToolCards {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == anchorMessageID }) { group in
-                ReasoningBlockView(text: group.text)
+                ReasoningBlockView(
+                    text: group.text,
+                    preservesViewportOnExpand: true
+                )
             }
         }
     }
@@ -743,7 +747,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 ReasoningBlockView(
                     text: group.text,
                     drawsOwnChrome: !isHistorical,
-                    preservesViewportOnExpand: isHistorical
+                    preservesViewportOnExpand: true
                 )
             }
         }
@@ -756,7 +760,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
                 completedDuration: lastReasoningDuration,
-                drawsOwnChrome: !isHistorical
+                drawsOwnChrome: !isHistorical,
+                preservesViewportOnExpand: true
             )
         }
     }
