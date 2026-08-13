@@ -25,12 +25,6 @@ with the iOS app.
   See SimpleIcons-LICENSE.txt. Product names and logos remain trademarks of
   their respective owners; inclusion identifies a configured provider and does
   not imply endorsement.
-- OpenAI provider logomark
-  Sourced from the official OpenAI Cookbook repository. Use is subject to the
-  OpenAI design guidelines and marks usage terms.
-- Fireworks AI provider icon
-  Sourced from the official Fireworks AI website. Fireworks AI and its logo are
-  trademarks of their respective owner.
 - thinking-orbs (Jakub Antalik) — MIT
   ThinkingOrbView.swift is a SwiftUI port derived from the canvas engine at
   https://github.com/Jakubantalik/thinking-orbs (no code is bundled verbatim).

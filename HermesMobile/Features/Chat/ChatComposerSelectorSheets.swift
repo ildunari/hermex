@@ -1001,7 +1001,9 @@ struct ProviderAppearanceStore: @unchecked Sendable {
     }
 
     func artworkImage(serverID: String, providerID: String) -> UIImage? {
-        guard let fileName = appearance(serverID: serverID, providerID: providerID).artworkFileName else { return nil }
+        guard let fileName = validatedArtworkFileName(
+            appearance(serverID: serverID, providerID: providerID).artworkFileName
+        ) else { return nil }
         return UIImage(contentsOfFile: artworkDirectory.appendingPathComponent(fileName).path)
     }
 
@@ -1037,8 +1039,17 @@ struct ProviderAppearanceStore: @unchecked Sendable {
     }
 
     private func removeArtworkFile(named fileName: String?) {
-        guard let fileName else { return }
+        guard let fileName = validatedArtworkFileName(fileName) else { return }
         try? FileManager.default.removeItem(at: artworkDirectory.appendingPathComponent(fileName))
+    }
+
+    private func validatedArtworkFileName(_ fileName: String?) -> String? {
+        guard let fileName,
+              URL(fileURLWithPath: fileName).lastPathComponent == fileName,
+              fileName.hasSuffix(".png"),
+              UUID(uuidString: String(fileName.dropLast(4))) != nil
+        else { return nil }
+        return fileName
     }
 
     private func preparedArtwork(_ data: Data) throws -> (fileName: String, data: Data) {
@@ -1100,7 +1111,13 @@ enum ProviderArtworkProcessor {
         if let fileSize = values.fileSize, fileSize > maximumInputBytes {
             throw ProviderArtworkImportError.imageTooLarge
         }
-        return try normalizedPNG(from: Data(contentsOf: url, options: .mappedIfSafe))
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        let boundedData = try handle.read(upToCount: maximumInputBytes + 1) ?? Data()
+        guard boundedData.count <= maximumInputBytes else {
+            throw ProviderArtworkImportError.imageTooLarge
+        }
+        return try normalizedPNG(from: boundedData)
     }
 }
 
@@ -1235,7 +1252,6 @@ enum ProviderBrandCatalog {
         "copilot-acp": .init(assetName: "ProviderGitHubCopilot", usesOriginalColor: false, paddingRatio: 0.17),
         "cursor-acp": .init(assetName: "ProviderCursor", usesOriginalColor: false, paddingRatio: 0.18),
         "deepseek": .init(assetName: "ProviderDeepSeek", usesOriginalColor: false, paddingRatio: 0.17),
-        "fireworks": .init(assetName: "ProviderFireworks", usesOriginalColor: true, paddingRatio: 0.18),
         "gemini": .init(assetName: "ProviderGemini", usesOriginalColor: false, paddingRatio: 0.22),
         "google": .init(assetName: "ProviderGoogleCloud", usesOriginalColor: false, paddingRatio: 0.20),
         "huggingface": .init(assetName: "ProviderHuggingFace", usesOriginalColor: false, paddingRatio: 0.16),
@@ -1253,9 +1269,6 @@ enum ProviderBrandCatalog {
         "ollama-cloud": .init(assetName: "ProviderOllama", usesOriginalColor: false, paddingRatio: 0.16),
         "opencode-go": .init(assetName: "ProviderOpenCode", usesOriginalColor: false, paddingRatio: 0.17),
         "opencode-zen": .init(assetName: "ProviderOpenCode", usesOriginalColor: false, paddingRatio: 0.17),
-        "openai": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
-        "openai-api": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
-        "openai-codex": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
         "openrouter": .init(assetName: "ProviderOpenRouter", usesOriginalColor: false, paddingRatio: 0.17),
         "qwen": .init(assetName: "ProviderQwen", usesOriginalColor: false, paddingRatio: 0.17),
         "qwen-oauth": .init(assetName: "ProviderQwen", usesOriginalColor: false, paddingRatio: 0.17),
