@@ -354,7 +354,7 @@ private struct PlanLiveStressView: View {
     /// Five steps, matching the report's Boston-map plan: long enough to wrap,
     /// few enough that the old cap's `count <= 7` short path applied.
     private let state = TodoState(todos: [
-        TodoItem(rawID: "1", content: "Find and validate public historical Boston shoreline and land-reclamation data", status: .pending),
+        TodoItem(rawID: "1", content: "Find and validate public historical Boston shoreline and land-reclamation data, including archival maps, dated boundaries, and source provenance", status: .pending),
         TodoItem(rawID: "2", content: "Define dated stages, cartographic styling, labels, and sourcing treatment", status: .pending),
         TodoItem(rawID: "3", content: "Build the high-detail animated map from validated geographic data", status: .pending),
         TodoItem(rawID: "4", content: "Render GIF and MP4 deliverables", status: .pending),

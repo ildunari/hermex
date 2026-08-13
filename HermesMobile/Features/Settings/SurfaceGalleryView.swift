@@ -36,6 +36,8 @@ struct SurfaceGalleryView: View {
             ThinkingMarkdownGalleryView(isStreaming: true)
         } else if page == 26 {
             LiveThinkingRevealProbeView()
+        } else if page == 27 {
+            PlanDismissalChatFixture()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -663,5 +665,32 @@ private struct LiveThinkingRevealProbeView: View {
         repeating: "Reasoning continues with enough detail to exceed the compact inline preview.",
         count: 24
     ).joined(separator: "\n\n")
+}
+
+/// Uses the production `ChatView` gesture stack so XCUITest can verify that a
+/// tap on the actual conversation canvas dismisses a pinned expanded plan.
+private struct PlanDismissalChatFixture: View {
+    private let state = TodoState(todos: [
+        TodoItem(rawID: "1", content: "Inspect all branches for missing intended changes", status: .completed),
+        TodoItem(rawID: "2", content: "Port the compact plan-card interaction without replaying obsolete history", status: .inProgress),
+        TodoItem(rawID: "3", content: "Run simulator and adversarial verification before release", status: .pending),
+        TodoItem(rawID: "4", content: "Push the personal fork master checkpoint", status: .pending),
+        TodoItem(rawID: "5", content: "Upload Craft-Hermex to internal TestFlight", status: .pending),
+        TodoItem(rawID: "6", content: "Preserve branches that still back open upstream pull requests", status: .pending)
+    ])
+
+    var body: some View {
+        ChatView(
+            session: SessionSummary(
+                sessionId: "plan-dismissal-fixture",
+                title: "Plan dismissal fixture",
+                messageCount: 0
+            ),
+            server: URL(string: "http://127.0.0.1:9")!,
+            onAPIError: { _ in },
+            loadsInitialMessages: false,
+            initialPlanStateForTesting: state
+        )
+    }
 }
 #endif

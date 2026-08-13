@@ -373,10 +373,74 @@ final class ActivityDisclosureUITests: XCTestCase {
 
         // Tapping the rows area collapses the card — the header used to be the
         // only way out, and it was the part that got clipped away.
-        rows.tap()
+        // Use a raw leading-edge coordinate rather than accessibility
+        // activation of a child row: VoiceOver's default row action expands
+        // that task's full text, while a physical tap on the row/card surface
+        // is the gesture that collapses the plan.
+        rows.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.18)).tap()
         XCTAssertTrue(
             rows.waitForNonExistence(timeout: 5),
             "Tapping the plan rows should collapse the card."
+        )
+    }
+
+    func testLongPlanTaskExpandsFromTrailingTargetAndCollapsesFromTaskTap() {
+        let app = launchGallery(page: 23)
+        let step = app.descendants(matching: .any)
+            .matching(identifier: "plan-step-1").firstMatch
+        XCTAssertTrue(step.waitForExistence(timeout: 15))
+        let compactHeight = step.frame.height
+
+        step.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.72)).tap()
+        let expandedDeadline = Date().addingTimeInterval(5)
+        while step.frame.height <= compactHeight + 2, Date() < expandedDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertGreaterThan(
+            step.frame.height,
+            compactHeight + 2,
+            "The padded trailing ellipsis target should reveal the full task text."
+        )
+
+        step.coordinate(withNormalizedOffset: CGVector(dx: 0.45, dy: 0.5)).tap()
+        let collapsedDeadline = Date().addingTimeInterval(5)
+        while step.frame.height > compactHeight + 2, Date() < collapsedDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertLessThanOrEqual(
+            step.frame.height,
+            compactHeight + 2,
+            "Tapping the expanded task should return it to the two-line summary."
+        )
+    }
+
+    /// Page 27 mounts the real ChatView rather than a plan-only gallery. The
+    /// plan must dismiss when the user taps either major surface outside it:
+    /// the conversation canvas or the composer.
+    func testExpandedPlanDismissesFromActualChatSurfaces() {
+        let app = launchGallery(page: 27)
+        let rows = app.descendants(matching: .any)
+            .matching(identifier: "plan.rows-scroll").firstMatch
+        let header = app.descendants(matching: .any)
+            .matching(identifier: "plan.header").firstMatch
+        XCTAssertTrue(rows.waitForExistence(timeout: 15), "The fixture should start with its plan expanded.")
+        let window = app.windows.firstMatch
+        let canvasY = max(60, rows.frame.minY - 60)
+        window.coordinate(
+            withNormalizedOffset: CGVector(dx: 0.5, dy: canvasY / window.frame.height)
+        ).tap()
+        XCTAssertTrue(
+            rows.waitForNonExistence(timeout: 5),
+            "Tapping outside the expanded plan on the conversation canvas should collapse it."
+        )
+
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        header.tap()
+        XCTAssertTrue(rows.waitForExistence(timeout: 5))
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.90)).tap()
+        XCTAssertTrue(
+            rows.waitForNonExistence(timeout: 5),
+            "Tapping the composer outside the expanded plan should collapse it."
         )
     }
 }

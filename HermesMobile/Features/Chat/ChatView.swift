@@ -339,7 +339,8 @@ struct ChatView: View {
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
-        autoStartsVoiceInput: Bool = false
+        autoStartsVoiceInput: Bool = false,
+        initialPlanStateForTesting: TodoState? = nil
     ) {
         self.session = session
         self.server = server
@@ -348,13 +349,18 @@ struct ChatView: View {
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
-        _viewModel = State(initialValue: ChatViewModel(
+        let initialViewModel = ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
                 forKey: AgentRunLiveActivityPrivacy.showsResponseExcerptsKey
             )
-        ))
+        )
+        if let initialPlanStateForTesting {
+            initialViewModel.streamCoordinatorApplyTodoState(initialPlanStateForTesting)
+            initialViewModel.isPlanExpanded = true
+        }
+        _viewModel = State(initialValue: initialViewModel)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -544,6 +550,12 @@ struct ChatView: View {
                     .environment(\.layoutDirection, chatLayoutDirection)
             }
             .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.showsListenPlaybackBar)
+            // Simultaneous rather than a transparent hit-testing layer: a tap
+            // anywhere on the conversation canvas dismisses the plan while
+            // scrolling and existing transcript controls remain interactive.
+            .simultaneousGesture(
+                TapGesture().onEnded { collapseExpandedPlan() }
+            )
 
             BottomComposerMaterialFade(composerHeight: composerHeight)
 
@@ -1125,6 +1137,9 @@ struct ChatView: View {
             planTimelineLayer
 
             messageComposer
+                .simultaneousGesture(
+                    TapGesture().onEnded { collapseExpandedPlan() }
+                )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
         // Publish the height the dock actually sits in, so the plan card can
@@ -1143,6 +1158,13 @@ struct ChatView: View {
         .onPreferenceChange(ChatDockHeightKey.self) { maxY in
             guard maxY > 0 else { return }
             dockAvailableHeight = maxY
+        }
+    }
+
+    private func collapseExpandedPlan() {
+        guard viewModel.isPlanExpanded else { return }
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            viewModel.isPlanExpanded = false
         }
     }
 

@@ -139,6 +139,49 @@ final class TodoStateTests: XCTestCase {
         XCTAssertFalse(state.hasCancelledWork)
     }
 
+    // MARK: - Plan window layout
+
+    func testPlanWindowShowsAtMostFiveMeasuredRows() {
+        let height = PlanTimelineLayout.windowHeight(
+            rowHeights: Dictionary(uniqueKeysWithValues: (0..<8).map { ($0, CGFloat(44)) }),
+            todoCount: 8,
+            availableHeight: 1_000
+        )
+
+        XCTAssertEqual(PlanTimelineLayout.maximumVisibleRows, 5)
+        XCTAssertEqual(height, 5 * 44 + PlanTimelineLayout.topChrome)
+    }
+
+    func testPlanWindowUsesNaturalHeightForShortPlan() {
+        let height = PlanTimelineLayout.windowHeight(
+            rowHeights: [0: 44, 1: 60, 2: 44],
+            todoCount: 3,
+            availableHeight: 1_000
+        )
+
+        XCTAssertEqual(height, 148 + PlanTimelineLayout.verticalChrome)
+    }
+
+    func testExpandedTaskStillRespectsAvailableDockHeight() {
+        let height = PlanTimelineLayout.windowHeight(
+            rowHeights: [0: 500, 1: 44, 2: 44, 3: 44, 4: 44],
+            todoCount: 5,
+            availableHeight: 400
+        )
+
+        XCTAssertEqual(height, 200)
+    }
+
+    func testPlanWindowUsesBoundedEstimateBeforeMeasurement() {
+        let height = PlanTimelineLayout.windowHeight(
+            rowHeights: [:],
+            todoCount: 20,
+            availableHeight: 300
+        )
+
+        XCTAssertEqual(height, 150)
+    }
+
     // MARK: - Transport
 
     func testSSEDecodesTodoStateEvent() {
