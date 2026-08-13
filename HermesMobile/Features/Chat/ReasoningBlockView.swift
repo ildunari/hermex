@@ -128,8 +128,6 @@ struct ReasoningBlockView: View {
                     chrome: presentsExpandedBody ? .none : .pill
                 )
                 .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
-                // Stable handle for UI tests; the label carries a duration.
-                .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
                 .background {
                     GeometryReader { proxy in
                         Color.clear.preference(
@@ -212,7 +210,6 @@ struct ReasoningBlockView: View {
             // The header must not be the only escape hatch from a tall Thought.
             .onTapGesture(perform: collapseExpandedBody)
             .accessibilityElement(children: .contain)
-            .accessibilityIdentifier(ActivityAccessibilityID.thinkingBody)
 
             if bodyOverflowsInlinePreview, presentsExpandedBody {
                 Button {
@@ -224,7 +221,6 @@ struct ReasoningBlockView: View {
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
-                .accessibilityIdentifier(ActivityAccessibilityID.thinkingReadFullButton)
                 .transition(.opacity)
             }
         }
@@ -411,7 +407,6 @@ private struct ReasoningReaderView: View {
                 .padding(.horizontal, 20)
                 .padding(.vertical, 16)
             }
-            .accessibilityIdentifier(ActivityAccessibilityID.thinkingFullReader)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
