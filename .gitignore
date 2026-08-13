@@ -59,3 +59,6 @@ fastlane/test_output/
 
 # Local session-handoff state (read at session start, overwritten at wrap-up; not tracked)
 /CURRENT.md
+
+# Local agent plan/scratch state (per-session, per-machine; not tracked)
+/.hermes/
