@@ -318,6 +318,10 @@ struct ChatView: View {
     @State private var gitToastState = GitActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
+    /// Vertical space from the window top to the bottom of the composer dock.
+    /// The plan uses this instead of the physical screen height so its cap also
+    /// remains correct with the keyboard raised and in Split View.
+    @State private var dockAvailableHeight: CGFloat = 844
     @State private var composerIsFocused = false
     @State private var didCompleteInitialAppearance = false
     @State private var isInitialComposerFocusContentReady = false
@@ -1139,12 +1143,19 @@ struct ChatView: View {
                 )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
-    }
-
-    private func collapseExpandedPlan() {
-        guard viewModel.isPlanExpanded else { return }
-        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
-            viewModel.isPlanExpanded = false
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(
+                        key: ChatDockHeightKey.self,
+                        value: proxy.frame(in: .global).maxY
+                    )
+            }
+        }
+        .environment(\.planDockHeight, dockAvailableHeight)
+        .onPreferenceChange(ChatDockHeightKey.self) { maxY in
+            guard maxY > 0 else { return }
+            dockAvailableHeight = maxY
         }
     }
 
@@ -2493,5 +2504,13 @@ private extension SlashCommandExecutionResult {
         case .sendAsMessage, .unsupported, .needsSubArg:
             false
         }
+    }
+}
+
+private struct ChatDockHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
