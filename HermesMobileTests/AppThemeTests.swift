@@ -224,6 +224,51 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         XCTAssertNotEqual(warm.chatBackground, Color(hexRGB: "#FAF9F7"))
         XCTAssertNotEqual(warm.chatBackground, Color.white)
     }
+
+    /// The whole point of `GitStatusPalette` is measurable legibility on the warm
+    /// ivory card, so assert the actual WCAG ratio rather than just "not the old
+    /// color" — a future re-tune that looks nice but washes out should fail here.
+    func testGitStatusChipsClearContrastOnTheirSurfaces() {
+        let lightCard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm).surface
+        let darkCard = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm).surface
+        let kinds: [GitFile.ChangeKind] = [.added, .deleted, .renamed, .conflict, .modified]
+
+        for kind in kinds {
+            let light = GitStatusPalette.tint(for: kind, colorScheme: .light)
+            let lightRatio = Self.contrastRatio(light, lightCard)
+            XCTAssertGreaterThanOrEqual(
+                lightRatio, 4.5,
+                "light \(kind) chip only reaches \(lightRatio):1 on the warm card"
+            )
+
+            let dark = GitStatusPalette.tint(for: kind, colorScheme: .dark)
+            let darkRatio = Self.contrastRatio(dark, darkCard)
+            XCTAssertGreaterThanOrEqual(
+                darkRatio, 4.5,
+                "dark \(kind) chip only reaches \(darkRatio):1 on the warm card"
+            )
+        }
+
+        // The regression that motivated the palette: system yellow on the warm card.
+        XCTAssertLessThan(Self.contrastRatio(.yellow, lightCard), 2.0)
+    }
+
+    /// WCAG 2.1 relative-luminance contrast ratio.
+    private static func contrastRatio(_ a: Color, _ b: Color) -> Double {
+        let la = relativeLuminance(a)
+        let lb = relativeLuminance(b)
+        return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+    }
+
+    private static func relativeLuminance(_ color: Color) -> Double {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        func channel(_ value: CGFloat) -> Double {
+            let v = Double(value)
+            return v <= 0.03928 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    }
 }
 
 final class ChatLayoutDirectionSettingsTests: XCTestCase {
