@@ -12,6 +12,7 @@ struct OnboardingConnectPage: View {
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var isShowingAdvanced = false
+    @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     private var canSubmit: Bool {
         !viewModel.serverURLString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -51,7 +52,7 @@ struct OnboardingConnectPage: View {
                                 .keyboardType(.URL)
                                 .foregroundStyle(.white)
                                 .submitLabel(.go)
-                                .tint(Color(red: 1.0, green: 0.74, blue: 0.10))
+                                .tint(HeaderLogoColor.color(for: headerLogoColorHex))
                                 .focused($focusedField, equals: .serverURL)
                                 .onSubmit(submitConnection)
                         }

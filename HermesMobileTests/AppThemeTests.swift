@@ -204,6 +204,18 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         let standardBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .standard)
         XCTAssertEqual(warmBlack.chatBackground, standardBlack.chatBackground)
     }
+
+    /// Light-mode Warm must stay perceptibly off white. The previous canvas
+    /// (#FAF9F7) sat inside True Tone / Night Shift swing and read as white.
+    func testLightWarmCanvasIsPerceptiblyOffWhiteAndKeepsRampOrder() {
+        let warm = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm)
+        let standard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .standard)
+
+        XCTAssertNotEqual(warm.chatBackground, standard.chatBackground)
+        XCTAssertNotEqual(warm.surface, standard.surface)
+        XCTAssertNotEqual(warm.userBubble, standard.userBubble)
+        XCTAssertNotEqual(warm.chatBackground, Color.white)
+    }
 }
 
 final class ChatLayoutDirectionSettingsTests: XCTestCase {
