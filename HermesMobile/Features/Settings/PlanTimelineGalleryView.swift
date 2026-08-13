@@ -345,4 +345,70 @@ private struct PlanComposerDockView: View {
         )
     }
 }
+/// Replays the field report's exact conditions (`--surface-gallery-page 23`):
+/// a five-step plan with wrapping rows — *below* the old row-count gate, so
+/// the pre-fix build rendered it with no scroll window at all — arriving
+/// mid-"stream" with the keyboard raised, which squeezes the dock the same
+/// way the screenshot showed. The plan opens expanded with no prior
+/// measurement (the todo_state-arrives-mid-turn case), the text field grabs
+/// focus to raise the keyboard, and the card must stay bounded, scrollable,
+/// and dismissible by tapping its rows.
+private struct PlanLiveStressView: View {
+    @State private var isExpanded = true
+    @State private var dockHeight: CGFloat = 0
+    @FocusState private var composerFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var draft = ""
+
+    /// Five steps, matching the report's Boston-map plan: long enough to wrap,
+    /// few enough that the old cap's `count <= 7` short path applied.
+    private let state = TodoState(todos: [
+        TodoItem(rawID: "1", content: "Find and validate public historical Boston shoreline and land-reclamation data, including archival maps, dated boundaries, and source provenance", status: .pending),
+        TodoItem(rawID: "2", content: "Define dated stages, cartographic styling, labels, and sourcing treatment", status: .pending),
+        TodoItem(rawID: "3", content: "Build the high-detail animated map from validated geographic data", status: .pending),
+        TodoItem(rawID: "4", content: "Render GIF and MP4 deliverables", status: .pending),
+        TodoItem(rawID: "5", content: "Inspect animation frames, metadata, timing, and export quality", status: .inProgress)
+    ])
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            Text("LIVE PLAN STRESS · keyboard raised, no prior measurement")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+
+            Spacer()
+
+            PlanTimelineView(state: state, isExpanded: $isExpanded, isLive: true)
+                .padding(.horizontal)
+                .padding(.bottom, 8)
+
+            TextField("Ask anything… /commands", text: $draft)
+                .textFieldStyle(.plain)
+                .focused($composerFocused)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 15)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.white)
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear.onAppear { dockHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, height in dockHeight = height }
+            }
+        }
+        .environment(\.planDockHeight, dockHeight > 0 ? dockHeight : 844)
+        .task {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            composerFocused = true
+        }
+    }
+}
 #endif

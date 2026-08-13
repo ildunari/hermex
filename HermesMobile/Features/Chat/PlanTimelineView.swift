@@ -584,10 +584,12 @@ private struct PlanRowLabel: View {
                 if !isExpanded {
                     Button(action: onToggleDetail) {
                         // SwiftUI owns the actual trailing ellipsis. Overlay a
-                        // clear 88x44pt target around that location so a thumb
-                        // does not have to land on three tiny glyphs.
+                        // clear 44x44pt target around that location so a thumb
+                        // does not have to land on three tiny glyphs. Keeping
+                        // it to Apple's standard minimum avoids stealing a
+                        // normal center-card tap, which collapses the plan.
                         Color.clear
-                            .frame(width: 88, height: 44)
+                            .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)

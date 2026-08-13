@@ -336,7 +336,8 @@ struct ChatView: View {
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
-        autoStartsVoiceInput: Bool = false
+        autoStartsVoiceInput: Bool = false,
+        initialPlanStateForTesting: TodoState? = nil
     ) {
         self.session = session
         self.server = server
@@ -345,13 +346,18 @@ struct ChatView: View {
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
-        _viewModel = State(initialValue: ChatViewModel(
+        let initialViewModel = ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
                 forKey: AgentRunLiveActivityPrivacy.showsResponseExcerptsKey
             )
-        ))
+        )
+        if let initialPlanStateForTesting {
+            initialViewModel.streamCoordinatorApplyTodoState(initialPlanStateForTesting)
+            initialViewModel.isPlanExpanded = true
+        }
+        _viewModel = State(initialValue: initialViewModel)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -1133,6 +1139,13 @@ struct ChatView: View {
                 )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+    }
+
+    private func collapseExpandedPlan() {
+        guard viewModel.isPlanExpanded else { return }
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            viewModel.isPlanExpanded = false
+        }
     }
 
     private func collapseExpandedPlan() {
