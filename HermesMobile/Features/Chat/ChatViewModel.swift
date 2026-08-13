@@ -964,7 +964,6 @@ final class ChatViewModel {
 
         isLoadingComposerConfiguration = true
         composerConfigurationErrorMessage = nil
-        lastError = nil
         defer { isLoadingComposerConfiguration = false }
 
         repeat {
@@ -974,6 +973,13 @@ final class ChatViewModel {
             let result = await ChatComposerConfigLoader(client: client)
                 .loadConfiguration(from: initialState)
 
+            // The load now runs concurrently with the transcript fetch, so a
+            // view that disappears mid-flight cancels it. Applying a partial
+            // state and surfacing "cancelled" as a composer error would be a
+            // regression: before parallelization this work never started at all
+            // on that path.
+            guard !Task.isCancelled else { return }
+
             guard composerConfigurationState == initialState else {
                 needsComposerConfigurationReload = true
                 continue
@@ -982,25 +988,42 @@ final class ChatViewModel {
             applyComposerConfigurationState(result.state)
 
             if let error = result.configurationError {
-                lastError = error
+                guard !Self.isCancellation(error) else { continue }
+                // Scoped to the composer: `lastError` is shared with the
+                // transcript load that now runs alongside this one, so writing
+                // it here would let whichever finished last win and could
+                // double-report a failure the transcript already surfaced.
                 composerConfigurationErrorMessage = error.localizedDescription
             }
         } while needsComposerConfigurationReload
     }
 
+    private static func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        return (error as? URLError)?.code == .cancelled
+    }
+
     /// Refreshes the model catalog when a picker opens: refetch `/api/models`
-    /// (so the sheet stops pinning the chat-load-time snapshot), then overlay
-    /// the active provider's live list from `/api/models/live`. Failures are
-    /// silent by design — the picker keeps whatever it already shows.
+    /// (so the sheet stops pinning the chat-load-time snapshot) and overlay the
+    /// active provider's live list from `/api/models/live`. Both are issued
+    /// together — the live probe fans out to providers and dominates the wait,
+    /// so serializing them made the picker pause for the sum of the two.
+    /// Failures are silent by design — the picker keeps whatever it shows.
+    ///
+    /// The cached response is applied first regardless of completion order so
+    /// the live overlay is never clobbered by the staler catalog.
     func refreshModelCatalogForPickerOpen() async {
-        if let response = try? await client.models() {
+        async let cachedResult = try? await client.models()
+        async let liveResult = try? await client.modelsLive()
+
+        if let response = await cachedResult {
             let groups = response.catalogGroups
             if !groups.isEmpty {
                 modelCatalogGroups = groups
             }
         }
 
-        if let live = try? await client.modelsLive() {
+        if let live = await liveResult {
             modelCatalogGroups = modelCatalogGroups.mergingLiveModels(from: live)
         }
     }

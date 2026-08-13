@@ -1405,15 +1405,24 @@ struct ChatView: View {
     private func performInitialAsyncWork() async {
         guard !Task.isCancelled else { return }
 
+        // The composer config chain is independent of the transcript fetch, so
+        // it starts immediately instead of queueing behind `loadMessages`.
+        // Previously the composer could not resolve its model/provider until a
+        // full message history round-trip had completed.
+        async let composerConfiguration: Void = viewModel.loadComposerConfiguration()
+
         if loadsInitialMessages {
             await loadMessages(appliesInitialFocus: false)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                await composerConfiguration
+                return
+            }
         }
         if initialAttachments.isEmpty {
             isInitialComposerFocusContentReady = true
             applyInitialComposerFocusPolicyIfNeeded()
         }
-        await viewModel.loadComposerConfiguration()
+        await composerConfiguration
         guard !Task.isCancelled else { return }
 
         await viewModel.refreshApprovalBypassState()

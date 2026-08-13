@@ -4905,12 +4905,13 @@ final class ChatViewModelSendTests: XCTestCase {
     func testComposerConfigurationUsesSessionProfileDefaultBeforeSending() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         let streamClient = SpySSEStreamingClient()
-        var requestPaths: [String] = []
+        // Concurrent config requests reach this stub from multiple threads.
+        let requestPaths = RequestPathRecorder()
         let viewModel = try makeViewModel(
             streamClient: streamClient,
             sessionSummary: makeSession(model: nil, modelProvider: nil, profile: "work")
         ) { request in
-            requestPaths.append(request.url?.path ?? "")
+            requestPaths.record(request.url?.path ?? "")
 
             switch request.url?.path {
             case "/api/profiles":
@@ -4981,7 +4982,14 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        XCTAssertEqual(requestPaths, [
+        // The composer config load now issues its profile-scoped reads
+        // concurrently, so exact arrival order is not deterministic. What must
+        // still hold: `/api/models` and `/api/workspaces` are profile-scoped on
+        // the server (upstream #3957) and may not be issued before
+        // `/api/profile/switch` settles the active profile, and the send
+        // (`/api/chat/start`) happens after configuration resolves.
+        let paths = requestPaths.value
+        XCTAssertEqual(Set(paths), [
             "/api/profiles",
             "/api/profile/switch",
             "/api/models",
@@ -4990,6 +4998,12 @@ final class ChatViewModelSendTests: XCTestCase {
             "/api/commands",
             "/api/chat/start"
         ])
+        XCTAssertEqual(paths.count, 7, "no endpoint should be issued twice")
+        let switchIndex = try XCTUnwrap(paths.firstIndex(of: "/api/profile/switch"))
+        XCTAssertLessThan(try XCTUnwrap(paths.firstIndex(of: "/api/profiles")), switchIndex)
+        XCTAssertLessThan(switchIndex, try XCTUnwrap(paths.firstIndex(of: "/api/models")))
+        XCTAssertLessThan(switchIndex, try XCTUnwrap(paths.firstIndex(of: "/api/workspaces")))
+        XCTAssertEqual(paths.last, "/api/chat/start", "send must follow configuration")
     }
 
     @MainActor
