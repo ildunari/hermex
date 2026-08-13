@@ -3,7 +3,7 @@ import SwiftUI
 /// Folds a turn's activity blocks (thinking + tool runs) into a single summary
 /// row once the assistant's answer starts streaming.
 ///
-/// **Why it folds at the first answer token, not at turn end.** When the stream
+/// **Why it folds at the first confirmed answer token, not at turn end.** When the stream
 /// finishes, the live views are torn down and rebuilt from reconciled session
 /// data with different identities, so any animation still running across that
 /// boundary dies mid-flight and pops. Folding on the first token completes the
@@ -32,7 +32,7 @@ import SwiftUI
 /// reveal *underneath* it. Only the blocks subtree mounts and unmounts, so the
 /// 70-tool cost above is unchanged.
 struct TurnActivityFoldView<Blocks: View, Summary: View>: View {
-    /// Drives the fold. Set true when the first answer token lands.
+    /// Drives the fold. Set true when the first confirmed final-answer token lands.
     let isCollapsed: Bool
     /// True for reconciled/historical turns, which must appear already folded
     /// with no animation at all.

@@ -411,9 +411,9 @@ struct ChatTranscriptView: View {
         }
     }
 
-    /// Live thinking + tool blocks, folding into one summary row when the
-    /// answer starts streaming. See `TurnActivityFoldView` for why the fold is
-    /// keyed on the first answer token rather than on turn end.
+    /// Live thinking + tool blocks, folding into one summary row when a
+    /// semantic final-answer token arrives. Legacy unphased streams stay open
+    /// until completion rather than guessing that progress prose is final.
     ///
     /// **Deliberately not wrapped in `ActivityContainerView`.** The unified
     /// container is an end-of-turn presentation: it exists to make a settled

@@ -4065,7 +4065,7 @@ final class ChatViewModel {
 
     private func handleBtwStreamEvent(_ event: SSEEvent) {
         switch event {
-        case .token(let text):
+        case .token(let text, _):
             activeBtwAnswer += text
             updateActiveBtwMessage(isLoading: true)
         case .interimAssistant(let payload):
@@ -4190,6 +4190,15 @@ final class ChatViewModel {
         }
         if reasoningAnchorMessageID == nil {
             reasoningAnchorMessageID = messageID
+        }
+
+        // Phase-aware runtimes can stream commentary directly into Thought and
+        // still emit the completed interim boundary for persistence. In that
+        // case `alreadyStreamed` means the trailing Thought text is the same
+        // segment, not a second narration block.
+        if payload.alreadyStreamed == true,
+           liveReasoningText.hasSuffix(text) {
+            return false
         }
 
         let textToAppend = deduplicatedReplayText(
@@ -5308,10 +5317,24 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorAppendToken(_ text: String) -> Bool {
-        // Final answer prose is streaming — the reasoning/tool steps are over.
-        closeReasoningStintIfNeeded()
-        turnPhase = .respondingText
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool {
+        switch phase {
+        case .finalAnswer:
+            // Only an explicit semantic final-answer marker may fold live
+            // activity. The bridge otherwise guarantees prose, not whether
+            // that prose precedes a later tool call.
+            closeReasoningStintIfNeeded()
+            turnPhase = .respondingText
+        case .commentary:
+            // Commentary is semantically activity, so never stage it in the
+            // answer bubble while waiting for a retrospective interim event.
+            return streamCoordinatorAppendReasoning(text)
+        case .provisional:
+            // Keep the current reasoning/tool phase while generic providers
+            // stream prose whose role is not known until a later interim or
+            // completion boundary. The prose itself still renders immediately.
+            break
+        }
         return appendAssistantToken(text)
     }
 
