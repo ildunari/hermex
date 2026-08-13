@@ -94,8 +94,6 @@ struct ReasoningBlockView: View {
                     chrome: presentsExpandedBody ? .none : .pill
                 )
                 .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
-                // Stable handle for UI tests; the label carries a duration.
-                .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
 
                 if keepsBodyMounted {
                     reasoningBody(content: presentedText)
@@ -176,7 +174,6 @@ struct ReasoningBlockView: View {
         .frame(height: presentsExpandedBody ? measuredBodyHeight : 0, alignment: .top)
         .clipped()
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier(ActivityAccessibilityID.thinkingBody)
         .accessibilityHidden(!presentsExpandedBody)
         .onPreferenceChange(ReasoningBodyHeightKey.self, perform: updateMeasuredBodyHeight)
     }
