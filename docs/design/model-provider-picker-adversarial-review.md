@@ -30,8 +30,9 @@ is the acceptance artifact.
   `ChatPalette` semantic roles. The bronze state color was chosen specifically to
   match the reference restraint without coupling this control to the user-selectable
   header color.
-- OpenAI, Fireworks, and Kimi produce distinct silhouettes in the first viewport.
-  The OpenAI/Codex mark is monochrome; the official Fireworks purple is preserved.
+- Providers without artwork that has verified redistribution provenance, including
+  OpenAI/Codex and Fireworks, use the deterministic Hermex fallback. Reviewed
+  Simple Icons marks such as Kimi retain distinct silhouettes.
 - The native long-press menu stays anchored to the provider card. VoiceOver has an
   explicit Edit action so context-menu discovery is not the only path.
 - The editor presents human-readable display name separately from read-only,
