@@ -121,14 +121,14 @@ final class ActivityDisclosureUITests: XCTestCase {
         )
     }
 
-    func testCompletedThinkingOutputIsBoundedScrollableAndCollapsesOnBodyTap() {
+    func testCompletedThinkingOutputUsesCompactPreviewAndDedicatedReader() {
         let app = launchGallery(page: 24)
-        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: false)
+        assertLongThinkingOutputUsesCompactPreviewAndDedicatedReader(in: app)
     }
 
-    func testLiveThinkingOutputIsBoundedScrollableAndCollapsesOnBodyTap() {
+    func testLiveThinkingOutputUsesCompactPreviewAndDedicatedReader() {
         let app = launchGallery(page: 25)
-        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: true)
+        assertLongThinkingOutputUsesCompactPreviewAndDedicatedReader(in: app)
     }
 
     func testThinkingOutputBoundsAtAccessibilityTextSize() {
@@ -139,13 +139,53 @@ final class ActivityDisclosureUITests: XCTestCase {
                 "UICTContentSizeCategoryAccessibilityXXXL",
             ]
         )
-        assertLongThinkingOutputIsBoundedScrollableAndCollapsible(in: app, startsAtBottom: false)
+        assertLongThinkingOutputUsesCompactPreviewAndDedicatedReader(in: app)
     }
 
-    private func assertLongThinkingOutputIsBoundedScrollableAndCollapsible(
-        in app: XCUIApplication,
-        startsAtBottom: Bool
-    ) {
+    func testLiveThinkingPreviewOpensDownwardWithoutPushingTranscript() {
+        let app = launchGallery(page: 26)
+        let header = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-header").firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        let body = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-body").firstMatch
+        XCTAssertFalse(body.exists)
+        let followingContent = app.descendants(matching: .any)
+            .matching(identifier: "gallery.thinking-following-content").firstMatch
+        XCTAssertTrue(followingContent.waitForExistence(timeout: 5))
+
+        let initialHeaderY = header.frame.minY
+        let initialFollowingY = followingContent.frame.minY
+        header.tap()
+
+        let deadline = Date().addingTimeInterval(1.5)
+        repeat {
+            XCTAssertEqual(
+                header.frame.minY,
+                initialHeaderY,
+                accuracy: 8,
+                "Explicit live Thought expansion must not let bottom-follow push its header upward."
+            )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < deadline
+
+        XCTAssertTrue(body.waitForExistence(timeout: 5))
+        XCTAssertGreaterThan(
+            followingContent.frame.minY,
+            initialFollowingY,
+            "The preview should grow downward and move following content, not move its own header upward."
+        )
+
+        let expandedHeaderY = header.frame.minY
+        body.swipeUp()
+        XCTAssertLessThan(
+            header.frame.minY,
+            expandedHeaderY - 0.5,
+            "A drag that begins inside the non-scrolling Thought preview must scroll the enclosing transcript."
+        )
+    }
+
+    private func assertLongThinkingOutputUsesCompactPreviewAndDedicatedReader(in app: XCUIApplication) {
         let body = app.descendants(matching: .any)
             .matching(identifier: "activity.thinking-body").firstMatch
         XCTAssertTrue(body.waitForExistence(timeout: 15), "The long Thought should open expanded.")
@@ -156,24 +196,41 @@ final class ActivityDisclosureUITests: XCTestCase {
         let screenHeight = app.windows.firstMatch.frame.height
         XCTAssertLessThanOrEqual(
             body.frame.maxY - header.frame.minY,
-            screenHeight * 0.81,
-            "The complete expanded Thinking surface should occupy no more than about 80% of the viewport."
+            screenHeight * 0.42,
+            "The complete inline Thought preview should occupy about 40% or less of the viewport."
         )
 
         let firstText = body.descendants(matching: .staticText).firstMatch
         XCTAssertTrue(firstText.waitForExistence(timeout: 5))
-        let firstTextY = firstText.frame.minY
-        if startsAtBottom {
-            body.swipeDown()
-        } else {
-            body.swipeUp()
-        }
-        XCTAssertNotEqual(
-            firstText.frame.minY,
-            firstTextY,
+        let initialRelativeTextY = firstText.frame.minY - body.frame.minY
+        body.swipeUp()
+        XCTAssertEqual(
+            firstText.frame.minY - body.frame.minY,
+            initialRelativeTextY,
             accuracy: 0.5,
-            "A long Thinking output should scroll inside the bounded card."
+            "Dragging the preview must move the transcript, not create a competing nested scroll."
         )
+
+        let readFull = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-read-full").firstMatch
+        XCTAssertTrue(readFull.waitForExistence(timeout: 5))
+        readFull.tap()
+
+        let reader = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-full-reader").firstMatch
+        XCTAssertTrue(reader.waitForExistence(timeout: 5), "Long output should open in a dedicated reader.")
+        let readerText = reader.descendants(matching: .staticText).firstMatch
+        XCTAssertTrue(readerText.waitForExistence(timeout: 5))
+        let readerTextY = readerText.frame.minY
+        reader.swipeUp()
+        XCTAssertNotEqual(
+            readerText.frame.minY,
+            readerTextY,
+            accuracy: 0.5,
+            "The dedicated Thought reader should own vertical scrolling."
+        )
+        app.buttons["Close"].tap()
+        XCTAssertTrue(reader.waitForNonExistence(timeout: 5))
 
         body.tap()
         XCTAssertTrue(

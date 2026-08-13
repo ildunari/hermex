@@ -34,6 +34,8 @@ struct SurfaceGalleryView: View {
             ThinkingMarkdownGalleryView(isStreaming: false)
         } else if page == 25 {
             ThinkingMarkdownGalleryView(isStreaming: true)
+        } else if page == 26 {
+            LiveThinkingRevealProbeView()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -589,6 +591,77 @@ private struct ThinkingMarkdownGalleryView: View {
     **Adjusting workout sequencing and fatigue management**
     **Evaluating 12-day training cycle feasibility**
     **Planning 4-week mesocycle rotations**
+
+    The next pass checks the plan against recovery constraints rather than only
+    counting sets. Shoulder flexion, elbow extension, and upper-back fatigue
+    overlap across several sessions, so each movement needs a clear purpose and
+    a predictable place in the rotation.
+
+    **Checking recovery between pressing sessions**
+    **Balancing direct and indirect arm volume**
+    **Preserving progression across the full cycle**
+
+    This makes the sequence easier to run in real life: demanding work stays
+    early, optional isolation work stays removable, and rest days can slide by
+    one day without breaking the intended order.
+
+    **Reviewing exercise substitutions**
+    **Confirming fatigue-aware progression rules**
+    **Preparing the final recommendation**
+
+    The final recommendation will keep the original training goals intact while
+    reducing redundant volume and explaining exactly when to add load, repeat a
+    session, or take an extra recovery day.
     """
+}
+
+/// Reproduces the live transcript's bottom-follow pressure while exercising an
+/// explicit Thought-header tap. The position preserver must win for the short
+/// disclosure transaction so the header remains planted and the preview grows
+/// down toward the following response instead of pushing the transcript up.
+private struct LiveThinkingRevealProbeView: View {
+    @State private var disclosurePositionPreserver = ChatScrollPositionPreserver()
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Color.clear
+                        .frame(height: 560)
+                        .accessibilityHidden(true)
+
+                    Text("LIVE THINKING · EXPANSION DIRECTION")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+
+                    ReasoningBlockView(
+                        text: Self.longReasoning,
+                        isStreaming: true,
+                        preservesViewportOnExpand: true,
+                        startsExpandedOverride: false
+                    )
+
+                    Text("Following transcript content")
+                        .font(.body)
+                        .accessibilityIdentifier("gallery.thinking-following-content")
+                }
+                .padding(16)
+                .background {
+                    ChatScrollPositionPreserverView(controller: disclosurePositionPreserver)
+                }
+            }
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .environment(\.activityDisclosureViewportHeight, viewport.size.height)
+            .environment(\.preserveActivityExpansionPosition) {
+                disclosurePositionPreserver.preserveCurrentVerticalOffset(for: 1.25)
+            }
+        }
+    }
+
+    private static let longReasoning = Array(
+        repeating: "Reasoning continues with enough detail to exceed the compact inline preview.",
+        count: 24
+    ).joined(separator: "\n\n")
 }
 #endif

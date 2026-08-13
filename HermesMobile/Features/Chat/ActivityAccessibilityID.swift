@@ -16,6 +16,10 @@ enum ActivityAccessibilityID {
     static let thinkingHeader = "activity.thinking-header"
     /// The thinking block's revealed markdown body.
     static let thinkingBody = "activity.thinking-body"
+    /// Opens a dedicated reader for reasoning that exceeds the inline preview.
+    static let thinkingReadFullButton = "activity.thinking-read-full"
+    /// The dedicated, independently scrolling reasoning reader.
+    static let thinkingFullReader = "activity.thinking-full-reader"
     /// The tool block's header capsule.
     static let toolsHeader = "activity.tools-header"
     /// The capped, scrollable tool-runs list.
