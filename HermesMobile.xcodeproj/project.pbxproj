@@ -2040,6 +2040,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "";
+				EMIT_FRONTEND_COMMAND_LINES = YES;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = HermesMobile/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -2048,6 +2049,11 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.5;
+				OTHER_LDFLAGS = (
+					"$(inherited)",
+					"-Xlinker",
+					"-interposable",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(APP_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

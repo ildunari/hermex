@@ -47,6 +47,30 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
   `xcodebuild`/`xcrun simctl` for release/archive or low-level diagnosis. Defaults live
   in `.xcodebuildmcp/config.yaml` (scheme `HermesMobile`, sim **iPhone 17**); if that
   sim is missing, pick a nearby iPhone and say which.
+- Before booting a simulator, list the live devices and reuse a compatible booted one.
+  Check `xcrun simctl list devices`, active `xcodebuild`/XCTest/AXe/video-capture
+  processes, the apps running in each candidate simulator, and unresolved ownership
+  notes in `hey.md`. Treat a simulator as occupied when another agent or test/capture
+  process is using it. Boot a new device only when no compatible idle simulator exists.
+  Record which UDIDs were already booted and which this task booted.
+- Clean up simulator resources narrowly. Keep user-preexisting or currently occupied
+  simulators running. At task end, stop captures/helpers this task started and shut down
+  only idle simulator UDIDs this task booted, after rechecking for active XCTest,
+  `xcodebuild`, AXe, recording, or another agent's ownership. Never use an unscoped
+  `simctl shutdown all`; do not erase devices merely to reclaim CPU/GPU.
+- InjectionIII is configured for simulator Debug builds only. For iterative SwiftUI
+  work, reuse the selected simulator and first check whether InjectionIII is already
+  running for this checkout. If not, start `/Applications/InjectionIII.app` with
+  `-projectFile /absolute/path/to/HermesMobile.xcodeproj -addDirectory
+  /absolute/path/to/this/checkout`; record that this task owns the helper. Build once,
+  then launch with XcodeBuildMCP using `INJECTIONIII_ENABLED=1` and
+  `INJECTION_DIRECTORIES=/absolute/path/to/this/checkout`. Verify the runtime log says
+  `INJECTIONIII: loaded bundle`, `InjectionIII connected`, and `Watching files under`
+  before relying on hot reload. Normal Debug/test launches omit the opt-in variable.
+  Quit InjectionIII at cleanup only when this task started it and no other agent or
+  injected app is using it. Structural model
+  changes, stored-property changes, and added/renamed/deleted source files still require
+  a normal rebuild/relaunch.
 - **Simulator installs must be signed.** Never install a `CODE_SIGNING_ALLOWED=NO`
   build on the simulator for manual testing — that flag is for compile-only checks
   (see `TESTFLIGHT.md`) and strips entitlements, so Keychain writes fail with

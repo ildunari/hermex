@@ -45,6 +45,12 @@ struct HermesMobileApp: App {
     @State private var authManager = AuthManager()
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
+    init() {
+        #if DEBUG
+        loadInjectionIIIIfRequested()
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             #if DEBUG
@@ -86,6 +92,22 @@ struct HermesMobileApp: App {
     }
 
     #if DEBUG
+    /// Enables InjectionIII only for launches that explicitly opt in with
+    /// `INJECTIONIII_ENABLED=1`. Ordinary Debug launches and test runners do
+    /// not start its source watcher.
+    private func loadInjectionIIIIfRequested() {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["INJECTIONIII_ENABLED"] == "1" else { return }
+
+        let bundlePath = environment["INJECTIONIII_BUNDLE_PATH"]
+            ?? "/Applications/InjectionIII.app/Contents/Resources/iOSInjection.bundle"
+        guard let injectionBundle = Bundle(path: bundlePath), injectionBundle.load() else {
+            NSLog("INJECTIONIII: failed to load bundle at %@", bundlePath)
+            return
+        }
+        NSLog("INJECTIONIII: loaded bundle at %@", bundlePath)
+    }
+
     private func applyModelPickerCapturePaletteIfRequested() {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: "--model-picker-palette"),
