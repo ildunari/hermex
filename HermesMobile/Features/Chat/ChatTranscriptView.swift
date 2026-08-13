@@ -153,6 +153,7 @@ struct ChatTranscriptView: View {
                                 for: reduceMotion ? 0.35 : 1.25
                             )
                         }
+                        .environment(\.activityDisclosureViewportHeight, viewport.size.height)
                     }
                     .defaultScrollAnchor(
                         ChatScrollPolicy.initialTranscriptAnchor,
