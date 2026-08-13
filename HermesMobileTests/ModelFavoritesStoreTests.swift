@@ -229,10 +229,10 @@ final class ModelFavoritesStoreTests: XCTestCase {
         )
     }
 
-    func testProviderBrandCatalogMapsCachedOpenAIAndFireworksArtwork() {
-        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-codex")?.assetName, "ProviderOpenAI")
-        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-api")?.assetName, "ProviderOpenAI")
-        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "fireworks")?.assetName, "ProviderFireworks")
+    func testProviderBrandCatalogUsesFallbackForProvidersWithoutLicensedArtwork() {
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-codex"))
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-api"))
+        XCTAssertNil(ProviderBrandCatalog.artwork(for: "fireworks"))
         XCTAssertNil(ProviderBrandCatalog.artwork(for: "custom-private-provider"))
     }
 
@@ -289,6 +289,19 @@ final class ModelFavoritesStoreTests: XCTestCase {
         }
     }
 
+    func testProviderArtworkProcessorRejectsOversizedFileBeforeDecode() throws {
+        let file = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderArtworkOversized-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data(count: ProviderArtworkProcessor.maximumInputBytes + 1).write(to: file)
+
+        XCTAssertThrowsError(try ProviderArtworkProcessor.normalizedPNG(fromFileAt: file)) { error in
+            guard case ProviderArtworkImportError.imageTooLarge = error else {
+                return XCTFail("Expected imageTooLarge, got \(error)")
+            }
+        }
+    }
+
     func testProviderArtworkProcessorDownsamplesToBoundedPNG() throws {
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1_200, height: 600))
         let image = renderer.image { context in
@@ -323,6 +336,32 @@ final class ModelFavoritesStoreTests: XCTestCase {
         )
 
         XCTAssertFalse(store.appearance(serverID: "server", providerID: "provider").hasOverride)
+    }
+
+    func testProviderAppearanceRejectsPersistedArtworkPathTraversal() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceTraversalTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("ProviderArtwork", isDirectory: true)
+        let outsideFile = root.appendingPathComponent("outside.png")
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: outsideFile)
+        let payload: [String: Any] = [
+            "servers": ["server": ["provider": [
+                "artworkFileName": "../outside.png",
+                "usesFallback": false
+            ]]]
+        ]
+        defaults.set(try JSONSerialization.data(withJSONObject: payload), forKey: "provider-appearance-traversal")
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-traversal",
+            artworkDirectory: directory
+        )
+
+        XCTAssertNil(store.artworkImage(serverID: "server", providerID: "provider"))
+        store.reset(serverID: "server", providerID: "provider")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: outsideFile.path))
     }
 
     func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {

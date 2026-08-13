@@ -174,11 +174,10 @@ Mistral, NVIDIA, Ollama, OpenRouter, GitHub Copilot, LM Studio, Alibaba Cloud,
 Google Cloud/Vertex, MiniMax, Cursor, and Xiaomi. Each asset still requires a
 source, license, trademark, and light/dark review before inclusion.
 
-OpenAI/Codex uses the logomark from OpenAI's official public Cookbook repository.
-Fireworks uses the square SVG served by the official Fireworks website. Both are
-cached in the Xcode asset catalog along with vetted Simple Icons marks; there are
-no provider-logo network calls at runtime. VibeProxy and many plugin providers
-still lack an obvious vetted mapping and use the Hermex fallback.
+OpenAI/Codex and Fireworks use the Hermex fallback because no redistributable
+artwork with sufficiently reproducible licensing provenance was identified.
+VibeProxy and many plugin providers likewise lack a vetted mapping. There are no
+provider-logo network calls at runtime.
 
 ### Fallback artwork
 

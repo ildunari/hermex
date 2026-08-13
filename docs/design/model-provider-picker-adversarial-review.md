@@ -60,9 +60,10 @@ is the acceptance artifact.
 - Light and dark before/after collages:
   `docs/design/screenshots/model-picker-before-after-light.png` and
   `docs/design/screenshots/model-picker-before-after-dark.png`.
-- Native long-press menu and editor captures are exported from the passing
-  `ModelPickerUITests/testProviderLongPressOffersAppearanceEditor` result bundle.
-- The deterministic UI test expands **Provider Details** and asserts the
+- Native long-press menu and editor captures were exported from a passing local
+  `ModelPickerUITests/testProviderLongPressOffersAppearanceEditor` result bundle;
+  that XCUITest target is intentionally absent from the upstream-shaped branch.
+- The local deterministic UI test expands **Provider Details** and asserts the
   provider's immutable ID remains visible and unchanged in the editor.
 
 No unresolved visual blocker remains from the baseline comparison. The remaining
@@ -103,7 +104,8 @@ form. A fresh signed-simulator audit found and resolved these issues:
 | Restore was destructive-looking and visually detached. | **Restore Defaults** is now a quiet, bordered secondary action and applies only after Save. |
 | Picker selection assumed the Warm palette. | Warm uses bronze state colors; Standard uses graphite state colors. Both screens use `ChatPalette` semantic surfaces and neither restores a blue outline. |
 
-Current audit evidence is produced by `ModelPickerUITests` for Warm and Standard
-picker/editor states plus the open image menu. Screenshot evidence cannot prove
+Current local audit evidence was produced by `ModelPickerUITests` for Warm and
+Standard picker/editor states plus the open image menu; that target is not part
+of the upstream-shaped branch. Screenshot evidence cannot prove
 VoiceOver reading order or keyboard behavior, so those remain covered by semantic
 labels/identifiers and runtime interaction tests rather than visual claims.
