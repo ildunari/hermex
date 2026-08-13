@@ -15,6 +15,8 @@ struct StreamingLabView: View {
     // textSelection dead-cascade hunt).
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     @State private var wordsPerSecond = StreamingLabReplay.defaultWordsPerSecond
     @State private var fadeDuration = StreamingTextFadeLab.shared.fadeDuration
@@ -164,7 +166,13 @@ struct StreamingLabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(ChatPalette.appChrome(colorScheme: colorScheme).surface)
+                .fill(
+                    ChatPalette.appChrome(
+                        colorScheme: colorScheme,
+                        backgroundRawValue: chromeBackgroundRawValue,
+                        temperatureRawValue: chromeTemperatureRawValue
+                    ).surface
+                )
         )
     }
 

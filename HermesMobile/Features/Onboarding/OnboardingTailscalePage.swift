@@ -5,6 +5,9 @@ struct OnboardingTailscalePage: View {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
     private var accent: Color { HeaderLogoColor.color(for: headerLogoColorHex) }
+    private var accentForeground: Color {
+        HeaderLogoColor.prefersDarkForeground(for: headerLogoColorHex) ? .black : .white
+    }
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -56,7 +59,7 @@ struct OnboardingTailscalePage: View {
         HStack(alignment: .top, spacing: 12) {
             Text(number)
                 .font(.caption.weight(.bold))
-                .foregroundStyle(.black)
+                .foregroundStyle(accentForeground)
                 .frame(width: 23, height: 23)
                 .background(accent, in: Circle())
 

@@ -8,6 +8,16 @@ struct ApprovalRequestOverlay: View {
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
+
+    private var chrome: ChatPalette {
+        ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: chromeBackgroundRawValue,
+            temperatureRawValue: chromeTemperatureRawValue
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -66,7 +76,7 @@ struct ApprovalRequestOverlay: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .background(
-                    ChatPalette.appChrome(colorScheme: colorScheme).surface,
+                    chrome.surface,
                     in: RoundedRectangle(cornerRadius: 10)
                 )
             }
@@ -84,7 +94,7 @@ struct ApprovalRequestOverlay: View {
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 5)
                                 .background(
-                                    ChatPalette.appChrome(colorScheme: colorScheme).surfaceInset,
+                                    chrome.surfaceInset,
                                     in: Capsule()
                                 )
                         }
