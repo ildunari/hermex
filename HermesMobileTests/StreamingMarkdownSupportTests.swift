@@ -100,6 +100,40 @@ final class ReasoningMarkdownPresentationTests: XCTestCase {
 
         XCTAssertEqual(ReasoningMarkdownPresentation.formatted(source), source)
     }
+
+    func testMixedFenceMarkerInsideFenceDoesNotHideFollowingLedger() {
+        let source = """
+        ```markdown
+        ~~~
+        ```
+
+        **Inspecting source**
+        **Verifying result**
+        """
+
+        XCTAssertEqual(
+            ReasoningMarkdownPresentation.formatted(source),
+            [
+                "```markdown",
+                "~~~",
+                "```",
+                "",
+                "---",
+                "",
+                "**Inspecting source**  ",
+                "**Verifying result**"
+            ].joined(separator: "\n")
+        )
+    }
+
+    func testLeavesStandaloneBoldItalicLinesUntouched() {
+        let source = """
+        ***Inspecting source***
+        ***Verifying result***
+        """
+
+        XCTAssertEqual(ReasoningMarkdownPresentation.formatted(source), source)
+    }
 }
 
 /// Width resolution for chat markdown table cells (issue #233). The layout

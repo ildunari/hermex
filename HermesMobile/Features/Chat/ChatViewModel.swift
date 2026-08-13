@@ -926,6 +926,18 @@ final class ChatViewModel {
         }
     }
 
+    /// Commits reasoning at a tool boundary without bypassing the assistant
+    /// word-reveal cadence. A pending assistant backlog keeps its scheduled
+    /// drain task; reasoning-only buffers can cancel the now-redundant tick.
+    private func flushReasoningAtToolBoundary() {
+        if pendingAssistantTokenChunks.isEmpty {
+            cancelPendingStreamingContentFlush()
+        }
+        if flushReasoningChunks() {
+            scheduleStreamingScrollTrigger()
+        }
+    }
+
     private var requestProfileName: String? {
         Self.nonEmpty(selectedProfileName) ?? Self.nonEmpty(currentProfile)
     }
@@ -5389,7 +5401,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         // coalesced reasoning tick has painted its pending tail. Commit that
         // tail now so reasoning that resumes after the tool can begin a new
         // Markdown block instead of joining the previous sentence.
-        flushPendingStreamingContent()
+        flushReasoningAtToolBoundary()
         closeReasoningStintIfNeeded()
         turnPhase = .toolCalling
         let didAppendNewContent = appendToolCall(payload)
@@ -5404,7 +5416,7 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         // Recovery can deliver a completion without its matching start. It is
         // still a semantic boundary, so commit any reasoning tail before the
         // completion is synthesized as a standalone tool run.
-        flushPendingStreamingContent()
+        flushReasoningAtToolBoundary()
         // Stay in `.toolCalling`: completion of one tool doesn't mean the tool
         // step ended — sibling tools may still run, and the model's next
         // reasoning/text event is what semantically moves the turn on.
