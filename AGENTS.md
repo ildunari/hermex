@@ -36,8 +36,8 @@ Read by every agent (Codex, Claude Code, …); keep it tool-agnostic.
 2. **No new third-party dependencies** beyond the spec's locked list without approval.
 3. **Tolerant decoding:** every `Codable` model uses optionals for fields upstream
    might add/rename. Never crash on unknown fields.
-4. **No destructive commands** (`rm -rf`, `git push --force`, anything touching
-   `~/Library/LaunchAgents/` or restarting Mac services). Suggest them; let the human run them.
+4. **No destructive commands** (`rm -rf`, `git push --force`, or unrequested
+   changes under `~/Library/LaunchAgents/`).
 5. **Don't commit broken builds.** If a build or test fails, fix it before writing more code.
 
 ## Tooling
