@@ -143,6 +143,14 @@ struct ChatTranscriptView: View {
                             viewportWidth: viewportWidth,
                             contentWidth: contentWidth
                         )
+                        .environment(\.scrollToReasoningHeader) { targetID in
+                            Task { @MainActor in
+                                await Task.yield()
+                                withAnimation(ChatMotion.scrollToLatest(reduceMotion: reduceMotion)) {
+                                    proxy.scrollTo(targetID, anchor: .top)
+                                }
+                            }
+                        }
                     }
                     .defaultScrollAnchor(
                         ChatScrollPolicy.initialTranscriptAnchor,
@@ -729,7 +737,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == transcriptMessage.anchorID }) { group in
                 ReasoningBlockView(
                     text: group.text,
-                    drawsOwnChrome: !isHistorical
+                    drawsOwnChrome: !isHistorical,
+                    scrollsToHeaderOnExpand: isHistorical
                 )
             }
         }

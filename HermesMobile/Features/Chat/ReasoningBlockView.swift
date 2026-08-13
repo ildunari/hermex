@@ -10,6 +10,10 @@ struct ReasoningBlockView: View {
     /// When embedded in a merged activity card the parent owns the container,
     /// so the block must not draw its own.
     var drawsOwnChrome: Bool = true
+    /// Historical transcript rows opt in so a tall Thought opens with its
+    /// tapped header visible and the body below it. Live reasoning leaves this
+    /// false because the transcript's follow-bottom policy owns its viewport.
+    var scrollsToHeaderOnExpand: Bool = false
     /// Default expansion when the reader has not toggled this block.
     ///
     /// Production always passes nil now — the merged card's sections open as
@@ -24,10 +28,12 @@ struct ReasoningBlockView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.scrollToReasoningHeader) private var scrollToReasoningHeader
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
+    @State private var disclosureScrollAnchorID = UUID().uuidString
     /// The body's intrinsic height is measured while the section is collapsed.
     /// Historical sections exist only while their outer Activity disclosure is
     /// open, so this does not keep every transcript renderer alive.
@@ -83,11 +89,7 @@ struct ReasoningBlockView: View {
                     completedIcon: "brain",
                     completedLabel: completedLabelText,
                     accessory: AnyView(chevron),
-                    onTap: {
-                        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
-                            userToggledExpansion = !isExpanded
-                        }
-                    },
+                    onTap: toggleExpansion,
                     // Expanded, the block itself is the bordered container, so
                     // the header must not draw a competing pill inside it.
                     chrome: presentsExpandedBody ? .none : .pill
@@ -95,6 +97,7 @@ struct ReasoningBlockView: View {
                 .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
                 // Stable handle for UI tests; the label carries a duration.
                 .accessibilityIdentifier(ActivityAccessibilityID.thinkingHeader)
+                .id(disclosureScrollAnchorID)
 
                 if keepsBodyMounted {
                     reasoningBody(content: presentedText)
@@ -198,6 +201,17 @@ struct ReasoningBlockView: View {
         }
     }
 
+    private func toggleExpansion() {
+        let willExpand = !isExpanded
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            userToggledExpansion = willExpand
+        }
+
+        if willExpand, scrollsToHeaderOnExpand {
+            scrollToReasoningHeader(disclosureScrollAnchorID)
+        }
+    }
+
     private var completedLabelText: String {
         guard let completedDuration else {
             return String(localized: "Thought")
@@ -222,6 +236,17 @@ struct ReasoningBlockView: View {
     private var trimmedText: String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+private struct ReasoningExpansionScrollActionKey: EnvironmentKey {
+    static let defaultValue: (String) -> Void = { _ in }
+}
+
+extension EnvironmentValues {
+    var scrollToReasoningHeader: (String) -> Void {
+        get { self[ReasoningExpansionScrollActionKey.self] }
+        set { self[ReasoningExpansionScrollActionKey.self] = newValue }
     }
 }
 

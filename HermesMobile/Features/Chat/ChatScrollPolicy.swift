@@ -20,9 +20,9 @@ enum ChatScrollPolicy {
     /// Also requires a live stream. Without that, expanding a settled turn's
     /// activity card re-pins the bottom on every frame of the height spring, so
     /// a tall card yanks the whole viewport up by more than a screen while the
-    /// reader is just trying to look at it. Late-measuring content in a settled
-    /// chat no longer re-pins — a small drift, which is the intent: a settled
-    /// transcript should grow in place, not chase its own bottom.
+    /// reader is just trying to look at it. Historical disclosure taps use a
+    /// specific header scroll target instead; a global size-change anchor
+    /// cannot distinguish the content the reader actually opened.
     static func sizeChangeAnchor(
         shouldFollowLatestMessage: Bool,
         hasActiveStream: Bool

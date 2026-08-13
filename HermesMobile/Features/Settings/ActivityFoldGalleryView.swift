@@ -317,8 +317,21 @@ private struct ThinkingRevealProbeView: View {
     @State private var phase = 0
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                // Put the collapsed card near the viewport bottom, matching
+                // the reported historical-session position. The tall Thought
+                // then exceeds a full screen when opened, so a bottom-preserving
+                // size change visibly moves its header above the viewport.
+                Color.clear
+                    .frame(height: 560)
+                    .accessibilityHidden(true)
+
+                Text("Earlier transcript content keeps this settled turn near the bottom edge.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Text("THINKING REVEAL PROBE · cycle \(cycle) phase \(phase)")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
@@ -328,18 +341,35 @@ private struct ThinkingRevealProbeView: View {
 
                 Text("The answer sits directly below, exactly as in a real settled turn, so any overlap or drop-down during the reveal shows against it.")
                     .font(.body)
+                }
+                .padding(16)
             }
-            .padding(16)
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_200_000_000)
-                phase = 1 // open the merged card (fold)
-                try? await Task.sleep(nanoseconds: 1_400_000_000)
-                phase = 2 // tap the thinking pill
-                try? await Task.sleep(nanoseconds: 2_600_000_000)
-                phase = 0
-                cycle += 1 // remount: fresh @State, like a cold load
+            .defaultScrollAnchor(
+                ChatScrollPolicy.initialTranscriptAnchor,
+                for: .initialOffset
+            )
+            .defaultScrollAnchor(
+                ChatScrollPolicy.sizeChangeAnchor(
+                    shouldFollowLatestMessage: false,
+                    hasActiveStream: false
+                ),
+                for: .sizeChanges
+            )
+            .environment(\.scrollToReasoningHeader) { targetID in
+                Task { @MainActor in
+                    await Task.yield()
+                    withAnimation(ChatMotion.scrollToLatest(reduceMotion: false)) {
+                        proxy.scrollTo(targetID, anchor: .top)
+                    }
+                }
+            }
+            .task {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                guard !Task.isCancelled else { return }
+                // Open only the outer fold. The UI test performs the inner Thought
+                // press itself, which keeps the regression fixture deterministic
+                // even when a cold Markdown layout takes several seconds.
+                phase = 1
             }
         }
     }
@@ -394,10 +424,11 @@ private struct ThinkingRevealTappableReasoning: View {
 
     var body: some View {
         ReasoningBlockView(
-            text: ActivityFoldSpecimen.thought,
+            text: ThinkingRevealProbeFixture.thought,
             isStreaming: false,
             completedDuration: 12,
             drawsOwnChrome: false,
+            scrollsToHeaderOnExpand: true,
             startsExpandedOverride: expanded
         )
         .onChange(of: expandsOnPhase) { _, now in
@@ -408,5 +439,12 @@ private struct ThinkingRevealTappableReasoning: View {
             }
         }
     }
+}
+
+private enum ThinkingRevealProbeFixture {
+    static let thought = Array(
+        repeating: ActivityFoldSpecimen.thought,
+        count: 7
+    ).joined(separator: "\n\n---\n\n")
 }
 #endif

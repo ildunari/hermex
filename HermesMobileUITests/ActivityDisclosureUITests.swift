@@ -93,6 +93,11 @@ final class ActivityDisclosureUITests: XCTestCase {
             XCTAssertTrue(thinkingHeader.exists, "Thought must stay mounted throughout expansion.")
             XCTAssertTrue(toolsHeader.exists, "Tools must stay mounted throughout Thought expansion.")
             XCTAssertGreaterThanOrEqual(
+                thinkingHeader.frame.minY,
+                app.windows.firstMatch.frame.minY - 0.5,
+                "Thought must keep its beginning visible instead of opening above the viewport."
+            )
+            XCTAssertGreaterThanOrEqual(
                 toolsHeader.frame.minY,
                 thinkingHeader.frame.maxY - 0.5,
                 "Tools must never cross above the Thought header during expansion."

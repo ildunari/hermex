@@ -14,9 +14,8 @@ final class ChatScrollPolicyTests: XCTestCase {
         XCTAssertNil(
             ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: false, hasActiveStream: true)
         )
-        // A settled chat must not re-pin the bottom on every frame of an
-        // animated size change: expanding an activity card would yank the
-        // viewport up by more than a screen while the reader is reading it.
+        // A settled chat must not globally re-pin on every frame; the tapped
+        // disclosure owns a precise header scroll target instead.
         XCTAssertNil(
             ChatScrollPolicy.sizeChangeAnchor(shouldFollowLatestMessage: true, hasActiveStream: false)
         )
