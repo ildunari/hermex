@@ -197,7 +197,8 @@ private struct LargeToolGroupSpecimen: View {
 
                         ToolActivityGroupView(
                             group: ActivityFoldSpecimen.largeGroup,
-                            drawsOwnChrome: false
+                            drawsOwnChrome: false,
+                            preparesHistoricalDisclosure: true
                         )
                     }
                 } summary: { isExpanded, toggle in
@@ -361,7 +362,7 @@ private struct ThinkingRevealProbeView: View {
             ),
             for: .sizeChanges
         )
-        .environment(\.preserveReasoningExpansionPosition) {
+        .environment(\.preserveActivityExpansionPosition) {
             disclosurePositionPreserver.preserveCurrentVerticalOffset(for: 1.25)
         }
         .task {

@@ -144,7 +144,7 @@ struct ChatTranscriptView: View {
                             viewportWidth: viewportWidth,
                             contentWidth: contentWidth
                         )
-                        .environment(\.preserveReasoningExpansionPosition) {
+                        .environment(\.preserveActivityExpansionPosition) {
                             disclosurePositionPreserver.preserveCurrentVerticalOffset(
                                 // The visible spring is ~0.5s, but cold tall
                                 // Markdown can deliver its final content-size
@@ -766,7 +766,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
             ForEach(toolCallGroups) { group in
                 ToolActivityGroupView(
                     group: group,
-                    drawsOwnChrome: !isHistorical
+                    drawsOwnChrome: !isHistorical,
+                    preparesHistoricalDisclosure: isHistorical
                 )
             }
         }

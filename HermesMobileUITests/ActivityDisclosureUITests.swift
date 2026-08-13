@@ -125,24 +125,10 @@ final class ActivityDisclosureUITests: XCTestCase {
     /// rather than rendering every row inline. Page 21 is the 68-tool fixture.
     func testLongToolListIsBoundedAndScrollable() {
         let app = launchGallery(page: 21)
+        let runs = assertLongToolListColdDisclosure(in: app)
 
-        let toolsHeader = app.descendants(matching: .any)
-            .matching(identifier: "activity.tools-header").firstMatch
-        XCTAssertTrue(
-            toolsHeader.waitForExistence(timeout: 15),
-            "The 68-tool fixture should render a tool block."
-        )
-        toolsHeader.tap()
-
-        let runs = app.descendants(matching: .any)
-            .matching(identifier: "activity.tool-runs-scroll").firstMatch
-        XCTAssertTrue(
-            runs.waitForExistence(timeout: 5),
-            "Expanding a 68-tool block should produce a scrollable list."
-        )
-
-        // Bounded: the window must be a fraction of the screen, not 68 rows of
-        // inline content. This is the assertion that fails if the cap regresses.
+        // Bounded: the normal-size window must be a fraction of the screen,
+        // not 68 rows of inline content.
         let screenHeight = app.windows.firstMatch.frame.height
         XCTAssertLessThan(
             runs.frame.height,
@@ -151,13 +137,95 @@ final class ActivityDisclosureUITests: XCTestCase {
         )
 
         // Scrollable: a real swipe inside the window must move its content.
-        // Comparing a row's position before/after proves the gesture landed.
         let firstRowBefore = runs.descendants(matching: .any).allElementsBoundByIndex.first?.frame.origin.y
         runs.swipeUp()
         let firstRowAfter = runs.descendants(matching: .any).allElementsBoundByIndex.first?.frame.origin.y
         if let before = firstRowBefore, let after = firstRowAfter {
             XCTAssertNotEqual(before, after, accuracy: 0.5, "The capped list should scroll.")
         }
+    }
+
+    func testLongToolListColdDisclosureAtAccessibilityTextSize() {
+        let app = launchGallery(
+            page: 21,
+            additionalArguments: [
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL",
+            ]
+        )
+        let runs = assertLongToolListColdDisclosure(in: app)
+        XCTAssertLessThan(
+            runs.frame.height,
+            app.windows.firstMatch.frame.height,
+            "Accessibility rows may be taller, but the tool window must remain screen-bounded."
+        )
+    }
+
+    private func assertLongToolListColdDisclosure(in app: XCUIApplication) -> XCUIElement {
+
+        let toolsHeader = app.descendants(matching: .any)
+            .matching(identifier: "activity.tools-header").firstMatch
+        XCTAssertTrue(
+            toolsHeader.waitForExistence(timeout: 15),
+            "The 68-tool fixture should render a tool block."
+        )
+        let thinkingHeader = app.descendants(matching: .any)
+            .matching(identifier: "activity.thinking-header").firstMatch
+        XCTAssertTrue(
+            thinkingHeader.waitForExistence(timeout: 5),
+            "The Thought sibling should remain mounted while tools expand."
+        )
+
+        let initialHeaderMinY = toolsHeader.frame.minY
+        toolsHeader.tap()
+
+        // This is intentionally the first open on a freshly mounted 68-tool
+        // block. The historical bug unmounted the header, collapsed the outer
+        // Activity container, then inserted an empty body before rows appeared.
+        let firstOpenDeadline = Date().addingTimeInterval(1.5)
+        repeat {
+            XCTAssertTrue(toolsHeader.exists, "Ran tools must stay mounted on its cold first open.")
+            XCTAssertTrue(thinkingHeader.exists, "Thought must stay mounted while tools open.")
+            XCTAssertEqual(
+                toolsHeader.frame.minY,
+                initialHeaderMinY,
+                accuracy: 8,
+                "Ran tools must expand in place without moving the transcript viewport."
+            )
+            XCTAssertGreaterThanOrEqual(
+                toolsHeader.frame.minY,
+                thinkingHeader.frame.maxY - 0.5,
+                "Ran tools must never cross above the Thought sibling."
+            )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < firstOpenDeadline
+
+        let runs = app.descendants(matching: .any)
+            .matching(identifier: "activity.tool-runs-scroll").firstMatch
+        XCTAssertTrue(
+            runs.waitForExistence(timeout: 5),
+            "Expanding a 68-tool block should produce a scrollable list."
+        )
+
+        // Warm second open must obey the same geometry after the measured list
+        // height has been cached by this retained view instance.
+        app.descendants(matching: .any)
+            .matching(identifier: "activity.tools-header").firstMatch.tap()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        app.descendants(matching: .any)
+            .matching(identifier: "activity.tools-header").firstMatch.tap()
+        let secondOpenDeadline = Date().addingTimeInterval(0.75)
+        repeat {
+            XCTAssertTrue(toolsHeader.exists, "Ran tools must stay mounted on its warm reopen.")
+            XCTAssertGreaterThanOrEqual(
+                toolsHeader.frame.minY,
+                thinkingHeader.frame.maxY - 0.5,
+                "Warm reopen must preserve sibling ordering."
+            )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        } while Date() < secondOpenDeadline
+        XCTAssertTrue(runs.waitForExistence(timeout: 5))
+        return runs
     }
 
     /// The plan card reported as cut off, unscrollable, and impossible to

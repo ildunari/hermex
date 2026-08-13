@@ -28,7 +28,7 @@ struct ReasoningBlockView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.preserveReasoningExpansionPosition) private var preserveReasoningExpansionPosition
+    @Environment(\.preserveActivityExpansionPosition) private var preserveActivityExpansionPosition
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
@@ -205,7 +205,7 @@ struct ReasoningBlockView: View {
             // Capture before committing the height change. The transcript
             // holds this exact content offset through the card spring rather
             // than aligning the header to a different place on screen.
-            preserveReasoningExpansionPosition()
+            preserveActivityExpansionPosition()
         }
 
         withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
@@ -240,14 +240,14 @@ struct ReasoningBlockView: View {
     }
 }
 
-private struct ReasoningExpansionPositionActionKey: EnvironmentKey {
+private struct ActivityExpansionPositionActionKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
 
 extension EnvironmentValues {
-    var preserveReasoningExpansionPosition: () -> Void {
-        get { self[ReasoningExpansionPositionActionKey.self] }
-        set { self[ReasoningExpansionPositionActionKey.self] = newValue }
+    var preserveActivityExpansionPosition: () -> Void {
+        get { self[ActivityExpansionPositionActionKey.self] }
+        set { self[ActivityExpansionPositionActionKey.self] = newValue }
     }
 }
 
