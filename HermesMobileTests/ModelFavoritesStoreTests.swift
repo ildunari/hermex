@@ -229,9 +229,13 @@ final class ModelFavoritesStoreTests: XCTestCase {
         )
     }
 
-    func testProviderBrandCatalogUsesFallbackForProvidersWithoutLicensedArtwork() {
-        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-codex"))
-        XCTAssertNil(ProviderBrandCatalog.artwork(for: "openai-api"))
+    func testProviderBrandCatalogMapsOpenAIAndZAIArtwork() {
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-codex")?.assetName, "ProviderOpenAI")
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "openai-api")?.assetName, "ProviderOpenAI")
+        XCTAssertEqual(ProviderBrandCatalog.artwork(for: "zai")?.assetName, "ProviderZAI")
+    }
+
+    func testProviderBrandCatalogUsesFallbackForProvidersWithoutBundledArtwork() {
         XCTAssertNil(ProviderBrandCatalog.artwork(for: "fireworks"))
         XCTAssertNil(ProviderBrandCatalog.artwork(for: "custom-private-provider"))
     }

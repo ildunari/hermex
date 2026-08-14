@@ -1269,6 +1269,9 @@ enum ProviderBrandCatalog {
         "ollama-cloud": .init(assetName: "ProviderOllama", usesOriginalColor: false, paddingRatio: 0.16),
         "opencode-go": .init(assetName: "ProviderOpenCode", usesOriginalColor: false, paddingRatio: 0.17),
         "opencode-zen": .init(assetName: "ProviderOpenCode", usesOriginalColor: false, paddingRatio: 0.17),
+        "openai": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
+        "openai-api": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
+        "openai-codex": .init(assetName: "ProviderOpenAI", usesOriginalColor: false, paddingRatio: 0.18),
         "openrouter": .init(assetName: "ProviderOpenRouter", usesOriginalColor: false, paddingRatio: 0.17),
         "qwen": .init(assetName: "ProviderQwen", usesOriginalColor: false, paddingRatio: 0.17),
         "qwen-oauth": .init(assetName: "ProviderQwen", usesOriginalColor: false, paddingRatio: 0.17),
@@ -1276,7 +1279,8 @@ enum ProviderBrandCatalog {
         "x-ai": .init(assetName: "ProviderXAI", usesOriginalColor: false, paddingRatio: 0.20),
         "xai": .init(assetName: "ProviderXAI", usesOriginalColor: false, paddingRatio: 0.20),
         "xai-oauth": .init(assetName: "ProviderXAI", usesOriginalColor: false, paddingRatio: 0.20),
-        "xiaomi": .init(assetName: "ProviderXiaomi", usesOriginalColor: false, paddingRatio: 0.18)
+        "xiaomi": .init(assetName: "ProviderXiaomi", usesOriginalColor: false, paddingRatio: 0.18),
+        "zai": .init(assetName: "ProviderZAI", usesOriginalColor: false, paddingRatio: 0.18)
     ]
 
     static func displayName(providerID: String, catalogName: String) -> String {
