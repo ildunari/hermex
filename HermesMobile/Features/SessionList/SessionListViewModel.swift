@@ -18,6 +18,15 @@ struct SessionListSection: Identifiable {
     var id: String { kind.rawValue }
 }
 
+/// A display section produced by the sort/group menu. Unlike the legacy
+/// `SessionListSection`, the identifier is a free-form string so project and
+/// profile names can define their own sections.
+struct SessionGroupedSection: Identifiable, Equatable {
+    let id: String
+    let title: String
+    let sessions: [SessionSummary]
+}
+
 struct ScheduledSessionGroups: Equatable {
     let ordinary: [SessionSummary]
     let scheduled: [SessionSummary]
@@ -207,7 +216,11 @@ final class SessionListViewModel {
     }
 
     @discardableResult
-    func load(modelContext: ModelContext? = nil, animation: Animation? = nil) async -> Bool {
+    func load(
+        modelContext: ModelContext? = nil,
+        animation: Animation? = nil,
+        includeArchived: Bool = false
+    ) async -> Bool {
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
@@ -216,15 +229,23 @@ final class SessionListViewModel {
         defer { isLoading = false }
 
         do {
-            let response = try await client.sessions()
-            let visibleSessions = (response.sessions ?? [])
-                .filter { $0.archived != true && $0.shouldAppearInSessionList }
+            let response = try await client.sessions(includeArchived: includeArchived)
+            let visibleSessions = (response.sessions ?? []).filter { session in
+                guard session.shouldAppearInSessionList else { return false }
+                return includeArchived || session.archived != true
+            }
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
 
             if let modelContext {
                 do {
-                    try CacheStore.cacheSessions(visibleSessions, serverURL: server, in: modelContext)
+                    // Offline cache stays the live list so a later default load
+                    // does not resurrect archived rows from a filtered fetch.
+                    try CacheStore.cacheSessions(
+                        visibleSessions.filter { $0.archived != true },
+                        serverURL: server,
+                        in: modelContext
+                    )
                 } catch {
                     cacheErrorMessage = error.localizedDescription
                 }
@@ -969,6 +990,172 @@ final class SessionListViewModel {
 
     private static func timestamp(for session: SessionSummary) -> Double {
         session.lastMessageAt ?? session.updatedAt ?? session.createdAt ?? 0
+    }
+
+    // MARK: - Sort / group / filter (menu C)
+
+    /// Applies the persisted status filters to an already project/search
+    /// filtered list. Status filters are additive: enabling several shows rows
+    /// matching any of them. `unread` has no server field, so it is derived
+    /// from locally tracked last-seen message counts.
+    static func applyStatusFilters(
+        _ sessions: [SessionSummary],
+        preferences: SessionSortPreferences,
+        unreadSessionIDs: Set<String> = []
+    ) -> [SessionSummary] {
+        var rows = sessions
+        if !preferences.includesArchived {
+            rows = rows.filter { $0.archived != true }
+        }
+        guard !preferences.activeFilters.isEmpty else { return rows }
+        return rows.filter { session in
+            preferences.activeFilters.contains { filter in
+                switch filter {
+                case .needsInput:
+                    session.needsAttention || session.hasPendingUserMessage == true
+                case .working:
+                    session.isStreaming == true
+                case .unread:
+                    session.sessionId.map(unreadSessionIDs.contains) ?? false
+                }
+            }
+        }
+    }
+
+    /// Orders rows inside a section. Pinned rows always float to the top so the
+    /// ordering choice never buries a pinned session.
+    static func applyOrdering(
+        _ sessions: [SessionSummary],
+        ordering: SessionOrdering
+    ) -> [SessionSummary] {
+        sessions.sorted { left, right in
+            if (left.pinned == true) != (right.pinned == true) {
+                return left.pinned == true
+            }
+            switch ordering {
+            case .recent:
+                return timestamp(for: left) > timestamp(for: right)
+            case .created:
+                return (left.createdAt ?? 0) > (right.createdAt ?? 0)
+            case .status:
+                let leftRank = statusRank(for: left)
+                let rightRank = statusRank(for: right)
+                if leftRank != rightRank { return leftRank < rightRank }
+                return timestamp(for: left) > timestamp(for: right)
+            case .tokens:
+                let leftTokens = (left.inputTokens ?? 0) + (left.outputTokens ?? 0)
+                let rightTokens = (right.inputTokens ?? 0) + (right.outputTokens ?? 0)
+                if leftTokens != rightTokens { return leftTokens > rightTokens }
+                return timestamp(for: left) > timestamp(for: right)
+            case .cost:
+                let leftCost = left.estimatedCost ?? 0
+                let rightCost = right.estimatedCost ?? 0
+                if leftCost != rightCost { return leftCost > rightCost }
+                return timestamp(for: left) > timestamp(for: right)
+            }
+        }
+    }
+
+    /// Loudest-first status ranking, mirroring the desktop sidebar order:
+    /// needs-input, working, pending, then idle.
+    static func statusRank(for session: SessionSummary) -> Int {
+        if session.needsAttention { return 0 }
+        if session.isStreaming == true { return 1 }
+        if session.hasPendingUserMessage == true { return 2 }
+        return 3
+    }
+
+    /// Buckets rows into display sections according to the chosen grouping and
+    /// orders each bucket. Pinned rows keep their own leading section only for
+    /// date grouping, where the desktop does the same; the other groupings are
+    /// defined by the grouped attribute itself.
+    static func groupedSections(
+        _ sessions: [SessionSummary],
+        preferences: SessionSortPreferences,
+        calendar: Calendar = .current
+    ) -> [SessionGroupedSection] {
+        let ordered = applyOrdering(sessions, ordering: preferences.ordering)
+        switch preferences.grouping {
+        case .date:
+            let pinned = ordered.filter { $0.pinned == true }
+            let rest = ordered.filter { $0.pinned != true }
+            var today: [SessionSummary] = []
+            var yesterday: [SessionSummary] = []
+            var earlier: [SessionSummary] = []
+            for session in rest {
+                let stamp = timestamp(for: session)
+                guard stamp > 0 else {
+                    earlier.append(session)
+                    continue
+                }
+                let date = Date(timeIntervalSince1970: stamp)
+                if calendar.isDateInToday(date) {
+                    today.append(session)
+                } else if calendar.isDateInYesterday(date) {
+                    yesterday.append(session)
+                } else {
+                    earlier.append(session)
+                }
+            }
+            return [
+                SessionGroupedSection(id: "pinned", title: String(localized: "Pinned"), sessions: pinned),
+                SessionGroupedSection(id: "today", title: String(localized: "Today"), sessions: today),
+                SessionGroupedSection(id: "yesterday", title: String(localized: "Yesterday"), sessions: yesterday),
+                SessionGroupedSection(id: "earlier", title: String(localized: "Earlier"), sessions: earlier)
+            ].filter { !$0.sessions.isEmpty }
+
+        case .status:
+            let buckets: [(String, String, (SessionSummary) -> Bool)] = [
+                ("needs-input", String(localized: "Needs input"), { $0.needsAttention || $0.hasPendingUserMessage == true }),
+                ("working", String(localized: "Working"), { $0.isStreaming == true }),
+                ("idle", String(localized: "Idle"), { _ in true })
+            ]
+            var remaining = ordered
+            var sections: [SessionGroupedSection] = []
+            for (id, title, predicate) in buckets {
+                let matched = remaining.filter(predicate)
+                remaining.removeAll { session in matched.contains { $0.id == session.id } }
+                if !matched.isEmpty {
+                    sections.append(SessionGroupedSection(id: id, title: title, sessions: matched))
+                }
+            }
+            return sections
+
+        case .project:
+            return keyedSections(ordered, fallback: String(localized: "No Project")) { $0.projectId }
+
+        case .profile:
+            return keyedSections(ordered, fallback: String(localized: "No Profile")) { $0.profile }
+        }
+    }
+
+    /// Groups by a string attribute, preserving the ordering already applied and
+    /// sorting the sections themselves alphabetically with the fallback last.
+    private static func keyedSections(
+        _ sessions: [SessionSummary],
+        fallback: String,
+        key: (SessionSummary) -> String?
+    ) -> [SessionGroupedSection] {
+        var order: [String] = []
+        var buckets: [String: [SessionSummary]] = [:]
+        for session in sessions {
+            let raw = key(session)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let bucket = (raw?.isEmpty == false) ? raw! : fallback
+            if buckets[bucket] == nil {
+                buckets[bucket] = []
+                order.append(bucket)
+            }
+            buckets[bucket]?.append(session)
+        }
+        return order
+            .sorted { left, right in
+                if (left == fallback) != (right == fallback) { return right == fallback }
+                return left.localizedCaseInsensitiveCompare(right) == .orderedAscending
+            }
+            .compactMap { name in
+                guard let rows = buckets[name], !rows.isEmpty else { return nil }
+                return SessionGroupedSection(id: name, title: name, sessions: rows)
+            }
     }
 
     private static func searchableText(for session: SessionSummary) -> String {

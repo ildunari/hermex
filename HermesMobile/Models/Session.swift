@@ -184,6 +184,10 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
     let readOnly: Bool?
     let isReadOnly: Bool?
     let matchType: String?
+    /// Pending approval/clarify work reported by the sidebar list endpoint.
+    /// Injected server-side after the row allowlist filter, so it is present on
+    /// `/api/sessions` rows but absent from `SessionDetail`.
+    let attention: SessionAttention?
 
     init(
         sessionId: String? = nil,
@@ -217,7 +221,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         relationshipType: String? = nil,
         readOnly: Bool? = nil,
         isReadOnly: Bool? = nil,
-        matchType: String? = nil
+        matchType: String? = nil,
+        attention: SessionAttention? = nil
     ) {
         self.sessionId = sessionId
         self.title = title
@@ -251,6 +256,7 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         self.readOnly = readOnly
         self.isReadOnly = isReadOnly
         self.matchType = matchType
+        self.attention = attention
     }
 
     init(from detail: SessionDetail) {
@@ -290,6 +296,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
         readOnly = detail.readOnly
         isReadOnly = detail.isReadOnly
         matchType = nil
+        // `SessionDetail` has no attention payload; it is a list-endpoint field.
+        attention = nil
     }
 
     /// Mirrors all stored fields so local title patches preserve session-list metadata.
@@ -327,7 +335,8 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             relationshipType: relationshipType,
             readOnly: readOnly,
             isReadOnly: isReadOnly,
-            matchType: matchType
+            matchType: matchType,
+            attention: attention
         )
     }
 }

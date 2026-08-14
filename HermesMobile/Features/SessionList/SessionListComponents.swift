@@ -397,6 +397,15 @@ struct SessionListRowsSection: View {
     let selectedSessionID: String?
     let actions: SessionListRowActions
     var suppressEmptyState = false
+    /// Sort/group/filter state. When `groupedSections` is non-empty the rows are
+    /// rendered per section; otherwise the flat `sessions` list is used so the
+    /// search and project-filtered paths keep their existing behaviour.
+    var preferences: SessionSortPreferences = .default
+    var groupedSections: [SessionGroupedSection] = []
+    var attentionCount: Int = 0
+    var hasBlockingAttention: Bool = false
+    var onTapAttention: () -> Void = {}
+    var onUpdatePreferences: (SessionSortPreferences) -> Void = { _ in }
 
     var body: some View {
         sessionsHeaderRow
@@ -416,6 +425,21 @@ struct SessionListRowsSection: View {
             )
                 .padding(.horizontal, 24)
                 .sessionsScreenListRow()
+        } else if !groupedSections.isEmpty {
+            ForEach(groupedSections) { section in
+                sectionHeader(section.title)
+                    .sessionsScreenListRow()
+                ForEach(section.sessions) { session in
+                    SessionInteractiveRow(
+                        viewModel: viewModel,
+                        session: session,
+                        showsMessageCount: showsMessageCount,
+                        showsWorkspace: showsWorkspace,
+                        selectedSessionID: selectedSessionID,
+                        actions: actions
+                    )
+                }
+            }
         } else {
             ForEach(sessions) { session in
                 SessionInteractiveRow(
@@ -446,10 +470,33 @@ struct SessionListRowsSection: View {
                         .controlSize(.small)
                         .accessibilityLabel("Searching sessions")
                 }
+
+                if !isSearchActive {
+                    SessionListHeaderControls(
+                        attentionCount: attentionCount,
+                        hasBlockingAttention: hasBlockingAttention,
+                        preferences: preferences,
+                        onTapBell: onTapAttention,
+                        onUpdatePreferences: onUpdatePreferences
+                    )
+                }
             }
         }
         .padding(.horizontal, 24)
         .padding(.bottom, 12)
+    }
+
+    /// Group heading used when the sort menu selects a non-default grouping.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.top, 14)
+            .padding(.bottom, 4)
+            .accessibilityAddTraits(.isHeader)
     }
 
     private var sessionLoadingSkeletonRows: some View {

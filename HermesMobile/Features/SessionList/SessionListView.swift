@@ -44,6 +44,12 @@ struct SessionListView: View {
     @AppStorage(SessionSidebarDisclosureSettings.scheduledSessionsAreExpandedKey)
     private var scheduledSessionsAreExpanded = SessionSidebarDisclosureSettings.defaultScheduledSessionsAreExpanded
     @AppStorage(SessionRowDisplaySettings.showMessageCountKey) private var showsSessionMessageCount = true
+    // Sort/group/filter menu state. Stored as primitives so `AppStorage` can
+    // persist them without a transformable value; recombined in `sortPreferences`.
+    @AppStorage(SessionSortPreferences.StorageKey.grouping) private var sessionGroupingRaw = SessionGrouping.date.rawValue
+    @AppStorage(SessionSortPreferences.StorageKey.ordering) private var sessionOrderingRaw = SessionOrdering.recent.rawValue
+    @AppStorage(SessionSortPreferences.StorageKey.filters) private var sessionFiltersRaw = ""
+    @AppStorage(SessionSortPreferences.StorageKey.includesArchived) private var sessionIncludesArchived = false
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
@@ -458,7 +464,9 @@ struct SessionListView: View {
 
             SessionListRowsSection(
                 viewModel: viewModel,
-                sessions: scheduledSessionGroups.ordinary,
+                sessions: isSearchingSessions
+                    ? scheduledSessionGroups.ordinary
+                    : filteredOrdinarySessions,
                 emptyTitle: emptySessionsTitle,
                 emptyDescription: emptySessionsDescription,
                 isSearchActive: isSearchingSessions,
@@ -468,7 +476,23 @@ struct SessionListView: View {
                     ? navigationState.selectedSessionID
                     : nil,
                 actions: sessionRowActions,
-                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty
+                suppressEmptyState: !scheduledSessionGroups.scheduled.isEmpty,
+                preferences: sortPreferences,
+                groupedSections: groupedSessionSections,
+                attentionCount: totalAttentionCount,
+                hasBlockingAttention: hasBlockingAttention,
+                onTapAttention: {
+                    // Tapping the bell focuses the list on what is waiting,
+                    // toggling back off when the filter is already applied.
+                    var updated = sortPreferences
+                    if updated.activeFilters == [.needsInput] {
+                        updated.activeFilters = []
+                    } else {
+                        updated.activeFilters = [.needsInput]
+                    }
+                    updateSortPreferences(updated)
+                },
+                onUpdatePreferences: updateSortPreferences
             )
 
             if showsArchivedEntry {
@@ -694,6 +718,59 @@ struct SessionListView: View {
             selectedProjectID: selectedProjectID,
             automatedVisibility: automatedSessionVisibility
         )
+    }
+
+    /// Persisted sort/group/filter state recombined from its `AppStorage` parts.
+    private var sortPreferences: SessionSortPreferences {
+        SessionSortPreferences(
+            grouping: SessionGrouping(rawValue: sessionGroupingRaw) ?? .date,
+            ordering: SessionOrdering(rawValue: sessionOrderingRaw) ?? .recent,
+            activeFilters: SessionSortPreferences.decodeFilters(sessionFiltersRaw),
+            includesArchived: sessionIncludesArchived
+        )
+    }
+
+    private func updateSortPreferences(_ preferences: SessionSortPreferences) {
+        let archivedChanged = preferences.includesArchived != sessionIncludesArchived
+        sessionGroupingRaw = preferences.grouping.rawValue
+        sessionOrderingRaw = preferences.ordering.rawValue
+        sessionFiltersRaw = SessionSortPreferences.encodeFilters(preferences.activeFilters)
+        sessionIncludesArchived = preferences.includesArchived
+        if archivedChanged {
+            Task { await loadSessions() }
+        }
+    }
+
+    /// Ordinary sessions after the sort menu's status filters. The default
+    /// date/recent view stays a flat list; any other preference shows sections.
+    private var filteredOrdinarySessions: [SessionSummary] {
+        SessionListViewModel.applyStatusFilters(
+            scheduledSessionGroups.ordinary,
+            preferences: sortPreferences
+        )
+    }
+
+    private var groupedSessionSections: [SessionGroupedSection] {
+        guard !isSearchingSessions else { return [] }
+        let shouldShowSectionHeaders = sortPreferences.grouping != .date
+            || sortPreferences.ordering != .recent
+            || !sortPreferences.activeFilters.isEmpty
+            || sortPreferences.includesArchived
+        guard shouldShowSectionHeaders else { return [] }
+        return SessionListViewModel.groupedSections(
+            filteredOrdinarySessions,
+            preferences: sortPreferences
+        )
+    }
+
+    /// Total pending approval/clarify items across every loaded session.
+    private var totalAttentionCount: Int {
+        viewModel.sessions.reduce(0) { $0 + $1.attentionCount }
+    }
+
+    /// True when any pending item is a blocking approval, which drives the pulse.
+    private var hasBlockingAttention: Bool {
+        viewModel.sessions.contains { $0.needsAttention && $0.attention?.isBlocking == true }
     }
 
     private var scheduledSessionGroups: ScheduledSessionGroups {
@@ -1037,7 +1114,10 @@ struct SessionListView: View {
     }
 
     private func loadSessions() async {
-        await viewModel.load(modelContext: modelContext)
+        await viewModel.load(
+            modelContext: modelContext,
+            includeArchived: sessionIncludesArchived
+        )
         guard !Task.isCancelled else { return }
         handleLastError()
 

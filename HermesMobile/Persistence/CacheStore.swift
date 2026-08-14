@@ -325,6 +325,8 @@ private extension SessionSummary {
         readOnly = cachedSession.readOnly
         isReadOnly = cachedSession.isReadOnly
         matchType = nil
+        // Attention is live server state and is not persisted offline.
+        attention = nil
     }
 }
 
