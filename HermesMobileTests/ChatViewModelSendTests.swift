@@ -765,10 +765,10 @@ final class ChatViewModelSendTests: XCTestCase {
                 let attachmentPayloads = try XCTUnwrap(body["attachments"] as? [[String: Any]])
                 let paths = attachmentPayloads.compactMap { $0["path"] as? String }
 
-                XCTAssertEqual(attachmentPayloads.compactMap { $0["name"] as? String }, [
-                    "shared-image.jpg",
-                    "shared-image.jpg"
-                ])
+                XCTAssertEqual(
+                    attachmentPayloads.compactMap { $0["name"] as? String },
+                    uploadedFilenames
+                )
                 XCTAssertEqual(paths.count, 2)
                 XCTAssertEqual(Set(paths).count, 2)
 
@@ -798,7 +798,7 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(uploadedFilenames[1].hasPrefix("shared-image-"))
         XCTAssertTrue(uploadedFilenames[1].hasSuffix(".jpg"))
         XCTAssertNotEqual(uploadedFilenames[0], uploadedFilenames[1])
-        XCTAssertEqual(viewModel.pendingAttachments.map(\.name), ["shared-image.jpg", "shared-image.jpg"])
+        XCTAssertEqual(viewModel.pendingAttachments.map(\.name), uploadedFilenames)
         XCTAssertEqual(Set(viewModel.pendingAttachments.map(\.path)).count, 2)
 
         let didStart = await viewModel.sendMessage("Compare these")

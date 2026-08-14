@@ -68,7 +68,7 @@ extension MessageAttachment {
     /// Stable identity for matching the *same* attachment across two
     /// representations — e.g. an optimistic local bubble against its
     /// server-reloaded copy. Uses the lowercased last path component (basename)
-    /// of the first non-empty `name`/`path`, NOT the raw value: the server
+    /// of the first non-empty `path`/`name`, NOT the raw value: the server
     /// returns an attachment's `path` inconsistently on reload — usually a bare
     /// filename, occasionally the full upload path — so comparing raw values
     /// fails to match an optimistic bubble (full upload path) against its
@@ -78,7 +78,11 @@ extension MessageAttachment {
     /// reliable key. Returns `nil` when the attachment carries no usable
     /// name or path.
     var identityKey: String? {
-        let raw = [name, path]
+        // Prefer the server-authoritative path. Older optimistic attachments
+        // can carry a pre-normalization name (such as .jpg) alongside the
+        // canonical uploaded path (.png); using the name first makes the same
+        // attachment look different after reload.
+        let raw = [path, name]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
         guard let raw else { return nil }

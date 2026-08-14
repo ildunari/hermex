@@ -105,8 +105,19 @@ final class ChatAttachmentCoordinator {
                 return nil
             }
 
+            // The upload endpoint may normalize the file itself (for example,
+            // HEIC photo bytes submitted under a synthetic .jpg name become a
+            // .png). Keep the optimistic attachment aligned with the server's
+            // canonical filename so reload deduplication and later fetches do
+            // not keep referring to the pre-conversion name.
+            let canonicalFilename = Self.uploadedFilename(
+                responseFilename: response.filename,
+                path: path,
+                fallback: displayFilename
+            )
+
             return PendingAttachment(
-                name: displayFilename,
+                name: canonicalFilename,
                 path: path,
                 mime: response.mime ?? "application/octet-stream",
                 size: response.size,
@@ -273,6 +284,24 @@ final class ChatAttachmentCoordinator {
 
     nonisolated private static func filenameKey(_ filename: String) -> String {
         normalizedAttachmentFilename(filename).lowercased()
+    }
+
+    nonisolated private static func uploadedFilename(
+        responseFilename: String?,
+        path: String,
+        fallback: String
+    ) -> String {
+        if let responseFilename,
+           !responseFilename.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return normalizedAttachmentFilename(responseFilename)
+        }
+
+        let pathFilename = URL(fileURLWithPath: path).lastPathComponent
+        if !pathFilename.isEmpty {
+            return normalizedAttachmentFilename(pathFilename)
+        }
+
+        return fallback
     }
 
     nonisolated private static func uniquedAttachmentFilename(_ filename: String) -> String {

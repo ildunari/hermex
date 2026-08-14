@@ -54,6 +54,35 @@ final class ChatAttachmentCoordinatorTests: APIClientTestCase {
         XCTAssertNotNil(coordinator.localAttachmentPreviews["local-message"]?["/tmp/workspace/photo.png"])
     }
 
+    func testUploadUsesServerFilenameWhenImageFormatIsNormalized() async throws {
+        let imageData = try XCTUnwrap(Self.imageData())
+        let client = makeClient { request in
+            XCTAssertEqual(try Self.multipartFilename(from: request), "camera-photo.jpg")
+            return apiTestJSONResponse(
+                """
+                {
+                  "filename": "camera-photo.png",
+                  "path": "/tmp/workspace/camera-photo.png",
+                  "size": \(imageData.count),
+                  "mime": "image/png",
+                  "is_image": true
+                }
+                """,
+                for: request
+            )
+        }
+        let coordinator = makeCoordinator(client: client)
+
+        await coordinator.uploadAttachment(data: imageData, filename: "camera-photo.jpg")
+
+        let attachment = try XCTUnwrap(coordinator.pendingAttachments.first)
+        XCTAssertEqual(attachment.name, "camera-photo.png")
+        XCTAssertEqual(attachment.path, "/tmp/workspace/camera-photo.png")
+
+        let preparation = coordinator.prepareForSend(localMessageID: "normalized-image")
+        XCTAssertEqual(preparation.messageAttachments.first?.identityKey, "camera-photo.png")
+    }
+
     func testUploadFailurePreservesExistingPendingAttachment() async throws {
         var uploadCount = 0
         let client = makeClient { request in

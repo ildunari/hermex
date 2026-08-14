@@ -61,6 +61,31 @@ final class ChatViewModelMergeDedupTests: XCTestCase {
         XCTAssertEqual(merged.filter { $0.role == "user" }.count, 1)
     }
 
+    func testNormalizedImageDedupesWhenOptimisticNameHasOldExtension() {
+        let optimistic = ChatMessage(
+            role: "user", content: "photo", timestamp: 2500, messageId: "local-image",
+            attachments: [
+                MessageAttachment(
+                    name: "camera-photo.jpg",
+                    path: "/tmp/upload/camera-photo.png",
+                    mime: "image/png",
+                    isImage: true
+                )
+            ]
+        )
+        let reloaded = ChatMessage(
+            role: "user", content: "photo", timestamp: 2500, messageId: "server-image",
+            attachments: [MessageAttachment(name: "camera-photo.png", path: "camera-photo.png")]
+        )
+
+        let merged = ChatViewModel.mergingLoadedMessages(
+            [reloaded],
+            withCachedLocalOptimisticMessages: [optimistic]
+        )
+
+        XCTAssertEqual(merged.filter { $0.role == "user" }.count, 1)
+    }
+
     // Guard: genuinely different attachment filenames must NOT be deduped away.
     func testDifferentAttachmentFilenamesAreNotDeduped() {
         let optimistic = ChatMessage(
