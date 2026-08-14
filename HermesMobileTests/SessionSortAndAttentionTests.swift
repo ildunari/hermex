@@ -247,16 +247,55 @@ final class SessionSortAndAttentionTests: XCTestCase {
         XCTAssertEqual(sections[2].sessions.map(\.sessionId), ["idle"])
     }
 
-    func testProjectGroupingSortsNamedBucketsAndPutsMissingLast() {
+    func testProjectGroupingUsesCatalogDisplayNameNotRawId() {
         var prefs = SessionSortPreferences.default
         prefs.grouping = .project
         let rows = [
-            session("zeta", projectId: "zeta"),
-            session("alpha", projectId: "alpha"),
+            session("cell", projectId: "7a6b0ff1f141"),
+            session("cron", projectId: "bf45c9f4c675"),
             session("none")
         ]
+        let catalog = [
+            ProjectSummary(projectId: "7a6b0ff1f141", name: "Cell Work"),
+            ProjectSummary(projectId: "bf45c9f4c675", name: "Cron Jobs")
+        ]
+        let sections = SessionListViewModel.groupedSections(
+            rows,
+            preferences: prefs,
+            projects: catalog
+        )
+        XCTAssertEqual(sections.map(\.id), ["7a6b0ff1f141", "bf45c9f4c675", "No Project"])
+        XCTAssertEqual(sections.map(\.title), ["Cell Work", "Cron Jobs", "No Project"])
+    }
+
+    func testProjectGroupingFallsBackToUntitledWhenCatalogMisses() {
+        var prefs = SessionSortPreferences.default
+        prefs.grouping = .project
+        let rows = [session("orphan", projectId: "deadbeef")]
         let sections = SessionListViewModel.groupedSections(rows, preferences: prefs)
-        XCTAssertEqual(sections.map(\.id), ["alpha", "zeta", "No Project"])
+        XCTAssertEqual(sections.map(\.id), ["deadbeef"])
+        XCTAssertEqual(sections.map(\.title), ["Untitled Project"])
+    }
+
+    func testProjectGroupingSortsByDisplayNameAndPutsMissingLast() {
+        var prefs = SessionSortPreferences.default
+        prefs.grouping = .project
+        let rows = [
+            session("zeta", projectId: "z-id"),
+            session("alpha", projectId: "a-id"),
+            session("none")
+        ]
+        let catalog = [
+            ProjectSummary(projectId: "z-id", name: "Zeta"),
+            ProjectSummary(projectId: "a-id", name: "Alpha")
+        ]
+        let sections = SessionListViewModel.groupedSections(
+            rows,
+            preferences: prefs,
+            projects: catalog
+        )
+        XCTAssertEqual(sections.map(\.id), ["a-id", "z-id", "No Project"])
+        XCTAssertEqual(sections.map(\.title), ["Alpha", "Zeta", "No Project"])
     }
 
     func testProfileGroupingUsesProfileName() {

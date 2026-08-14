@@ -67,6 +67,23 @@ struct ProjectSummary: Decodable, Equatable, Hashable, Identifiable {
     let color: String?
     let createdAt: Double?
 
+    /// Sidebar and section headers share this so a raw hex `projectId` never
+    /// becomes the visible title. Empty or missing names read as untitled.
+    var displayName: String {
+        let trimmed = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let trimmed, !trimmed.isEmpty else {
+            return String(localized: "Untitled Project")
+        }
+        return trimmed
+    }
+
+    init(projectId: String?, name: String?, color: String? = nil, createdAt: Double? = nil) {
+        self.projectId = projectId
+        self.name = name
+        self.color = color
+        self.createdAt = createdAt
+    }
+
     enum CodingKeys: String, CodingKey {
         case projectId
         case name

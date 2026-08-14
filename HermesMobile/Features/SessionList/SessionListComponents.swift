@@ -1396,13 +1396,7 @@ struct ProjectFilterRow: View {
         }
     }
 
-    private var displayName: String {
-        let name = project.name?.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let name, !name.isEmpty else {
-            return String(localized: "Untitled Project")
-        }
-        return name
-    }
+    private var displayName: String { project.displayName }
 
     private var accessibilityValue: String {
         let countTitle = String(localized: "\(count) sessions")

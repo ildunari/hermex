@@ -1072,7 +1072,8 @@ final class SessionListViewModel {
     static func groupedSections(
         _ sessions: [SessionSummary],
         preferences: SessionSortPreferences,
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        projects: [ProjectSummary] = []
     ) -> [SessionGroupedSection] {
         let ordered = applyOrdering(sessions, ordering: preferences.ordering)
         switch preferences.grouping {
@@ -1122,11 +1123,66 @@ final class SessionListViewModel {
             return sections
 
         case .project:
-            return keyedSections(ordered, fallback: String(localized: "No Project")) { $0.projectId }
+            return projectSections(ordered, projects: projects)
 
         case .profile:
             return keyedSections(ordered, fallback: String(localized: "No Profile")) { $0.profile }
         }
+    }
+
+    /// Groups by project, using the catalog's display name as the section
+    /// title. The section `id` stays the raw `projectId` so two projects with
+    /// the same name don't collapse, and so a later rename updates the title
+    /// without remapping rows. Sessions whose project is missing from the
+    /// catalog (deleted, or not yet loaded) fall back to "Untitled Project"
+    /// rather than leaking a hex id into the header.
+    private static func projectSections(
+        _ sessions: [SessionSummary],
+        projects: [ProjectSummary]
+    ) -> [SessionGroupedSection] {
+        let untitled = String(localized: "Untitled Project")
+        let noProject = String(localized: "No Project")
+        let namesByID = Dictionary(
+            projects.compactMap { project -> (String, String)? in
+                guard let id = project.projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+                      !id.isEmpty else { return nil }
+                return (id, project.displayName)
+            },
+            uniquingKeysWith: { first, _ in first }
+        )
+
+        var order: [String] = []
+        var buckets: [String: [SessionSummary]] = [:]
+        var titles: [String: String] = [:]
+        for session in sessions {
+            let raw = session.projectId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key: String
+            let title: String
+            if let raw, !raw.isEmpty {
+                key = raw
+                title = namesByID[raw] ?? untitled
+            } else {
+                key = noProject
+                title = noProject
+            }
+            if buckets[key] == nil {
+                buckets[key] = []
+                order.append(key)
+                titles[key] = title
+            }
+            buckets[key]?.append(session)
+        }
+        return order
+            .sorted { left, right in
+                if (left == noProject) != (right == noProject) { return right == noProject }
+                let leftTitle = titles[left] ?? left
+                let rightTitle = titles[right] ?? right
+                return leftTitle.localizedCaseInsensitiveCompare(rightTitle) == .orderedAscending
+            }
+            .compactMap { key in
+                guard let rows = buckets[key], !rows.isEmpty else { return nil }
+                return SessionGroupedSection(id: key, title: titles[key] ?? key, sessions: rows)
+            }
     }
 
     /// Groups by a string attribute, preserving the ordering already applied and

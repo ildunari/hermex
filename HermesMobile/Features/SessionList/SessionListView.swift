@@ -759,7 +759,8 @@ struct SessionListView: View {
         guard shouldShowSectionHeaders else { return [] }
         return SessionListViewModel.groupedSections(
             filteredOrdinarySessions,
-            preferences: sortPreferences
+            preferences: sortPreferences,
+            projects: viewModel.projects
         )
     }
 

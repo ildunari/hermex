@@ -76,12 +76,21 @@ struct SessionControlsLabView: View {
         ]
     }()
 
+    private static let catalog: [ProjectSummary] = [
+        ProjectSummary(projectId: "hermex", name: "Hermex"),
+        ProjectSummary(projectId: "other", name: "Other")
+    ]
+
     private var filtered: [SessionSummary] {
         SessionListViewModel.applyStatusFilters(Self.fixtures, preferences: preferences)
     }
 
     private var sections: [SessionGroupedSection] {
-        SessionListViewModel.groupedSections(filtered, preferences: preferences)
+        SessionListViewModel.groupedSections(
+            filtered,
+            preferences: preferences,
+            projects: Self.catalog
+        )
     }
 
     private var attentionCount: Int {
