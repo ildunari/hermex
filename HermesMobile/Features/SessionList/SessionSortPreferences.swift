@@ -30,13 +30,15 @@ enum SessionOrdering: String, CaseIterable, Identifiable, Sendable {
 
     var id: String { rawValue }
 
+    /// Phrased as orderings rather than bare nouns so they never collide with
+    /// the `SessionGrouping` titles in the same menu ("Status" appeared twice).
     var title: String {
         switch self {
-        case .recent: String(localized: "Recent")
-        case .created: String(localized: "Created")
-        case .status: String(localized: "Status")
-        case .tokens: String(localized: "Tokens")
-        case .cost: String(localized: "Cost")
+        case .recent: String(localized: "Most recent")
+        case .created: String(localized: "Date created")
+        case .status: String(localized: "Urgency")
+        case .tokens: String(localized: "Most tokens")
+        case .cost: String(localized: "Highest cost")
         }
     }
 }

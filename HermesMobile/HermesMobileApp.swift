@@ -69,6 +69,11 @@ struct HermesMobileApp: App {
                     SurfaceGalleryView()
                 }
                 .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
+            } else if ProcessInfo.processInfo.arguments.contains("--session-controls-lab") {
+                NavigationStack {
+                    SessionControlsLabView()
+                }
+                .preferredColorScheme(AppTheme.storedValue(appThemeRawValue).colorScheme)
             } else if ProcessInfo.processInfo.arguments.contains("--streaming-lab") {
                 NavigationStack {
                     StreamingLabView()

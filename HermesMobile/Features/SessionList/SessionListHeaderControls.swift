@@ -50,6 +50,7 @@ struct SessionListHeaderControls: View {
         .opacity(attentionCount == 0 ? 0.55 : 1)
         .onAppear { isPulsing = shouldPulse }
         .onChange(of: shouldPulse) { _, newValue in isPulsing = newValue }
+        .accessibilityIdentifier("sessionList.attentionBell")
         .accessibilityLabel(bellAccessibilityLabel)
     }
 
@@ -166,6 +167,7 @@ struct SessionListHeaderControls: View {
                 .foregroundStyle(preferences.isModified ? Color.accentColor : Color.primary)
                 .contentShape(Rectangle())
         }
+        .accessibilityIdentifier("sessionList.sortMenu")
         .accessibilityLabel("Sort and filter sessions")
     }
 }

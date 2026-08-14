@@ -96,6 +96,7 @@
 		C03910000000000000000014 /* MessageActionContextTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000014 /* MessageActionContextTests.swift */; };
 		C03910000000000000000015 /* SessionIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000015 /* SessionIdentityTests.swift */; };
 		C03910000000000000000016 /* TranscriptDisplayModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C03900000000000000000016 /* TranscriptDisplayModelTests.swift */; };
+		C09900000000000000000011 /* SessionListControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09900000000000000000012 /* SessionListControlsUITests.swift */; };
 		D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000016 /* ActivityDisclosureUITests.swift */; };
 		D11100000000000000000019 /* ModelPickerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000018 /* ModelPickerUITests.swift */; };
 		C14300000000000000000003 /* StreamingMarkdownSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000004 /* StreamingMarkdownSupportTests.swift */; };
@@ -195,6 +196,7 @@
 		D0P1A000000000000000000B /* ActivityFoldGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */; };
 		D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000010 /* ActivityContainerView.swift */; };
 		D0P1A0000000000000000011 /* TranscriptStressLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000012 /* TranscriptStressLabView.swift */; };
+		C09900000000000000000009 /* SessionControlsLabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09900000000000000000010 /* SessionControlsLabView.swift */; };
 		D0P1A0000000000000000013 /* OrbGalleryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0P1A0000000000000000014 /* OrbGalleryView.swift */; };
 		C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */; };
 		D11100000000000000000003 /* ActivityAccessibilityID.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000004 /* ActivityAccessibilityID.swift */; };
@@ -408,6 +410,7 @@
 		10CA110C0DE000000000C002 /* LocalizationCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalizationCatalogTests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F700000000015 /* HermesMobileTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D11100000000000000000015 /* HermesMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HermesMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C09900000000000000000012 /* SessionListControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListControlsUITests.swift; sourceTree = "<group>"; };
 		D11100000000000000000016 /* ActivityDisclosureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityDisclosureUITests.swift; sourceTree = "<group>"; };
 		D11100000000000000000018 /* ModelPickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerUITests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
@@ -569,6 +572,7 @@
 		D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityFoldGalleryView.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000010 /* ActivityContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityContainerView.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000012 /* TranscriptStressLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptStressLabView.swift; sourceTree = "<group>"; };
+		C09900000000000000000010 /* SessionControlsLabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionControlsLabView.swift; sourceTree = "<group>"; };
 		D0P1A0000000000000000014 /* OrbGalleryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrbGalleryView.swift; sourceTree = "<group>"; };
 		C7CA00000000000000000002 /* TurnActivitySummaryRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TurnActivitySummaryRow.swift; sourceTree = "<group>"; };
 		D11100000000000000000004 /* ActivityAccessibilityID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityAccessibilityID.swift; sourceTree = "<group>"; };
@@ -930,6 +934,7 @@
 			isa = PBXGroup;
 			children = (
 				D11100000000000000000016 /* ActivityDisclosureUITests.swift */,
+				C09900000000000000000012 /* SessionListControlsUITests.swift */,
 				D11100000000000000000018 /* ModelPickerUITests.swift */,
 			);
 			path = HermesMobileUITests;
@@ -1206,6 +1211,7 @@
 				C23400000000000000000004 /* StreamingLabView.swift */,
 				C7B100000000000000000002 /* SurfaceGalleryView.swift */,
 				D0P1A0000000000000000014 /* OrbGalleryView.swift */,
+				C09900000000000000000010 /* SessionControlsLabView.swift */,
 				D0P1A0000000000000000012 /* TranscriptStressLabView.swift */,
 				D0P1A000000000000000000C /* ActivityFoldGalleryView.swift */,
 				D0P1A0000000000000000008 /* PlanTimelineGalleryView.swift */,
@@ -1674,6 +1680,7 @@
 				D0P1A000000000000000000F /* ActivityContainerView.swift in Sources */,
 				D0P1A0000000000000000011 /* TranscriptStressLabView.swift in Sources */,
 				D0P1A0000000000000000013 /* OrbGalleryView.swift in Sources */,
+				C09900000000000000000009 /* SessionControlsLabView.swift in Sources */,
 				C7CA00000000000000000001 /* TurnActivitySummaryRow.swift in Sources */,
 				D11100000000000000000003 /* ActivityAccessibilityID.swift in Sources */,
 				C7C900000000000000000001 /* TurnActivityFoldView.swift in Sources */,
@@ -1869,6 +1876,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */,
+				C09900000000000000000011 /* SessionListControlsUITests.swift in Sources */,
 				D11100000000000000000019 /* ModelPickerUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
