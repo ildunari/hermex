@@ -28,6 +28,16 @@ struct SurfaceGalleryView: View {
             ActivityFoldGalleryView(page: 21)
         } else if page == 22 {
             ActivityFoldGalleryView(page: 22)
+        } else if page == 23 {
+            PlanTimelineGalleryView(page: 23)
+        } else if page == 24 {
+            ThinkingMarkdownGalleryView(isStreaming: false)
+        } else if page == 25 {
+            ThinkingMarkdownGalleryView(isStreaming: true)
+        } else if page == 26 {
+            LiveThinkingRevealProbeView()
+        } else if page == 27 {
+            PlanDismissalChatFixture()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -539,5 +549,148 @@ struct SurfaceGalleryView: View {
     )
 
     private static let markerText = "[Context compaction] Earlier transcript context remains available through the session summary."
+}
+
+/// Field-reproduction fixture for provider reasoning that arrives as a ledger
+/// of standalone bold status lines followed by prose. Page 24 deliberately
+/// uses the real `ReasoningBlockView`, so before/after screenshots exercise the
+/// production markdown path rather than a design mock.
+private struct ThinkingMarkdownGalleryView: View {
+    let isStreaming: Bool
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(isStreaming ? "THINKING MARKDOWN · LIVE" : "THINKING MARKDOWN · COMPLETED")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+
+                    ReasoningBlockView(
+                        text: Self.providerReasoning,
+                        isStreaming: isStreaming,
+                        completedDuration: isStreaming ? nil : 18.4,
+                        startsExpandedOverride: true
+                    )
+                }
+                .padding(16)
+            }
+            .environment(\.activityDisclosureViewportHeight, viewport.size.height)
+        }
+    }
+
+    private static let providerReasoning = """
+    **Refining arm and delt exercise selection**
+    **Adjusting Push and Pull workout structure**
+    **Planning exercise rotation across passes**
+
+    I’ve confirmed the source already has the right skeleton: each original week contains an A strength lineage and a B pump lineage. The key is to rehome most direct arm work instead of stacking two huge arm days on top; otherwise the apparent specialization becomes mostly junk volume and weakens the following pull/push sessions.
+
+    **Recommending 8-day rolling workout split**
+    **Defining strength and hypertrophy session roles**
+    **Planning flexible rest days in workout sequence**
+
+    **Adjusting workout sequencing and fatigue management**
+    **Evaluating 12-day training cycle feasibility**
+    **Planning 4-week mesocycle rotations**
+
+    The next pass checks the plan against recovery constraints rather than only
+    counting sets. Shoulder flexion, elbow extension, and upper-back fatigue
+    overlap across several sessions, so each movement needs a clear purpose and
+    a predictable place in the rotation.
+
+    **Checking recovery between pressing sessions**
+    **Balancing direct and indirect arm volume**
+    **Preserving progression across the full cycle**
+
+    This makes the sequence easier to run in real life: demanding work stays
+    early, optional isolation work stays removable, and rest days can slide by
+    one day without breaking the intended order.
+
+    **Reviewing exercise substitutions**
+    **Confirming fatigue-aware progression rules**
+    **Preparing the final recommendation**
+
+    The final recommendation will keep the original training goals intact while
+    reducing redundant volume and explaining exactly when to add load, repeat a
+    session, or take an extra recovery day.
+    """
+}
+
+/// Reproduces the live transcript's bottom-follow pressure while exercising an
+/// explicit Thought-header tap. The position preserver must win for the short
+/// disclosure transaction so the header remains planted and the preview grows
+/// down toward the following response instead of pushing the transcript up.
+private struct LiveThinkingRevealProbeView: View {
+    @State private var disclosurePositionPreserver = ChatScrollPositionPreserver()
+
+    var body: some View {
+        GeometryReader { viewport in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Color.clear
+                        .frame(height: 560)
+                        .accessibilityHidden(true)
+
+                    Text("LIVE THINKING · EXPANSION DIRECTION")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+
+                    ReasoningBlockView(
+                        text: Self.longReasoning,
+                        isStreaming: true,
+                        preservesViewportOnExpand: true,
+                        startsExpandedOverride: false
+                    )
+
+                    Text("Following transcript content")
+                        .font(.body)
+                        .accessibilityIdentifier("gallery.thinking-following-content")
+                }
+                .padding(16)
+                .background {
+                    ChatScrollPositionPreserverView(controller: disclosurePositionPreserver)
+                }
+            }
+            .defaultScrollAnchor(.bottom, for: .initialOffset)
+            .defaultScrollAnchor(.bottom, for: .sizeChanges)
+            .environment(\.activityDisclosureViewportHeight, viewport.size.height)
+            .environment(\.preserveActivityExpansionPosition) {
+                disclosurePositionPreserver.preserveCurrentVerticalOffset(for: 1.25)
+            }
+        }
+    }
+
+    private static let longReasoning = Array(
+        repeating: "Reasoning continues with enough detail to exceed the compact inline preview.",
+        count: 24
+    ).joined(separator: "\n\n")
+}
+
+/// Uses the production `ChatView` gesture stack so XCUITest can verify that a
+/// tap on the actual conversation canvas dismisses a pinned expanded plan.
+private struct PlanDismissalChatFixture: View {
+    private let state = TodoState(todos: [
+        TodoItem(rawID: "1", content: "Inspect all branches for missing intended changes", status: .completed),
+        TodoItem(rawID: "2", content: "Port the compact plan-card interaction without replaying obsolete history", status: .inProgress),
+        TodoItem(rawID: "3", content: "Run simulator and adversarial verification before release", status: .pending),
+        TodoItem(rawID: "4", content: "Push the personal fork master checkpoint", status: .pending),
+        TodoItem(rawID: "5", content: "Upload Craft-Hermex to internal TestFlight", status: .pending),
+        TodoItem(rawID: "6", content: "Preserve branches that still back open upstream pull requests", status: .pending)
+    ])
+
+    var body: some View {
+        ChatView(
+            session: SessionSummary(
+                sessionId: "plan-dismissal-fixture",
+                title: "Plan dismissal fixture",
+                messageCount: 0
+            ),
+            server: URL(string: "http://127.0.0.1:9")!,
+            onAPIError: { _ in },
+            loadsInitialMessages: false,
+            initialPlanStateForTesting: state
+        )
+    }
 }
 #endif

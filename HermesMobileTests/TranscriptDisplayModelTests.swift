@@ -316,6 +316,58 @@ final class ChatTranscriptDisplaySettingsTests: XCTestCase {
         XCTAssertFalse(ChatTranscriptDisplaySettings.isCardExpanded(userToggled: false, startsExpanded: true))
     }
 
+    func testReasoningBodyWindowHugsShortContentAndCapsLongContent() {
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 240,
+                availableHeight: 800,
+                reservedHeight: 56
+            ),
+            240
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 800,
+                reservedHeight: 56
+            ),
+            264
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 800,
+                reservedHeight: 56 + ReasoningBodyWindow.readerActionReservedHeight
+            ),
+            228,
+            "Overflowing previews must reserve room for the dedicated reader action."
+        )
+    }
+
+    func testReasoningBodyWindowFallbackAndTinyViewportStayBounded() {
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 0,
+                reservedHeight: 56
+            ),
+            184
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(
+                measuredContentHeight: 1_200,
+                availableHeight: 80,
+                reservedHeight: 56
+            ),
+            24,
+            "A tiny viewport may prioritize the minimum readable preview, but must remain viewport-bounded."
+        )
+        XCTAssertEqual(
+            ReasoningBodyWindow.height(measuredContentHeight: 0, availableHeight: 800),
+            0
+        )
+    }
+
     /// The capped tool list must always get a bounded window: a `ScrollView`
     /// given no height takes everything offered, which is exactly the 68-row
     /// overflow this cap exists to prevent.

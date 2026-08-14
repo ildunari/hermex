@@ -10,9 +10,10 @@ struct ReasoningBlockView: View {
     /// When embedded in a merged activity card the parent owns the container,
     /// so the block must not draw its own.
     var drawsOwnChrome: Bool = true
-    /// Historical transcript rows opt in so a tall Thought grows below the
-    /// exact viewport position where its header was tapped. Live reasoning
-    /// leaves this false because follow-bottom owns its viewport.
+    /// Transcript call sites opt in so an explicit user expansion grows below
+    /// the exact viewport position where its header was tapped. This also
+    /// temporarily overrides live follow-bottom; otherwise a large size change
+    /// pins the card's bottom and makes the disclosure appear to open upward.
     var preservesViewportOnExpand: Bool = false
     /// Default expansion when the reader has not toggled this block.
     ///
@@ -28,11 +29,14 @@ struct ReasoningBlockView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.activityDisclosureViewportHeight) private var availableViewportHeight
     @Environment(\.preserveActivityExpansionPosition) private var preserveActivityExpansionPosition
     @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
+    @State private var isFullReaderPresented = false
+    @State private var measuredHeaderHeight: CGFloat = 0
     /// The body's intrinsic height is measured while the section is collapsed.
     /// Historical sections exist only while their outer Activity disclosure is
     /// open, so this does not keep every transcript renderer alive.
@@ -57,6 +61,36 @@ struct ReasoningBlockView: View {
     /// wait for a real size instead of animating through transient geometry.
     private var presentsExpandedBody: Bool {
         isExpanded && measuredBodyHeight > 0
+    }
+
+    private var inlineChromeReservedHeight: CGFloat {
+        measuredHeaderHeight
+            + 8
+            + ActivityBlockChrome.topPadding
+            + ActivityBlockChrome.bottomPadding
+    }
+
+    /// Apple advises against nesting same-axis scroll views. The expanded card
+    /// therefore shows a non-scrolling preview; overflow moves to a dedicated
+    /// reader instead of competing with the transcript for vertical drags.
+    private var bodyOverflowsInlinePreview: Bool {
+        measuredBodyHeight > ReasoningBodyWindow.height(
+            measuredContentHeight: measuredBodyHeight,
+            availableHeight: availableViewportHeight,
+            reservedHeight: inlineChromeReservedHeight
+        ) + 0.5
+    }
+
+    /// Short Thoughts retain their exact natural height. Long Thoughts reserve
+    /// space for the explicit reader action while keeping the entire expanded
+    /// card subordinate to the surrounding conversation.
+    private var presentedBodyHeight: CGFloat {
+        ReasoningBodyWindow.height(
+            measuredContentHeight: measuredBodyHeight,
+            availableHeight: availableViewportHeight,
+            reservedHeight: inlineChromeReservedHeight
+                + (bodyOverflowsInlinePreview ? ReasoningBodyWindow.readerActionReservedHeight : 0)
+        )
     }
 
     /// Settled thoughts pre-mount while their outer Activity disclosure is
@@ -94,6 +128,18 @@ struct ReasoningBlockView: View {
                     chrome: presentsExpandedBody ? .none : .pill
                 )
                 .accessibilityHint(presentsExpandedBody ? "Double tap to collapse details." : "Double tap to expand details.")
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear.preference(
+                            key: ReasoningHeaderHeightKey.self,
+                            value: proxy.size.height
+                        )
+                    }
+                }
+                .onPreferenceChange(ReasoningHeaderHeightKey.self) { height in
+                    guard height > 0 else { return }
+                    measuredHeaderHeight = height
+                }
 
                 if keepsBodyMounted {
                     reasoningBody(content: presentedText)
@@ -118,6 +164,15 @@ struct ReasoningBlockView: View {
             // obvious once markdown made the body taller and multi-block.
             .clipShape(ActivityBlockChrome.shape())
             .frame(maxWidth: .infinity, alignment: .leading)
+            .sheet(isPresented: $isFullReaderPresented) {
+                ReasoningReaderView(
+                    title: completedLabelText,
+                    content: presentedText,
+                    isStreaming: isStreaming
+                )
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -128,20 +183,47 @@ struct ReasoningBlockView: View {
     /// out body to zero, so the tools sibling sees one monotonic height spring
     /// instead of the renderer's mount and measurement phases.
     private func reasoningBody(content: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                .fill(palette.tableRule)
-                .frame(width: 2)
+        VStack(alignment: .leading, spacing: bodyOverflowsInlinePreview ? 8 : 0) {
+            ScrollView(.vertical) {
+                reasoningContent(content: content)
+                    // Measure the full content inside the disabled scroll
+                    // container before its viewport is clamped. Keeping this
+                    // container mounted preserves the stable disclosure
+                    // geometry while allowing transcript drags to pass through.
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: ReasoningBodyHeightKey.self,
+                                value: proxy.size.height
+                            )
+                        }
+                    }
+            }
+            .frame(height: presentsExpandedBody ? presentedBodyHeight : 0, alignment: .top)
+            // Preserve the useful live/settled preview anchors without making
+            // this a second interactive vertical scrolling region.
+            .defaultScrollAnchor(isStreaming ? .bottom : .top, for: .initialOffset)
+            .defaultScrollAnchor(isStreaming ? .bottom : .top, for: .sizeChanges)
+            .scrollDisabled(true)
+            .scrollIndicators(.hidden)
+            .contentShape(Rectangle())
+            // The header must not be the only escape hatch from a tall Thought.
+            .onTapGesture(perform: collapseExpandedBody)
+            .accessibilityElement(children: .contain)
 
-            MarkdownRenderer(
-                content: content,
-                isStreaming: isStreaming,
-                typographyRole: .reasoning
-            )
-            .fixedSize(horizontal: false, vertical: true)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if bodyOverflowsInlinePreview, presentsExpandedBody {
+                Button {
+                    isFullReaderPresented = true
+                } label: {
+                    Label("Read full thought", systemImage: "arrow.up.left.and.arrow.down.right")
+                        .font(.caption.weight(.semibold))
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .transition(.opacity)
+            }
         }
-        .padding(.leading, 4)
         .opacity(presentsExpandedBody ? 1 : 0)
         // Scope the delayed content curve to pixels only. Width-compensation
         // below must inherit `cardExpand` with the outer block padding so the
@@ -162,20 +244,27 @@ struct ReasoningBlockView: View {
             .horizontal,
             presentsExpandedBody ? 0 : ActivityBlockChrome.horizontalPadding
         )
-        // Measure before the outer frame clamps the body to zero.
-        .background {
-            GeometryReader { proxy in
-                Color.clear.preference(
-                    key: ReasoningBodyHeightKey.self,
-                    value: proxy.size.height
-                )
-            }
-        }
-        .frame(height: presentsExpandedBody ? measuredBodyHeight : 0, alignment: .top)
         .clipped()
-        .accessibilityElement(children: .contain)
+        .allowsHitTesting(presentsExpandedBody)
         .accessibilityHidden(!presentsExpandedBody)
         .onPreferenceChange(ReasoningBodyHeightKey.self, perform: updateMeasuredBodyHeight)
+    }
+
+    private func reasoningContent(content: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            RoundedRectangle(cornerRadius: 1, style: .continuous)
+                .fill(palette.tableRule)
+                .frame(width: 2)
+
+            MarkdownRenderer(
+                content: content,
+                isStreaming: isStreaming,
+                typographyRole: .reasoning
+            )
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.leading, 4)
     }
 
     private func updateMeasuredBodyHeight(_ height: CGFloat) {
@@ -210,6 +299,13 @@ struct ReasoningBlockView: View {
         }
     }
 
+    private func collapseExpandedBody() {
+        guard isExpanded else { return }
+        withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            userToggledExpansion = false
+        }
+    }
+
     private var completedLabelText: String {
         guard let completedDuration else {
             return String(localized: "Thought")
@@ -241,10 +337,95 @@ private struct ActivityExpansionPositionActionKey: EnvironmentKey {
     static let defaultValue: () -> Void = {}
 }
 
+private struct ActivityDisclosureViewportHeightKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 0
+}
+
 extension EnvironmentValues {
+    var activityDisclosureViewportHeight: CGFloat {
+        get { self[ActivityDisclosureViewportHeightKey.self] }
+        set { self[ActivityDisclosureViewportHeightKey.self] = newValue }
+    }
+
     var preserveActivityExpansionPosition: () -> Void {
         get { self[ActivityExpansionPositionActionKey.self] }
         set { self[ActivityExpansionPositionActionKey.self] = newValue }
+    }
+}
+
+/// Pure height policy for a Thinking body's non-scrolling inline preview.
+///
+/// Production supplies the transcript viewport through the environment. The
+/// fallback keeps previews and isolated debug galleries bounded before they
+/// have a host viewport. Header/chrome and the overflow action are reserved
+/// before calculating the body's ceiling, so Dynamic Type cannot push the
+/// whole card beyond its intended share of the conversation.
+enum ReasoningBodyWindow {
+    static let maximumContainerFraction: CGFloat = 0.4
+    static let fallbackAvailableHeight: CGFloat = 600
+    static let minimumReadableBodyHeight: CGFloat = 96
+    static let readerActionReservedHeight: CGFloat = 36
+
+    static func height(
+        measuredContentHeight: CGFloat,
+        availableHeight: CGFloat,
+        reservedHeight: CGFloat = 0
+    ) -> CGFloat {
+        guard measuredContentHeight > 0 else { return 0 }
+        let available = availableHeight > 0 ? availableHeight : fallbackAvailableHeight
+        let reserved = min(max(0, reservedHeight), available)
+        let availableBodySpace = max(0, available - reserved)
+        let fractionBodySpace = max(
+            0,
+            available * maximumContainerFraction - reserved
+        )
+        let minimumReadable = min(minimumReadableBodyHeight, availableBodySpace)
+        let ceiling = max(minimumReadable, fractionBodySpace)
+        return min(measuredContentHeight, ceiling)
+    }
+}
+
+/// A focused reading surface for long reasoning. It owns the only interactive
+/// vertical scroll view, so gestures are never ambiguous with the transcript.
+private struct ReasoningReaderView: View {
+    let title: String
+    let content: String
+    let isStreaming: Bool
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView(.vertical) {
+                MarkdownRenderer(
+                    content: content,
+                    isStreaming: isStreaming,
+                    typographyRole: .reasoning
+                )
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 16)
+            }
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") {
+                        dismiss()
+                    }
+                }
+            }
+            .appSurfaceBackground(.canvas)
+        }
+    }
+}
+
+private struct ReasoningHeaderHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }
 

@@ -274,6 +274,10 @@ struct ChatView: View {
     @AppStorage(ChatTranscriptDisplaySettings.rtlChatLayoutEnabledKey) private var rtlChatLayoutEnabled = ChatTranscriptDisplaySettings.rtlChatLayoutDefaultEnabled
     @AppStorage(SectionVisibilitySettings.chatFilesKey) private var showsFilesButton = true
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
+    // Palette preferences read reactively so navigation chrome repaints as soon
+    // as the palette changes, rather than on the next incidental rebuild.
+    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     let session: SessionSummary
     let server: URL
@@ -314,6 +318,10 @@ struct ChatView: View {
     @State private var gitToastState = GitActionToastState()
     @State private var gitAlert: GitChatAlert?
     @State private var composerHeight: CGFloat = 52
+    /// Vertical space from the window top to the bottom of the composer dock.
+    /// The plan uses this instead of the physical screen height so its cap also
+    /// remains correct with the keyboard raised and in Split View.
+    @State private var dockAvailableHeight: CGFloat = 844
     @State private var composerIsFocused = false
     @State private var didCompleteInitialAppearance = false
     @State private var isInitialComposerFocusContentReady = false
@@ -332,7 +340,8 @@ struct ChatView: View {
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
-        autoStartsVoiceInput: Bool = false
+        autoStartsVoiceInput: Bool = false,
+        initialPlanStateForTesting: TodoState? = nil
     ) {
         self.session = session
         self.server = server
@@ -341,13 +350,18 @@ struct ChatView: View {
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
         _initialAttachments = State(initialValue: initialAttachments)
-        _viewModel = State(initialValue: ChatViewModel(
+        let initialViewModel = ChatViewModel(
             session: session,
             server: server,
             showsLiveActivityResponseExcerpts: UserDefaults.standard.bool(
                 forKey: AgentRunLiveActivityPrivacy.showsResponseExcerptsKey
             )
-        ))
+        )
+        if let initialPlanStateForTesting {
+            initialViewModel.streamCoordinatorApplyTodoState(initialPlanStateForTesting)
+            initialViewModel.isPlanExpanded = true
+        }
+        _viewModel = State(initialValue: initialViewModel)
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -584,7 +598,11 @@ struct ChatView: View {
         // surface reads as one continuous material instead of warm content
         // framed by cool system chrome.
         .toolbarBackground(
-            ChatPalette.appChrome(colorScheme: colorScheme).chatBackground,
+            ChatPalette.appChrome(
+                colorScheme: colorScheme,
+                backgroundRawValue: chromeBackgroundRawValue,
+                temperatureRawValue: chromeTemperatureRawValue
+            ).chatBackground,
             for: .navigationBar
         )
         .accessibilityIdentifier("chat-detail:\(viewModel.displayTitle)")
@@ -1125,6 +1143,20 @@ struct ChatView: View {
                 )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .preference(
+                        key: ChatDockHeightKey.self,
+                        value: proxy.frame(in: .global).maxY
+                    )
+            }
+        }
+        .environment(\.planDockHeight, dockAvailableHeight)
+        .onPreferenceChange(ChatDockHeightKey.self) { maxY in
+            guard maxY > 0 else { return }
+            dockAvailableHeight = maxY
+        }
     }
 
     private func collapseExpandedPlan() {
@@ -2472,5 +2504,13 @@ private extension SlashCommandExecutionResult {
         case .sendAsMessage, .unsupported, .needsSubArg:
             false
         }
+    }
+}
+
+private struct ChatDockHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

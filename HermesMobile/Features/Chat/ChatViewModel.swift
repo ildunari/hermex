@@ -337,6 +337,7 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingStreamingScrollTriggerTask: Task<Void, Never>?
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
+    @ObservationIgnored private var pendingReasoningStartsNewSegment = false
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
@@ -900,6 +901,7 @@ final class ChatViewModel {
         cancelPendingStreamingContentFlush()
         pendingAssistantTokenChunks = []
         pendingReasoningChunks = []
+        pendingReasoningStartsNewSegment = false
         // Chunks are deduplicated at append time, so the replay matched-prefix
         // counters can reference unflushed content; dropping the buffers makes them
         // stale. Reset only the counters — the replay connection may still be live
@@ -920,6 +922,18 @@ final class ChatViewModel {
         }
 
         if didMutate {
+            scheduleStreamingScrollTrigger()
+        }
+    }
+
+    /// Commits reasoning at a tool boundary without bypassing the assistant
+    /// word-reveal cadence. A pending assistant backlog keeps its scheduled
+    /// drain task; reasoning-only buffers can cancel the now-redundant tick.
+    private func flushReasoningAtToolBoundary() {
+        if pendingAssistantTokenChunks.isEmpty {
+            cancelPendingStreamingContentFlush()
+        }
+        if flushReasoningChunks() {
             scheduleStreamingScrollTrigger()
         }
     }
@@ -4065,7 +4079,7 @@ final class ChatViewModel {
 
     private func handleBtwStreamEvent(_ event: SSEEvent) {
         switch event {
-        case .token(let text):
+        case .token(let text, _):
             activeBtwAnswer += text
             updateActiveBtwMessage(isLoading: true)
         case .interimAssistant(let payload):
@@ -4190,6 +4204,15 @@ final class ChatViewModel {
         }
         if reasoningAnchorMessageID == nil {
             reasoningAnchorMessageID = messageID
+        }
+
+        // Phase-aware runtimes can stream commentary directly into Thought and
+        // still emit the completed interim boundary for persistence. In that
+        // case `alreadyStreamed` means the trailing Thought text is the same
+        // segment, not a second narration block.
+        if payload.alreadyStreamed == true,
+           liveReasoningText.hasSuffix(text) {
+            return false
         }
 
         let textToAppend = deduplicatedReplayText(
@@ -4388,7 +4411,7 @@ final class ChatViewModel {
     }
 
     @discardableResult
-    private func appendReasoning(_ text: String) -> Bool {
+    private func appendReasoning(_ text: String, startsNewSegment: Bool) -> Bool {
         guard !text.isEmpty else { return false }
 
         // Same append-time dedup contract as appendAssistantToken: return true iff
@@ -4402,6 +4425,10 @@ final class ChatViewModel {
         )
         guard !remainder.isEmpty else { return false }
 
+        if startsNewSegment,
+           !effectiveContent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            pendingReasoningStartsNewSegment = true
+        }
         pendingReasoningChunks.append(remainder)
         scheduleStreamingContentFlush()
         return true
@@ -4420,7 +4447,12 @@ final class ChatViewModel {
             reasoningAnchorMessageID = messageID
         }
 
-        liveReasoningText += appendedText
+        let separator = pendingReasoningStartsNewSegment
+            && !liveReasoningText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "\n\n"
+            : ""
+        pendingReasoningStartsNewSegment = false
+        liveReasoningText += separator + appendedText
         return true
     }
 
@@ -5308,10 +5340,24 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     }
 
     @discardableResult
-    func streamCoordinatorAppendToken(_ text: String) -> Bool {
-        // Final answer prose is streaming — the reasoning/tool steps are over.
-        closeReasoningStintIfNeeded()
-        turnPhase = .respondingText
+    func streamCoordinatorAppendToken(_ text: String, phase: AssistantStreamPhase) -> Bool {
+        switch phase {
+        case .finalAnswer:
+            // Only an explicit semantic final-answer marker may fold live
+            // activity. The bridge otherwise guarantees prose, not whether
+            // that prose precedes a later tool call.
+            closeReasoningStintIfNeeded()
+            turnPhase = .respondingText
+        case .commentary:
+            // Commentary is semantically activity, so never stage it in the
+            // answer bubble while waiting for a retrospective interim event.
+            return streamCoordinatorAppendReasoning(text)
+        case .provisional:
+            // Keep the current reasoning/tool phase while generic providers
+            // stream prose whose role is not known until a later interim or
+            // completion boundary. The prose itself still renders immediately.
+            break
+        }
         return appendAssistantToken(text)
     }
 
@@ -5333,8 +5379,9 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
         // duplicates: during reconnect catch-up the phase races through the
         // journal and lands on the live frontier's step, which is the correct
         // capsule state for an open turn.
+        let startsNewSegment = turnPhase != .reasoning
         turnPhase = .reasoning
-        let didAppendNewContent = appendReasoning(text)
+        let didAppendNewContent = appendReasoning(text, startsNewSegment: startsNewSegment)
         // Bump only when the delta contributed genuinely new content: replayed
         // duplicates (reconnect journal catch-up) return false above, so the
         // micro-liveness signal stays paused through replay and resumes at the
@@ -5350,6 +5397,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorAppendToolCall(_ payload: ToolStreamEvent) -> Bool {
+        // A tool event is a semantic boundary, and may arrive before the
+        // coalesced reasoning tick has painted its pending tail. Commit that
+        // tail now so reasoning that resumes after the tool can begin a new
+        // Markdown block instead of joining the previous sentence.
+        flushReasoningAtToolBoundary()
         closeReasoningStintIfNeeded()
         turnPhase = .toolCalling
         let didAppendNewContent = appendToolCall(payload)
@@ -5361,6 +5413,10 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     @discardableResult
     func streamCoordinatorCompleteToolCall(_ payload: ToolStreamEvent) -> Bool {
+        // Recovery can deliver a completion without its matching start. It is
+        // still a semantic boundary, so commit any reasoning tail before the
+        // completion is synthesized as a standalone tool run.
+        flushReasoningAtToolBoundary()
         // Stay in `.toolCalling`: completion of one tool doesn't mean the tool
         // step ended — sibling tools may still run, and the model's next
         // reasoning/text event is what semantically moves the turn on.

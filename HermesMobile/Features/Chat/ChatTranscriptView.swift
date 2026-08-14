@@ -153,6 +153,7 @@ struct ChatTranscriptView: View {
                                 for: reduceMotion ? 0.35 : 1.25
                             )
                         }
+                        .environment(\.activityDisclosureViewportHeight, viewport.size.height)
                     }
                     .defaultScrollAnchor(
                         ChatScrollPolicy.initialTranscriptAnchor,
@@ -410,9 +411,9 @@ struct ChatTranscriptView: View {
         }
     }
 
-    /// Live thinking + tool blocks, folding into one summary row when the
-    /// answer starts streaming. See `TurnActivityFoldView` for why the fold is
-    /// keyed on the first answer token rather than on turn end.
+    /// Live thinking + tool blocks, folding into one summary row when a
+    /// semantic final-answer token arrives. Legacy unphased streams stay open
+    /// until completion rather than guessing that progress prose is final.
     ///
     /// **Deliberately not wrapped in `ActivityContainerView`.** The unified
     /// container is an end-of-turn presentation: it exists to make a settled
@@ -437,7 +438,8 @@ struct ChatTranscriptView: View {
                         ReasoningBlockView(
                             text: liveReasoningText,
                             isStreaming: isReasoningActive,
-                            completedDuration: lastReasoningDuration
+                            completedDuration: lastReasoningDuration,
+                            preservesViewportOnExpand: true
                         )
                     }
 
@@ -526,7 +528,10 @@ struct ChatTranscriptView: View {
     private func reasoningBlocks(anchorMessageID: String?) -> some View {
         if showsThinkingAndToolCards {
             ForEach(reasoningGroups.filter { $0.anchorMessageID == anchorMessageID }) { group in
-                ReasoningBlockView(text: group.text)
+                ReasoningBlockView(
+                    text: group.text,
+                    preservesViewportOnExpand: true
+                )
             }
         }
     }
@@ -742,7 +747,7 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 ReasoningBlockView(
                     text: group.text,
                     drawsOwnChrome: !isHistorical,
-                    preservesViewportOnExpand: isHistorical
+                    preservesViewportOnExpand: true
                 )
             }
         }
@@ -755,7 +760,8 @@ private struct ChatTranscriptMessageBlock: View, Equatable {
                 text: liveReasoningText,
                 isStreaming: isReasoningActive,
                 completedDuration: lastReasoningDuration,
-                drawsOwnChrome: !isHistorical
+                drawsOwnChrome: !isHistorical,
+                preservesViewportOnExpand: true
             )
         }
     }

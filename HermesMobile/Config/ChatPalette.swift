@@ -263,11 +263,18 @@ struct ChatPalette {
             inlineCodeText = (isWarm ? Self.color("#F6F1E7") : textPrimary).opacity(0.92)
             quoteWash = Color.white.opacity(0.04)
         } else {
-            chatBackground = Self.color(isWarm ? "#FAF9F7" : "#FFFFFF")
-            surface = Self.color(isWarm ? "#F1EFEA" : "#F2F2F7")
-            surfaceInset = Self.color(isWarm ? "#E9E6E0" : "#E5E5EA")
-            codeSlab = Self.color(isWarm ? "#F4F2ED" : "#F2F2F7")
-            userBubble = Self.color(isWarm ? "#EDEAE4" : "#E9E9EE")
+            // Light-mode warm ramp is tuned to stay perceptible on-device.
+            // The previous canvas (#FAF9F7) sat ~2% off pure white, which is
+            // below the swing True Tone/Night Shift apply to the display, so
+            // the warm preference read as plain white under most lighting.
+            // These values keep the same relative step spacing (canvas is
+            // still the lightest token, then surface/codeSlab, then bubble,
+            // then inset) while carrying a stronger ivory bias.
+            chatBackground = Self.color(isWarm ? "#F7F4EE" : "#FFFFFF")
+            surface = Self.color(isWarm ? "#EFEBE2" : "#F2F2F7")
+            surfaceInset = Self.color(isWarm ? "#E6E1D6" : "#E5E5EA")
+            codeSlab = Self.color(isWarm ? "#F2EEE5" : "#F2F2F7")
+            userBubble = Self.color(isWarm ? "#EAE5DA" : "#E9E9EE")
             textPrimary = Self.color(isWarm ? "#1B1A18" : "#1C1C1E")
             textSecondary = textPrimary.opacity(0.55)
             textTertiary = textPrimary.opacity(0.35)
@@ -287,6 +294,13 @@ extension ChatPalette {
     /// Resolves the palette from the stored background preference, for chrome
     /// outside the transcript (navigation, session list) that should inherit the
     /// canvas warmth without owning the dark-canvas choice itself.
+    ///
+    /// - Important: This variant reads `UserDefaults` directly, so SwiftUI does
+    ///   not register a dependency on the preference. Calling it from inside a
+    ///   `body` means the view will NOT re-render when the palette changes; it
+    ///   only picks up the new value on an unrelated rebuild. Use
+    ///   ``appChrome(colorScheme:backgroundRawValue:temperatureRawValue:)``
+    ///   from view bodies and keep this one for non-view call sites.
     static func appChrome(colorScheme: ColorScheme) -> ChatPalette {
         let defaults = UserDefaults.standard
         return ChatPalette(
@@ -297,6 +311,24 @@ extension ChatPalette {
             temperature: ChatPaletteTemperature.storedValue(
                 defaults.string(forKey: ChatPaletteTemperature.storageKey)
             )
+        )
+    }
+
+    /// Reactive variant of ``appChrome(colorScheme:)``.
+    ///
+    /// Callers pass raw values sourced from `@AppStorage`, which gives SwiftUI a
+    /// real dependency edge on the stored preferences. That makes chrome
+    /// re-render immediately when the palette temperature or background style
+    /// changes, instead of waiting for an incidental view rebuild.
+    static func appChrome(
+        colorScheme: ColorScheme,
+        backgroundRawValue: String?,
+        temperatureRawValue: String?
+    ) -> ChatPalette {
+        ChatPalette(
+            colorScheme: colorScheme,
+            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundRawValue),
+            temperature: ChatPaletteTemperature.storedValue(temperatureRawValue)
         )
     }
 }
@@ -314,13 +346,24 @@ enum AppSurfaceRole {
 
 private struct AppSurfaceBackgroundModifier<S: Shape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    // Read the preferences through @AppStorage rather than calling the
+    // UserDefaults-backed appChrome(colorScheme:) directly. This gives SwiftUI
+    // a dependency edge on both keys, so every screen using
+    // `appSurfaceBackground` repaints the moment the palette changes instead of
+    // waiting for an unrelated rebuild.
+    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundRawValue: String?
+    @AppStorage(ChatPaletteTemperature.storageKey) private var temperatureRawValue: String?
 
     let role: AppSurfaceRole
     let opacity: Double
     let shape: S?
 
     func body(content: Content) -> some View {
-        let palette = ChatPalette.appChrome(colorScheme: colorScheme)
+        let palette = ChatPalette.appChrome(
+            colorScheme: colorScheme,
+            backgroundRawValue: backgroundRawValue,
+            temperatureRawValue: temperatureRawValue
+        )
         let color: Color = {
             switch role {
             case .canvas: palette.chatBackground

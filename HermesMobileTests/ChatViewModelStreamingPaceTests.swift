@@ -117,6 +117,49 @@ final class ChatViewModelStreamingPaceTests: XCTestCase {
     }
 
     @MainActor
+    func testToolBoundaryDoesNotBypassAssistantWordPacing() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeStalledDrainViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Stream and inspect")
+        XCTAssertTrue(didStart)
+
+        streamClient.emit(.token("alpha beta gamma"))
+        _ = try await observeAssistantContent(viewModel, until: "alpha ")
+        streamClient.emit(.toolStarted(ToolStreamEvent(
+            eventType: "tool.started",
+            name: "read_file",
+            preview: "Reading source",
+            args: nil,
+            duration: nil,
+            isError: nil
+        )))
+
+        XCTAssertEqual(
+            assistantContent(of: viewModel),
+            "alpha ",
+            "tool-start boundaries must not dump the pending assistant token backlog"
+        )
+
+        streamClient.emit(.toolCompleted(ToolStreamEvent(
+            eventType: "tool.completed",
+            name: "read_file",
+            preview: "Read source",
+            args: nil,
+            duration: 0.1,
+            isError: false
+        )))
+        XCTAssertEqual(
+            assistantContent(of: viewModel),
+            "alpha ",
+            "tool-completion boundaries must not dump the pending assistant token backlog"
+        )
+
+        streamClient.emit(.done(DoneStreamEvent()))
+        XCTAssertEqual(assistantContent(of: viewModel), "alpha beta gamma")
+    }
+
+    @MainActor
     func testPacedContentConvergesByteIdenticalToUnpacedJoin() async throws {
         let streamClient = PacingSpySSEStreamingClient()
         let viewModel = try makeViewModel(
@@ -397,7 +440,7 @@ final class StreamActivitySignalTests: XCTestCase {
         XCTAssertEqual(viewModel.turnPhase, .toolCalling)
         XCTAssertTrue(viewModel.isToolPhaseActive)
 
-        streamClient.emit(.token("The answer"))
+        streamClient.emit(.token("The answer", phase: .finalAnswer))
         XCTAssertEqual(viewModel.turnPhase, .respondingText)
         XCTAssertFalse(viewModel.isToolPhaseActive)
 
@@ -433,9 +476,61 @@ final class StreamActivitySignalTests: XCTestCase {
         // Resumed reasoning keeps the same phase; the final answer ends it.
         streamClient.emit(.reasoning(" and step two"))
         XCTAssertEqual(viewModel.turnPhase, .reasoning)
-        streamClient.emit(.token("Answer"))
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(viewModel.liveReasoningText, "Step one and step two")
+        streamClient.emit(.token("Answer", phase: .finalAnswer))
         XCTAssertEqual(viewModel.turnPhase, .respondingText)
         XCTAssertFalse(viewModel.isReasoningPhaseActive)
+    }
+
+    @MainActor
+    func testReasoningResumingAfterToolPreservesMarkdownBlockBoundary() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Inspect and continue")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("The previous reasoning ends here."))
+        streamClient.emit(.toolStarted(ToolStreamEvent(
+            eventType: "tool.started",
+            name: "read_file",
+            preview: "Reading source",
+            args: nil,
+            duration: nil,
+            isError: nil
+        )))
+        streamClient.emit(.reasoning("**Recommending the next step**"))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            "The previous reasoning ends here.\n\n**Recommending the next step**"
+        )
+    }
+
+    @MainActor
+    func testReasoningResumingAfterCompletionOnlyToolPreservesBoundary() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        let didStart = await viewModel.sendMessage("Recover and continue")
+        XCTAssertTrue(didStart)
+        streamClient.emit(.reasoning("Reasoning before recovered completion."))
+        streamClient.emit(.toolCompleted(ToolStreamEvent(
+            eventType: "tool.completed",
+            name: "read_file",
+            preview: "Read source",
+            args: nil,
+            duration: 0.2,
+            isError: false
+        )))
+        streamClient.emit(.reasoning("**Continuing after recovery**"))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            "Reasoning before recovered completion.\n\n**Continuing after recovery**"
+        )
     }
 
     @MainActor
@@ -506,7 +601,7 @@ final class StreamActivitySignalTests: XCTestCase {
         // Stint 2 closes almost immediately: the recorded value must be the
         // *second* stint's duration (overwrite), not an accumulation.
         streamClient.emit(.reasoning("Deciding next step"))
-        streamClient.emit(.token("The answer"))
+        streamClient.emit(.token("The answer", phase: .finalAnswer))
         let secondDuration = try XCTUnwrap(viewModel.lastReasoningDuration)
         XCTAssertLessThan(secondDuration, 0.25, "each stint overwrites — no accumulation across stints")
 
@@ -528,7 +623,7 @@ final class StreamActivitySignalTests: XCTestCase {
         streamClient.emit(.reasoning(""))
         XCTAssertEqual(viewModel.turnPhase, .reasoning, "phase advances on event kind")
 
-        streamClient.emit(.token("Answer"))
+        streamClient.emit(.token("Answer", phase: .finalAnswer))
         XCTAssertNil(
             viewModel.lastReasoningDuration,
             "a stint that never received contributing content records no duration"
@@ -685,8 +780,87 @@ final class StreamActivitySignalTests: XCTestCase {
             "the composing silence after the last tool must keep the block open"
         )
 
-        streamClient.emit(.token("Here"))
+        streamClient.emit(.token("Here", phase: .finalAnswer))
         XCTAssertTrue(viewModel.isAnswerPhaseActive, "the first answer token folds the blocks")
+    }
+
+    @MainActor
+    func testProvisionalProgressDoesNotFoldActivityBeforeLateInterimBoundary() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Inspect with tools")
+        streamClient.emit(.reasoning("Inspecting"))
+        streamClient.emit(.toolStarted(toolEvent(id: "t0", type: "tool_started")))
+        streamClient.emit(.toolCompleted(toolEvent(id: "t0", type: "tool_completed", duration: 0.2)))
+
+        streamClient.emit(.token("Now I will verify."))
+        XCTAssertEqual(viewModel.turnPhase, .toolCalling)
+        XCTAssertFalse(viewModel.isAnswerPhaseActive)
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Now I will verify."
+        )
+
+        streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(
+            text: "Now I will verify.",
+            alreadyStreamed: true
+        )))
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+        XCTAssertFalse(viewModel.isAnswerPhaseActive)
+        XCTAssertEqual(viewModel.liveReasoningText, "Inspecting\n\nNow I will verify.")
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "",
+            "late already-streamed reconciliation must remove progress from the answer bubble"
+        )
+
+        streamClient.emit(.toolStarted(toolEvent(id: "t1", type: "tool_started")))
+        XCTAssertEqual(viewModel.turnPhase, .toolCalling)
+        XCTAssertFalse(viewModel.isAnswerPhaseActive)
+
+        streamClient.emit(.token("Final answer", phase: .finalAnswer))
+        XCTAssertEqual(viewModel.turnPhase, .respondingText)
+        XCTAssertTrue(viewModel.isAnswerPhaseActive)
+    }
+
+    @MainActor
+    func testExplicitCommentaryStreamsDirectlyIntoThought() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Narrate")
+        streamClient.emit(.token("Checking the repo", phase: .commentary))
+        viewModel.flushPendingStreamingContent()
+
+        XCTAssertEqual(viewModel.turnPhase, .reasoning)
+        XCTAssertEqual(viewModel.liveReasoningText, "Checking the repo")
+        XCTAssertNotEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Checking the repo"
+        )
+        XCTAssertFalse(viewModel.isAnswerPhaseActive)
+    }
+
+    @MainActor
+    func testExplicitCommentaryLateInterimDoesNotDuplicateThought() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Narrate and reconcile")
+        streamClient.emit(.token("Checking the repo", phase: .commentary))
+        streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(
+            text: "Checking the repo",
+            alreadyStreamed: true
+        )))
+
+        XCTAssertEqual(viewModel.liveReasoningText, "Checking the repo")
+        XCTAssertFalse(viewModel.isAnswerPhaseActive)
+        XCTAssertNotEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Checking the repo"
+        )
     }
 
     private func toolEvent(

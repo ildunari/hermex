@@ -35,14 +35,16 @@ struct CustomHeadersEditor: View {
             )
         }
 
-        static let onboarding = Style(
-            primaryText: .white,
-            secondaryText: .white.opacity(0.5),
-            fieldBackground: .white.opacity(0.08),
-            fieldStroke: .white.opacity(0.14),
-            accent: Color(red: 1.0, green: 0.74, blue: 0.10),
-            removeTint: Color(red: 1.0, green: 0.5, blue: 0.4)
-        )
+        static func onboarding(accent: Color) -> Style {
+            Style(
+                primaryText: .white,
+                secondaryText: .white.opacity(0.5),
+                fieldBackground: .white.opacity(0.08),
+                fieldStroke: .white.opacity(0.14),
+                accent: accent,
+                removeTint: Color(red: 1.0, green: 0.5, blue: 0.4)
+            )
+        }
     }
 
     var body: some View {
