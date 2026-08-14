@@ -416,7 +416,6 @@ private struct ChatMarkdownView: View {
     let usesResponseFontPreference: Bool
     var role: MarkdownTypographyRole = .standard
 
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
@@ -424,7 +423,6 @@ private struct ChatMarkdownView: View {
     var body: some View {
         let palette = ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
         let responseFontStyle = ResponseFontStyle.storedValue(responseFontStyleRawValue)

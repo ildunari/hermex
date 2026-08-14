@@ -46,6 +46,7 @@ struct HermesMobileApp: App {
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
 
     init() {
+        ChatPaletteTemperature.migrateLegacyBackgroundStyle()
         #if DEBUG
         loadInjectionIIIIfRequested()
         #endif

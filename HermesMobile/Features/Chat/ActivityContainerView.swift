@@ -31,7 +31,6 @@ struct ActivityContainerView<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     var body: some View {
@@ -70,7 +69,6 @@ struct ActivityContainerView<Content: View>: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
@@ -82,7 +80,6 @@ struct ActivityContainerView<Content: View>: View {
 /// siblings* rather than a second border cutting the container in half.
 struct ActivitySectionDivider: View {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     var body: some View {
@@ -96,7 +93,6 @@ struct ActivitySectionDivider: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }

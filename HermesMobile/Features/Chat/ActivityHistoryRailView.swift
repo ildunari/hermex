@@ -25,7 +25,6 @@ struct ActivityHistoryRailView: View {
     @State private var isExpanded = false
 
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     // Dotted orbs need room to read as distinct marks: heavy overlap at small
@@ -168,7 +167,6 @@ struct ActivityHistoryRailView: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }

@@ -58,7 +58,6 @@ struct SettingsView: View {
     @State private var notificationPermissionStatus: UNAuthorizationStatus?
     @State private var notificationStatusMessage: String?
     @AppStorage(AppTheme.storageKey) private var appThemeRawValue = AppTheme.system.rawValue
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chatBackgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var chatPaletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
     @AppStorage(ActivityBeamStyle.storageKey) private var activityBeamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
@@ -145,21 +144,7 @@ struct SettingsView: View {
                         }
                     }
 
-                    SettingsFootnote(String(localized: "Warm tints chat surfaces toward a softer, paper-like gray. Standard uses neutral system grays."))
-
-                    SettingsDivider()
-
-                    SettingsPickerRow(
-                        title: String(localized: "Dark Chat Background"),
-                        systemImage: "moon.stars",
-                        selection: $chatBackgroundStyleRawValue
-                    ) {
-                        ForEach(ChatBackgroundStyle.allCases) { style in
-                            Text(style.title).tag(style.rawValue)
-                        }
-                    }
-
-                    SettingsFootnote(String(localized: "Applies in dark mode only. Black switches the chat canvas to pure black; Warm keeps the palette’s warm charcoal."))
+                    SettingsFootnote(String(localized: "Warm tints every surface toward a softer, paper-like ivory in light mode and warm charcoal in dark. Standard is high-contrast: pure white in light mode, pure black in dark."))
 
                     SettingsDivider()
 

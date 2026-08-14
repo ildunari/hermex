@@ -120,20 +120,57 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         super.tearDown()
     }
 
-    func testChatBackgroundDefaultsToWarmAndRoundTripsBlack() throws {
+    /// The dark canvas is now decided entirely by the palette: Warm keeps the
+    /// tuned charcoal, Standard is true black. There is no separate
+    /// background-depth preference to reconcile.
+    func testDarkCanvasIsDecidedByPaletteAlone() {
+        let warmDark = ChatPalette(colorScheme: .dark, temperature: .warm)
+        let standardDark = ChatPalette(colorScheme: .dark, temperature: .standard)
+
+        XCTAssertEqual(warmDark.chatBackground, Color(hexRGB: "#232220"))
+        XCTAssertEqual(standardDark.chatBackground, Color(hexRGB: "#000000"))
+        XCTAssertNotEqual(warmDark.chatBackground, standardDark.chatBackground)
+
+        // Raised surfaces stay neutral gray under Standard so chrome still
+        // reads as chrome floating on black rather than a flat void.
+        XCTAssertNotEqual(standardDark.surface, standardDark.chatBackground)
+        XCTAssertEqual(standardDark.surface, Color(hexRGB: "#2C2C2E"))
+    }
+
+    /// A user who had deliberately chosen the pure-black dark canvas wanted
+    /// black, and Standard is now the only palette that delivers it.
+    func testLegacyBlackBackgroundMigratesToStandardPalette() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.set("black", forKey: ChatPaletteTemperature.legacyBackgroundStyleKey)
 
-        XCTAssertEqual(ChatBackgroundStyle.storageKey, "appearance.chatBackgroundStyle")
-        XCTAssertEqual(
-            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
-            .warm
-        )
+        ChatPaletteTemperature.migrateLegacyBackgroundStyle(defaults: defaults)
 
-        defaults.set(ChatBackgroundStyle.black.rawValue, forKey: ChatBackgroundStyle.storageKey)
         XCTAssertEqual(
-            ChatBackgroundStyle.storedValue(defaults.string(forKey: ChatBackgroundStyle.storageKey)),
-            .black
+            ChatPaletteTemperature.storedValue(
+                defaults.string(forKey: ChatPaletteTemperature.storageKey)
+            ),
+            .standard
         )
+        XCTAssertNil(defaults.string(forKey: ChatPaletteTemperature.legacyBackgroundStyleKey))
+    }
+
+    /// The legacy `warm` depth already matched Warm's charcoal, so migration
+    /// only clears the stale key and must not disturb an explicit palette
+    /// choice the user has already made.
+    func testLegacyWarmBackgroundClearsKeyWithoutChangingPalette() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.set("warm", forKey: ChatPaletteTemperature.legacyBackgroundStyleKey)
+        defaults.set(ChatPaletteTemperature.standard.rawValue, forKey: ChatPaletteTemperature.storageKey)
+
+        ChatPaletteTemperature.migrateLegacyBackgroundStyle(defaults: defaults)
+
+        XCTAssertEqual(
+            ChatPaletteTemperature.storedValue(
+                defaults.string(forKey: ChatPaletteTemperature.storageKey)
+            ),
+            .standard
+        )
+        XCTAssertNil(defaults.string(forKey: ChatPaletteTemperature.legacyBackgroundStyleKey))
     }
 
     func testSerifDefaultsOffAndRoundTripsOn() throws {
@@ -193,23 +230,11 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         XCTAssertEqual(standardLight.selectionForeground, .white)
     }
 
-    /// The temperature axis must stay independent of the dark-canvas depth
-    /// choice: Black still resolves to a pure-black canvas under Standard.
-    func testTemperatureAndBackgroundStyleAreIndependent() {
-        let warmDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm)
-        let standardDark = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .standard)
-        XCTAssertNotEqual(warmDark.chatBackground, standardDark.chatBackground)
-
-        let warmBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .warm)
-        let standardBlack = ChatPalette(colorScheme: .dark, backgroundStyle: .black, temperature: .standard)
-        XCTAssertEqual(warmBlack.chatBackground, standardBlack.chatBackground)
-    }
-
     /// Light-mode Warm must stay perceptibly off white. The previous canvas
     /// (#FAF9F7) sat inside True Tone / Night Shift swing and read as white.
     func testLightWarmCanvasIsPerceptiblyOffWhiteAndKeepsRampOrder() {
-        let warm = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm)
-        let standard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .standard)
+        let warm = ChatPalette(colorScheme: .light, temperature: .warm)
+        let standard = ChatPalette(colorScheme: .light, temperature: .standard)
         let expectedCanvas = Color(hexRGB: "#F7F4EE")
         let expectedSurface = Color(hexRGB: "#EFEBE2")
         let expectedInset = Color(hexRGB: "#E6E1D6")
@@ -230,8 +255,8 @@ final class ChatAppearanceSettingsTests: XCTestCase {
     /// composited over the card, NOT on the bare card — measuring against the bare
     /// card overstates contrast by ~0.8 and would let a washed-out chip pass.
     func testGitStatusChipsClearContrastOnTheirCompositedFill() {
-        let lightCard = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm).surface
-        let darkCard = ChatPalette(colorScheme: .dark, backgroundStyle: .warm, temperature: .warm).surface
+        let lightCard = ChatPalette(colorScheme: .light, temperature: .warm).surface
+        let darkCard = ChatPalette(colorScheme: .dark, temperature: .warm).surface
         let kinds: [GitFile.ChangeKind] = [.added, .deleted, .renamed, .conflict, .modified]
 
         for kind in kinds {
@@ -251,7 +276,7 @@ final class ChatAppearanceSettingsTests: XCTestCase {
         }
 
         // Diff counts sit directly on the canvas, with no capsule behind them.
-        let lightCanvas = ChatPalette(colorScheme: .light, backgroundStyle: .warm, temperature: .warm).chatBackground
+        let lightCanvas = ChatPalette(colorScheme: .light, temperature: .warm).chatBackground
         XCTAssertGreaterThanOrEqual(
             Self.contrastRatio(GitStatusPalette.additions(.light), lightCanvas), 4.5
         )

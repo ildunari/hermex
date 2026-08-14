@@ -2,7 +2,6 @@ import SwiftUI
 
 private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     let fallbackMaterial: Material
@@ -26,7 +25,6 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
@@ -35,7 +33,6 @@ private struct ChatTimelineAccessorySurfaceModifier: ViewModifier {
 private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
 
     private var backgroundColor: Color {
@@ -49,7 +46,6 @@ private struct ChatTimelineAccessoryInsetSurfaceModifier: ViewModifier {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }

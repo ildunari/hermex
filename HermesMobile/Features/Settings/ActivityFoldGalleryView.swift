@@ -294,7 +294,7 @@ private struct FoldReparseProbeView: View {
         > A blockquote, because quote handling is a separate parse path.
 
         ```swift
-        let palette = ChatPalette(colorScheme: .dark, backgroundStyle: .warm)
+        let palette = ChatPalette(colorScheme: .dark)
         ```
         """
         return Array(repeating: block, count: 8).joined(separator: "\n\n")

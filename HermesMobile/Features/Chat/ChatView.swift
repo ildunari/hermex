@@ -276,7 +276,6 @@ struct ChatView: View {
     @AppStorage(SectionVisibilitySettings.chatGitKey) private var showsGitControls = true
     // Palette preferences read reactively so navigation chrome repaints as soon
     // as the palette changes, rather than on the next incidental rebuild.
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     let session: SessionSummary
@@ -599,7 +598,6 @@ struct ChatView: View {
         .toolbarBackground(
             ChatPalette.appChrome(
                 colorScheme: colorScheme,
-                backgroundRawValue: chromeBackgroundRawValue,
                 temperatureRawValue: chromeTemperatureRawValue
             ).chatBackground,
             for: .navigationBar

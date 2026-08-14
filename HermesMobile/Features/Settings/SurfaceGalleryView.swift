@@ -262,7 +262,6 @@ struct SurfaceGalleryView: View {
     ) -> some View {
         let palette = ChatPalette(
             colorScheme: scheme,
-            backgroundStyle: .warm,
             temperature: temperature
         )
         let request = MarkdownCodeHighlightRequest(

@@ -153,7 +153,6 @@ struct ToolRunIndicatorSlot: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
@@ -224,7 +223,6 @@ struct ToolRunIndicatorSlot: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle(rawValue: backgroundStyleRawValue) ?? .defaultValue,
             temperature: ChatPaletteTemperature(rawValue: paletteTemperatureRawValue) ?? .defaultValue
         )
     }

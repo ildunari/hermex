@@ -31,7 +31,6 @@ struct ReasoningBlockView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.activityDisclosureViewportHeight) private var availableViewportHeight
     @Environment(\.preserveActivityExpansionPosition) private var preserveActivityExpansionPosition
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.thinkingCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
@@ -320,7 +319,6 @@ struct ReasoningBlockView: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }

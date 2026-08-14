@@ -71,7 +71,6 @@ struct SessionListView: View {
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
     // Palette preferences read reactively so list chrome repaints as soon as
     // the palette changes, rather than on the next incidental rebuild.
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
     @AppStorage(PrimaryActionTintSettings.isEnabledKey) private var tintsPrimaryActions = false
     @AppStorage(GlassPreference.isEnabledKey) private var isGlassEnabled = GlassPreference.defaultIsEnabled
@@ -314,7 +313,6 @@ struct SessionListView: View {
         ZStack(alignment: .bottomTrailing) {
             ChatPalette.appChrome(
             colorScheme: colorScheme,
-            backgroundRawValue: chromeBackgroundRawValue,
             temperatureRawValue: chromeTemperatureRawValue
         ).chatBackground
                 .ignoresSafeArea()
@@ -513,7 +511,6 @@ struct SessionListView: View {
         // from the session list through the chat surface.
         .background(ChatPalette.appChrome(
             colorScheme: colorScheme,
-            backgroundRawValue: chromeBackgroundRawValue,
             temperatureRawValue: chromeTemperatureRawValue
         ).chatBackground)
         .scrollDismissesKeyboard(.interactively)
@@ -1477,7 +1474,6 @@ private struct PendingNewChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     let server: URL
@@ -1545,7 +1541,6 @@ private struct PendingNewChatView: View {
         ZStack(alignment: .bottom) {
             ChatPalette.appChrome(
             colorScheme: colorScheme,
-            backgroundRawValue: chromeBackgroundRawValue,
             temperatureRawValue: chromeTemperatureRawValue
         ).chatBackground
                 .ignoresSafeArea()

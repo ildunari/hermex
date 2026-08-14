@@ -15,7 +15,6 @@ struct StreamingLabView: View {
     // textSelection dead-cascade hunt).
     @AppStorage(StreamedTextAnimationSettings.isEnabledKey) private var isStreamedTextAnimationEnabled = true
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     @State private var wordsPerSecond = StreamingLabReplay.defaultWordsPerSecond
@@ -169,7 +168,6 @@ struct StreamingLabView: View {
                 .fill(
                     ChatPalette.appChrome(
                         colorScheme: colorScheme,
-                        backgroundRawValue: chromeBackgroundRawValue,
                         temperatureRawValue: chromeTemperatureRawValue
                     ).surface
                 )
@@ -221,7 +219,6 @@ struct StreamingLabView: View {
 /// production message rows and renderer without needing server credentials.
 struct ChatThemeLabView: View {
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
 
@@ -254,9 +251,9 @@ struct ChatThemeLabView: View {
 
     private var appearanceControls: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Background", selection: $backgroundStyleRawValue) {
-                ForEach(ChatBackgroundStyle.allCases) { style in
-                    Text(style.title).tag(style.rawValue)
+            Picker("Palette", selection: $paletteTemperatureRawValue) {
+                ForEach(ChatPaletteTemperature.allCases) { temperature in
+                    Text(temperature.title).tag(temperature.rawValue)
                 }
             }
             .pickerStyle(.segmented)
@@ -278,7 +275,6 @@ struct ChatThemeLabView: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundStyleRawValue),
             temperature: ChatPaletteTemperature.storedValue(paletteTemperatureRawValue)
         )
     }
@@ -331,7 +327,6 @@ struct ChatThemeLabView: View {
         ```swift
         let palette = ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: .warm
         )
         ```
 

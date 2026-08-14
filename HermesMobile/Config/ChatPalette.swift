@@ -1,8 +1,17 @@
 import SwiftUI
 
-/// Hue temperature of the chat canvas and its surfaces. Independent of the
-/// dark-canvas depth choice in `ChatBackgroundStyle`: warm uses the tuned
-/// warm-gray stack, standard falls back to neutral system grays.
+/// The single appearance axis for the chat canvas and every app surface.
+///
+/// Warm is the tuned paper/ember stack: ivory in light mode, warm charcoal in
+/// dark. Standard is the clinical high-contrast counterpart: pure white in
+/// light mode, pure black in dark, with Apple's neutral grays for the raised
+/// surfaces that sit on top.
+///
+/// This replaces the former `ChatBackgroundStyle` control, which offered a
+/// separate dark-canvas depth choice. Its two options were also named
+/// Warm/Black, which read as a duplicate of this setting and could contradict
+/// it (Standard palette + "Warm" background produced a neutral gray canvas).
+/// Pure black now lives where it belongs: as the dark half of Standard.
 enum ChatPaletteTemperature: String, CaseIterable, Identifiable {
     case warm
     case standard
@@ -46,29 +55,6 @@ struct ChatPaletteAccent {
             selection: Color(hexRGB: colorScheme == .dark ? "#C7C7CC" : "#4A4A4F") ?? .secondary,
             selectionForeground: colorScheme == .dark ? .black : .white
         )
-    }
-}
-
-enum ChatBackgroundStyle: String, CaseIterable, Identifiable {
-    case warm
-    case black
-
-    static let storageKey = "appearance.chatBackgroundStyle"
-    static let defaultValue = ChatBackgroundStyle.warm
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .warm:
-            String(localized: "Warm")
-        case .black:
-            String(localized: "Black")
-        }
-    }
-
-    static func storedValue(_ rawValue: String?) -> ChatBackgroundStyle {
-        rawValue.flatMap(ChatBackgroundStyle.init(rawValue:)) ?? defaultValue
     }
 }
 
@@ -239,21 +225,18 @@ struct ChatPalette {
 
     init(
         colorScheme: ColorScheme,
-        backgroundStyle: ChatBackgroundStyle,
         temperature: ChatPaletteTemperature = .warm
     ) {
         let isWarm = temperature.usesWarmSurfaces
         if colorScheme == .dark {
-            chatBackground = Self.color(
-                backgroundStyle == .black ? "#000000" : (isWarm ? "#232220" : "#1C1C1E")
-            )
+            // Standard goes to true black rather than Apple's #1C1C1E: it is
+            // the high-contrast/OLED choice, and the raised surfaces below
+            // stay neutral gray so chrome still reads as system chrome
+            // floating on black instead of a flat void.
+            chatBackground = Self.color(isWarm ? "#232220" : "#000000")
             surface = Self.color(isWarm ? "#2E2C29" : "#2C2C2E")
             surfaceInset = Self.color(isWarm ? "#383633" : "#3A3A3C")
-            codeSlab = Self.color(
-                backgroundStyle == .black
-                    ? (isWarm ? "#161514" : "#141416")
-                    : (isWarm ? "#1E1D1B" : "#1A1A1C")
-            )
+            codeSlab = Self.color(isWarm ? "#1E1D1B" : "#141416")
             userBubble = Self.color(isWarm ? "#33312E" : "#313135")
             textPrimary = Self.color(isWarm ? "#F5F4F0" : "#F2F2F7")
             textSecondary = textPrimary.opacity(0.62)
@@ -290,24 +273,45 @@ struct ChatPalette {
     }
 }
 
+extension ChatPaletteTemperature {
+    /// Legacy key for the removed `ChatBackgroundStyle` control (Warm/Black
+    /// dark-canvas depth), retired when pure black became the dark half of
+    /// Standard.
+    static let legacyBackgroundStyleKey = "appearance.chatBackgroundStyle"
+
+    /// Retires the legacy dark-canvas preference.
+    ///
+    /// Intent is preserved where it can be: a stored `black` means the user
+    /// wanted a pure-black dark canvas, which is now exactly what Standard
+    /// gives them, so we move them onto Standard. That is the honest read of
+    /// the old choice even though it also switches their light mode from ivory
+    /// to pure white — the two are now one palette by design. Anyone left on
+    /// the old `warm` value already matches Warm's charcoal, so only the stale
+    /// key is cleared.
+    static func migrateLegacyBackgroundStyle(defaults: UserDefaults = .standard) {
+        guard let legacy = defaults.string(forKey: legacyBackgroundStyleKey) else { return }
+        if legacy == "black", defaults.string(forKey: storageKey) == nil {
+            defaults.set(ChatPaletteTemperature.standard.rawValue, forKey: storageKey)
+        }
+        defaults.removeObject(forKey: legacyBackgroundStyleKey)
+    }
+}
+
 extension ChatPalette {
-    /// Resolves the palette from the stored background preference, for chrome
-    /// outside the transcript (navigation, session list) that should inherit the
-    /// canvas warmth without owning the dark-canvas choice itself.
+    /// Resolves the palette from the stored preference, for chrome outside the
+    /// transcript (navigation, session list) that should inherit the canvas
+    /// appearance without each screen re-deriving it.
     ///
     /// - Important: This variant reads `UserDefaults` directly, so SwiftUI does
     ///   not register a dependency on the preference. Calling it from inside a
     ///   `body` means the view will NOT re-render when the palette changes; it
     ///   only picks up the new value on an unrelated rebuild. Use
-    ///   ``appChrome(colorScheme:backgroundRawValue:temperatureRawValue:)``
+    ///   ``appChrome(colorScheme:temperatureRawValue:)``
     ///   from view bodies and keep this one for non-view call sites.
     static func appChrome(colorScheme: ColorScheme) -> ChatPalette {
         let defaults = UserDefaults.standard
         return ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(
-                defaults.string(forKey: ChatBackgroundStyle.storageKey)
-            ),
             temperature: ChatPaletteTemperature.storedValue(
                 defaults.string(forKey: ChatPaletteTemperature.storageKey)
             )
@@ -316,18 +320,16 @@ extension ChatPalette {
 
     /// Reactive variant of ``appChrome(colorScheme:)``.
     ///
-    /// Callers pass raw values sourced from `@AppStorage`, which gives SwiftUI a
-    /// real dependency edge on the stored preferences. That makes chrome
-    /// re-render immediately when the palette temperature or background style
-    /// changes, instead of waiting for an incidental view rebuild.
+    /// Callers pass the raw value sourced from `@AppStorage`, which gives
+    /// SwiftUI a real dependency edge on the stored preference. That makes
+    /// chrome re-render immediately when the palette changes, instead of
+    /// waiting for an incidental view rebuild.
     static func appChrome(
         colorScheme: ColorScheme,
-        backgroundRawValue: String?,
         temperatureRawValue: String?
     ) -> ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle.storedValue(backgroundRawValue),
             temperature: ChatPaletteTemperature.storedValue(temperatureRawValue)
         )
     }
@@ -346,12 +348,11 @@ enum AppSurfaceRole {
 
 private struct AppSurfaceBackgroundModifier<S: Shape>: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
-    // Read the preferences through @AppStorage rather than calling the
+    // Read the preference through @AppStorage rather than calling the
     // UserDefaults-backed appChrome(colorScheme:) directly. This gives SwiftUI
-    // a dependency edge on both keys, so every screen using
+    // a dependency edge on the key, so every screen using
     // `appSurfaceBackground` repaints the moment the palette changes instead of
     // waiting for an unrelated rebuild.
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var temperatureRawValue: String?
 
     let role: AppSurfaceRole
@@ -361,7 +362,6 @@ private struct AppSurfaceBackgroundModifier<S: Shape>: ViewModifier {
     func body(content: Content) -> some View {
         let palette = ChatPalette.appChrome(
             colorScheme: colorScheme,
-            backgroundRawValue: backgroundRawValue,
             temperatureRawValue: temperatureRawValue
         )
         let color: Color = {

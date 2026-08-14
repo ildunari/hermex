@@ -8,13 +8,11 @@ struct ApprovalRequestOverlay: View {
     let onChoice: (ApprovalChoice) -> Void
     let onSkipAll: () -> Void
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage(ChatBackgroundStyle.storageKey) private var chromeBackgroundRawValue: String?
     @AppStorage(ChatPaletteTemperature.storageKey) private var chromeTemperatureRawValue: String?
 
     private var chrome: ChatPalette {
         ChatPalette.appChrome(
             colorScheme: colorScheme,
-            backgroundRawValue: chromeBackgroundRawValue,
             temperatureRawValue: chromeTemperatureRawValue
         )
     }

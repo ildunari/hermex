@@ -23,7 +23,6 @@ struct ToolActivityGroupView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.preserveActivityExpansionPosition) private var preserveActivityExpansionPosition
-    @AppStorage(ChatBackgroundStyle.storageKey) private var backgroundStyleRawValue = ChatBackgroundStyle.defaultValue.rawValue
     @AppStorage(ChatPaletteTemperature.storageKey) private var paletteTemperatureRawValue = ChatPaletteTemperature.defaultValue.rawValue
     @AppStorage(ChatTranscriptDisplaySettings.toolCardsStartExpandedKey) private var startsExpanded = false
     @State private var userToggledExpansion: Bool?
@@ -36,7 +35,6 @@ struct ToolActivityGroupView: View {
     private var palette: ChatPalette {
         ChatPalette(
             colorScheme: colorScheme,
-            backgroundStyle: ChatBackgroundStyle(rawValue: backgroundStyleRawValue) ?? .defaultValue,
             temperature: ChatPaletteTemperature(rawValue: paletteTemperatureRawValue) ?? .defaultValue
         )
     }
