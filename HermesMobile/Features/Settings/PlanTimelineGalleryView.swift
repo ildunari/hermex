@@ -16,6 +16,8 @@ struct PlanTimelineGalleryView: View {
             PlanComposerDockView(planLength: .long)
         } else if page == 20 {
             PlanComposerDockView(planLength: .veryLong)
+        } else if page == 23 {
+            PlanLiveStressView()
         } else {
             states
         }
