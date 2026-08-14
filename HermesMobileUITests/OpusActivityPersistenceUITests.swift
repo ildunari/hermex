@@ -26,23 +26,27 @@ final class OpusActivityPersistenceUITests: XCTestCase {
         app.launch()
 
         let composer = app.textViews.firstMatch
-        if !composer.waitForExistence(timeout: 20) {
-            let newSession = app.buttons["New Session"]
-            XCTAssertTrue(
-                newSession.waitForExistence(timeout: 30),
-                "Neither a composer nor the authenticated session list appeared."
-            )
-            newSession.tap()
+        if composer.waitForExistence(timeout: 20) {
+            let back = app.navigationBars.buttons.firstMatch
+            XCTAssertTrue(back.waitForExistence(timeout: 10), "Could not leave the restored session.")
+            back.tap()
         }
-        XCTAssertTrue(composer.waitForExistence(timeout: 30), "Composer never appeared.")
+
+        let newSession = app.buttons["New Session"]
+        XCTAssertTrue(
+            newSession.waitForExistence(timeout: 30),
+            "Authenticated session list never appeared."
+        )
+        newSession.tap()
+        XCTAssertTrue(composer.waitForExistence(timeout: 30), "Fresh-session composer never appeared.")
         try selectOpus(in: app)
 
         composer.tap()
         composer.typeText(
-            "Work sequentially. Say exactly ALPHA CHECK before using a tool to list the "
-                + "current directory. After that tool finishes, say exactly BETA CHECK, "
-                + "then use a tool to print the current directory. After that finishes, "
-                + "use a tool to wait five seconds, then answer exactly FINAL DONE."
+            "Research the latest official Swift 6.2 guidance for migrating an existing app "
+                + "to strict concurrency. Use web search and read at least three independent "
+                + "primary sources sequentially. Briefly narrate what you are checking between "
+                + "tool calls, compare the recommendations, and finish with a concise cited summary."
         )
 
         let send = app.buttons["chat.composer.send"].exists
