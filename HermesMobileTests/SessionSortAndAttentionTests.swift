@@ -322,6 +322,12 @@ final class SessionSortAndAttentionTests: XCTestCase {
         var prefs = SessionSortPreferences.default
         prefs.ordering = .tokens
         XCTAssertTrue(prefs.isModified)
+        prefs = .default
+        prefs.usesInboxStyle = true
+        XCTAssertTrue(prefs.isModified)
+        prefs = .default
+        prefs.showsAllProfiles = true
+        XCTAssertTrue(prefs.isModified)
     }
 
     // MARK: - Helpers

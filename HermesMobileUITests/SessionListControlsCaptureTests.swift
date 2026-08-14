@@ -40,7 +40,8 @@ final class SessionListControlsCaptureTests: XCTestCase {
         )
         attach(app, name: "03-grouped-by-status")
 
-        app.buttons["sessionList.attentionBell"].tap()
-        attach(app, name: "04-bell-filtered")
+        app.buttons["sessionList.inboxToggle"].tap()
+        XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "inbox")
+        attach(app, name: "04-inbox-cards")
     }
 }

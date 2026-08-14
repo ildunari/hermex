@@ -111,12 +111,9 @@ struct SessionControlsLabView: View {
                     attentionCount: attentionCount,
                     hasBlockingAttention: hasBlockingAttention,
                     preferences: preferences,
-                    onTapBell: {
-                        if preferences.activeFilters == [.needsInput] {
-                            preferences.activeFilters = []
-                        } else {
-                            preferences.activeFilters = [.needsInput]
-                        }
+                    canShowAllProfiles: true,
+                    onTapInbox: {
+                        preferences.usesInboxStyle.toggle()
                     },
                     onUpdatePreferences: { preferences = $0 }
                 )
@@ -132,6 +129,16 @@ struct SessionControlsLabView: View {
 
             Text(sections.map(\.id).joined(separator: ","))
                 .accessibilityIdentifier("lab.sectionIDs")
+                .font(.caption.monospaced())
+                .padding(.horizontal, 16)
+
+            Text(preferences.usesInboxStyle ? "inbox" : "list")
+                .accessibilityIdentifier("lab.inboxMode")
+                .font(.caption.monospaced())
+                .padding(.horizontal, 16)
+
+            Text(preferences.showsAllProfiles ? "all-profiles" : "active-profile")
+                .accessibilityIdentifier("lab.profileScope")
                 .font(.caption.monospaced())
                 .padding(.horizontal, 16)
 

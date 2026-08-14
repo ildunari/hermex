@@ -9,6 +9,8 @@ struct SessionRowView: View {
     let session: SessionSummary
     var showsMessageCount = true
     var showsWorkspace = true
+    var usesInboxStyle = false
+    var projects: [ProjectSummary] = []
     var isViewingCachedData = false
 
     var body: some View {
@@ -104,7 +106,16 @@ struct SessionRowView: View {
         )
     }
 
+    @ViewBuilder
     private var rowContent: some View {
+        if usesInboxStyle {
+            inboxCardContent
+        } else {
+            compactRowContent
+        }
+    }
+
+    private var compactRowContent: some View {
         VStack(alignment: .leading, spacing: rowContentSpacing) {
             titleArea
 
@@ -113,6 +124,91 @@ struct SessionRowView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Desktop inbox card: project · age / title / model · size.
+    /// Preview text is not on `/api/sessions`, so the third line uses model and
+    /// token size — the same footer desktop shows — instead of inventing a snippet.
+    private var inboxCardContent: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(inboxContextLabel)
+                    .font(AppFont.caption2(weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 8)
+                if let relativeDate {
+                    relativeDateText(relativeDate)
+                }
+            }
+
+            titleAndPin
+
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                if !visibleStateBadges.isEmpty {
+                    stateBadgesRow
+                }
+                if let footer = inboxFooterLabel {
+                    metadataText(footer)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityIdentifier("sessionRow.inboxCard")
+    }
+
+    private var inboxContextLabel: String {
+        if let project = inboxProjectLabel {
+            return project
+        }
+        if let workspace = Self.workspaceLabel(for: session, showsWorkspace: true) {
+            return workspace
+        }
+        if let profile = session.profile?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !profile.isEmpty {
+            return profile
+        }
+        return String(localized: "No Project")
+    }
+
+    private var inboxProjectLabel: String? {
+        guard let raw = session.projectId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        if let match = projects.first(where: { $0.projectId == raw }) {
+            return match.displayName
+        }
+        return String(localized: "Untitled Project")
+    }
+
+    private var inboxFooterLabel: String? {
+        var parts: [String] = []
+        if let model = session.model?.trimmingCharacters(in: .whitespacesAndNewlines), !model.isEmpty {
+            parts.append(model)
+        }
+        if let tokens = inboxTokenLabel {
+            parts.append(tokens)
+        }
+        if let metadataLabel {
+            parts.append(metadataLabel)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    private var inboxTokenLabel: String? {
+        let total = (session.inputTokens ?? 0) + (session.outputTokens ?? 0)
+        guard total > 0 else { return nil }
+        return Self.compactCount(total)
+    }
+
+    private static func compactCount(_ value: Int) -> String {
+        if value >= 1_000_000 {
+            return String(format: "%.1fM", Double(value) / 1_000_000)
+        }
+        if value >= 1_000 {
+            return String(format: "%.1fk", Double(value) / 1_000)
+        }
+        return "\(value)"
     }
 
     @ViewBuilder
@@ -231,7 +327,8 @@ struct SessionRowView: View {
     }
 
     private var rowMinimumHeight: CGFloat {
-        showsSupplementalContent ? 54 : 46
+        if usesInboxStyle { return 72 }
+        return showsSupplementalContent ? 54 : 46
     }
 
     private var titleLineLimit: Int {

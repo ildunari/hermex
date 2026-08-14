@@ -219,7 +219,8 @@ final class SessionListViewModel {
     func load(
         modelContext: ModelContext? = nil,
         animation: Animation? = nil,
-        includeArchived: Bool = false
+        includeArchived: Bool = false,
+        allProfiles: Bool = false
     ) async -> Bool {
         isLoading = true
         errorMessage = nil
@@ -229,7 +230,10 @@ final class SessionListViewModel {
         defer { isLoading = false }
 
         do {
-            let response = try await client.sessions(includeArchived: includeArchived)
+            let response = try await client.sessions(
+                includeArchived: includeArchived,
+                allProfiles: allProfiles
+            )
             let visibleSessions = (response.sessions ?? []).filter { session in
                 guard session.shouldAppearInSessionList else { return false }
                 return includeArchived || session.archived != true

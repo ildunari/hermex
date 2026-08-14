@@ -404,7 +404,8 @@ struct SessionListRowsSection: View {
     var groupedSections: [SessionGroupedSection] = []
     var attentionCount: Int = 0
     var hasBlockingAttention: Bool = false
-    var onTapAttention: () -> Void = {}
+    var canShowAllProfiles = false
+    var onTapInbox: () -> Void = {}
     var onUpdatePreferences: (SessionSortPreferences) -> Void = { _ in }
 
     var body: some View {
@@ -435,6 +436,7 @@ struct SessionListRowsSection: View {
                         session: session,
                         showsMessageCount: showsMessageCount,
                         showsWorkspace: showsWorkspace,
+                        usesInboxStyle: preferences.usesInboxStyle,
                         selectedSessionID: selectedSessionID,
                         actions: actions
                     )
@@ -476,7 +478,8 @@ struct SessionListRowsSection: View {
                         attentionCount: attentionCount,
                         hasBlockingAttention: hasBlockingAttention,
                         preferences: preferences,
-                        onTapBell: onTapAttention,
+                        canShowAllProfiles: canShowAllProfiles,
+                        onTapInbox: onTapInbox,
                         onUpdatePreferences: onUpdatePreferences
                     )
                 }
@@ -557,6 +560,7 @@ struct SessionInteractiveRow: View {
     let session: SessionSummary
     let showsMessageCount: Bool
     let showsWorkspace: Bool
+    var usesInboxStyle = false
     let selectedSessionID: String?
     let actions: SessionListRowActions
 
@@ -568,6 +572,8 @@ struct SessionInteractiveRow: View {
                 session: session,
                 showsMessageCount: showsMessageCount,
                 showsWorkspace: showsWorkspace,
+                usesInboxStyle: usesInboxStyle,
+                projects: viewModel.projects,
                 isViewingCachedData: viewModel.isViewingCachedData
             )
         }

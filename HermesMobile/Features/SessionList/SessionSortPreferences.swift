@@ -71,6 +71,12 @@ struct SessionSortPreferences: Equatable, Sendable {
     var ordering: SessionOrdering = .recent
     var activeFilters: Set<SessionStatusFilter> = []
     var includesArchived: Bool = false
+    /// Desktop `$sidebarCardRows`: three-line cards instead of one-line rows.
+    /// A render variant, not a filter — it composes with grouping/ordering.
+    var usesInboxStyle: Bool = false
+    /// Desktop `$showAllProfiles`: fetch `?all_profiles=1` instead of the
+    /// active profile's sessions only.
+    var showsAllProfiles: Bool = false
 
     static let `default` = SessionSortPreferences()
 
@@ -85,6 +91,8 @@ struct SessionSortPreferences: Equatable, Sendable {
         static let ordering = "sessionList.ordering"
         static let filters = "sessionList.statusFilters"
         static let includesArchived = "sessionList.includesArchived"
+        static let usesInboxStyle = "sessionList.usesInboxStyle"
+        static let showsAllProfiles = "sessionList.showsAllProfiles"
     }
 
     /// Filters serialize as a stable comma-joined string so `AppStorage` can

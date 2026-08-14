@@ -58,32 +58,35 @@ final class SessionListControlsUITests: XCTestCase {
         item.tap()
     }
 
-    // MARK: - Bell
+    // MARK: - Inbox
 
-    func testBellFiltersToSessionsNeedingInputAndTogglesBack() {
+    func testInboxToggleSwitchesViewModeWithoutFilteringRows() {
         let app = launchLab()
         let allRows = visibleRows(app)
         XCTAssertTrue(allRows.contains("approval"), "fixture roster missing: \(allRows)")
         XCTAssertTrue(allRows.contains("idle"), "fixture roster missing: \(allRows)")
 
-        let bell = app.buttons["sessionList.attentionBell"]
-        XCTAssertTrue(bell.waitForExistence(timeout: 5), "bell missing")
+        let inbox = app.buttons["sessionList.inboxToggle"]
+        XCTAssertTrue(inbox.waitForExistence(timeout: 5), "inbox control missing")
+        XCTAssertTrue(inbox.isEnabled, "inbox must stay tappable with no pending work")
+        XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "list")
 
-        // The badge counts pending items (approval 2 + clarify 1), not sessions.
-        XCTAssertTrue(
-            bell.label.contains("3"),
-            "bell should report 3 pending items, got '\(bell.label)'"
-        )
+        inbox.tap()
+        XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "inbox")
+        XCTAssertEqual(visibleRows(app), allRows, "inbox is a render mode, not a filter")
 
-        bell.tap()
-        let filtered = visibleRows(app)
-        XCTAssertTrue(filtered.contains("approval"), "approval row hidden: \(filtered)")
-        XCTAssertTrue(filtered.contains("clarify"), "clarify row hidden: \(filtered)")
-        XCTAssertFalse(filtered.contains("idle"), "idle row should be filtered out: \(filtered)")
-        XCTAssertFalse(filtered.contains("working"), "working row should be filtered out: \(filtered)")
+        inbox.tap()
+        XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "list")
+        XCTAssertEqual(visibleRows(app), allRows, "second tap should leave the list intact")
+    }
 
-        bell.tap()
-        XCTAssertEqual(visibleRows(app), allRows, "second tap should clear the filter")
+    func testAllProfilesMenuItemTogglesScope() {
+        let app = launchLab()
+        XCTAssertEqual(app.staticTexts["lab.profileScope"].label, "active-profile")
+        chooseMenuItem("All profiles", in: app)
+        XCTAssertEqual(app.staticTexts["lab.profileScope"].label, "all-profiles")
+        chooseMenuItem("All profiles", in: app)
+        XCTAssertEqual(app.staticTexts["lab.profileScope"].label, "active-profile")
     }
 
     // MARK: - Sort menu

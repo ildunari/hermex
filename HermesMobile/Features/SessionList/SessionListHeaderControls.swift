@@ -2,14 +2,19 @@ import SwiftUI
 
 /// Bell + sort controls that sit to the right of the "Sessions" heading.
 ///
-/// The bell reflects server-reported pending approval/clarify work and only
-/// pulses for blocking approvals. The sort button opens the group/order/filter
-/// menu and paints itself "engaged" whenever the view differs from the default.
+/// The inbox button is a view-mode toggle, matching desktop `$sidebarCardRows`:
+/// it is always tappable and switches the list into three-line cards. A badge
+/// still reports pending approval/clarify work and pulses only for blocking
+/// approvals. The sort button opens the group/order/filter menu and paints
+/// itself "engaged" whenever the view differs from the default.
 struct SessionListHeaderControls: View {
     let attentionCount: Int
     let hasBlockingAttention: Bool
     let preferences: SessionSortPreferences
-    let onTapBell: () -> Void
+    /// More than one named profile, or All-profiles already on — same visibility
+    /// rule as desktop so a leftover toggle cannot strand the list.
+    var canShowAllProfiles = false
+    let onTapInbox: () -> Void
     let onUpdatePreferences: (SessionSortPreferences) -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -17,18 +22,18 @@ struct SessionListHeaderControls: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            bellButton
+            inboxButton
             sortMenu
         }
     }
 
-    // MARK: - Bell (mockup A)
+    // MARK: - Inbox (desktop `$sidebarCardRows`)
 
-    private var bellButton: some View {
-        Button(action: onTapBell) {
-            Image(systemName: attentionCount > 0 ? "bell.fill" : "bell")
+    private var inboxButton: some View {
+        Button(action: onTapInbox) {
+            Image(systemName: preferences.usesInboxStyle ? "tray.full.fill" : "tray")
                 .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(attentionCount > 0 ? Color.accentColor : Color.primary)
+                .foregroundStyle(preferences.usesInboxStyle || attentionCount > 0 ? Color.accentColor : Color.primary)
                 .overlay(alignment: .topTrailing) {
                     if attentionCount > 0 {
                         badge
@@ -46,12 +51,10 @@ struct SessionListHeaderControls: View {
         }
         .buttonStyle(.plain)
         .contentShape(Rectangle())
-        .disabled(attentionCount == 0)
-        .opacity(attentionCount == 0 ? 0.55 : 1)
         .onAppear { isPulsing = shouldPulse }
         .onChange(of: shouldPulse) { _, newValue in isPulsing = newValue }
-        .accessibilityIdentifier("sessionList.attentionBell")
-        .accessibilityLabel(bellAccessibilityLabel)
+        .accessibilityIdentifier("sessionList.inboxToggle")
+        .accessibilityLabel(inboxAccessibilityLabel)
     }
 
     /// Only blocking approvals animate. Clarify prompts and Reduce Motion get a
@@ -73,11 +76,17 @@ struct SessionListHeaderControls: View {
             .offset(x: 6, y: -5)
     }
 
-    private var bellAccessibilityLabel: Text {
-        if attentionCount == 0 {
-            Text("No sessions need attention")
+    private var inboxAccessibilityLabel: Text {
+        if preferences.usesInboxStyle {
+            if attentionCount > 0 {
+                Text("Inbox view on, \(attentionCount) sessions need attention")
+            } else {
+                Text("Inbox view on")
+            }
+        } else if attentionCount > 0 {
+            Text("Show inbox view, \(attentionCount) sessions need attention")
         } else {
-            Text("\(attentionCount) sessions need attention")
+            Text("Show inbox view")
         }
     }
 
@@ -148,6 +157,19 @@ struct SessionListHeaderControls: View {
                         Label(String(localized: "Archived"), systemImage: "checkmark")
                     } else {
                         Text("Archived")
+                    }
+                }
+                if canShowAllProfiles {
+                    Button {
+                        var updated = preferences
+                        updated.showsAllProfiles.toggle()
+                        onUpdatePreferences(updated)
+                    } label: {
+                        if preferences.showsAllProfiles {
+                            Label(String(localized: "All profiles"), systemImage: "checkmark")
+                        } else {
+                            Text("All profiles")
+                        }
                     }
                 }
             }

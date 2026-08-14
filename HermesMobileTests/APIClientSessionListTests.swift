@@ -133,6 +133,18 @@ final class APIClientSessionListTests: APIClientTestCase {
         XCTAssertNil(response.archivedCount)
     }
 
+    func testSessionsAllProfilesBuildsQuery() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+            let query = Dictionary(uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value ?? "") })
+            XCTAssertEqual(query, ["all_profiles": "1"])
+            return apiTestJSONResponse("{\"sessions\":[]}", for: request)
+        }
+
+        _ = try await client.sessions(allProfiles: true)
+    }
+
     func testSessionSearchRequestBuildsExpectedQueryAndDecodesContentMatch() async throws {
         let client = makeClient { request in
             XCTAssertEqual(request.httpMethod, "GET")

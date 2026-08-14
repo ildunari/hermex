@@ -50,6 +50,8 @@ struct SessionListView: View {
     @AppStorage(SessionSortPreferences.StorageKey.ordering) private var sessionOrderingRaw = SessionOrdering.recent.rawValue
     @AppStorage(SessionSortPreferences.StorageKey.filters) private var sessionFiltersRaw = ""
     @AppStorage(SessionSortPreferences.StorageKey.includesArchived) private var sessionIncludesArchived = false
+    @AppStorage(SessionSortPreferences.StorageKey.usesInboxStyle) private var sessionUsesInboxStyle = false
+    @AppStorage(SessionSortPreferences.StorageKey.showsAllProfiles) private var sessionShowsAllProfiles = false
     @AppStorage(SessionRowDisplaySettings.showWorkspaceKey) private var showsSessionWorkspace = true
     @AppStorage(SessionRowDisplaySettings.showCronSessionsKey) private var showsCronSessions = true
     @AppStorage(SessionRowDisplaySettings.showSubagentSessionsKey)
@@ -481,15 +483,10 @@ struct SessionListView: View {
                 groupedSections: groupedSessionSections,
                 attentionCount: totalAttentionCount,
                 hasBlockingAttention: hasBlockingAttention,
-                onTapAttention: {
-                    // Tapping the bell focuses the list on what is waiting,
-                    // toggling back off when the filter is already applied.
+                canShowAllProfiles: viewModel.profileOptions.count > 1 || sortPreferences.showsAllProfiles,
+                onTapInbox: {
                     var updated = sortPreferences
-                    if updated.activeFilters == [.needsInput] {
-                        updated.activeFilters = []
-                    } else {
-                        updated.activeFilters = [.needsInput]
-                    }
+                    updated.usesInboxStyle.toggle()
                     updateSortPreferences(updated)
                 },
                 onUpdatePreferences: updateSortPreferences
@@ -726,17 +723,22 @@ struct SessionListView: View {
             grouping: SessionGrouping(rawValue: sessionGroupingRaw) ?? .date,
             ordering: SessionOrdering(rawValue: sessionOrderingRaw) ?? .recent,
             activeFilters: SessionSortPreferences.decodeFilters(sessionFiltersRaw),
-            includesArchived: sessionIncludesArchived
+            includesArchived: sessionIncludesArchived,
+            usesInboxStyle: sessionUsesInboxStyle,
+            showsAllProfiles: sessionShowsAllProfiles
         )
     }
 
     private func updateSortPreferences(_ preferences: SessionSortPreferences) {
-        let archivedChanged = preferences.includesArchived != sessionIncludesArchived
+        let needsReload = preferences.includesArchived != sessionIncludesArchived
+            || preferences.showsAllProfiles != sessionShowsAllProfiles
         sessionGroupingRaw = preferences.grouping.rawValue
         sessionOrderingRaw = preferences.ordering.rawValue
         sessionFiltersRaw = SessionSortPreferences.encodeFilters(preferences.activeFilters)
         sessionIncludesArchived = preferences.includesArchived
-        if archivedChanged {
+        sessionUsesInboxStyle = preferences.usesInboxStyle
+        sessionShowsAllProfiles = preferences.showsAllProfiles
+        if needsReload {
             Task { await loadSessions() }
         }
     }
@@ -1117,7 +1119,8 @@ struct SessionListView: View {
     private func loadSessions() async {
         await viewModel.load(
             modelContext: modelContext,
-            includeArchived: sessionIncludesArchived
+            includeArchived: sessionIncludesArchived,
+            allProfiles: sessionShowsAllProfiles
         )
         guard !Task.isCancelled else { return }
         handleLastError()

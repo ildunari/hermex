@@ -5,16 +5,25 @@ extension APIClient {
     /// protocol witness) still sees the exact `sessions()` signature — a method
     /// with defaulted parameters cannot satisfy that requirement.
     func sessions() async throws -> SessionsResponse {
-        try await sessions(includeArchived: false, archivedLimit: nil)
+        try await sessions(includeArchived: false, archivedLimit: nil, allProfiles: false)
     }
 
     /// Fetches the session list. `includeArchived` opts in to archived rows
     /// (merged with the visible ones; each row carries an `archived` flag) and
     /// `archivedLimit` optionally caps how many archived rows the server appends
-    /// (issue #17). Defaults keep today's request untouched.
-    func sessions(includeArchived: Bool = false, archivedLimit: Int? = nil) async throws -> SessionsResponse {
+    /// (issue #17). `allProfiles` maps to `?all_profiles=1`, the desktop
+    /// All-profiles switch. Defaults keep today's request untouched.
+    func sessions(
+        includeArchived: Bool = false,
+        archivedLimit: Int? = nil,
+        allProfiles: Bool = false
+    ) async throws -> SessionsResponse {
         try await send(
-            endpoint: .sessions(includeArchived: includeArchived, archivedLimit: archivedLimit),
+            endpoint: .sessions(
+                includeArchived: includeArchived,
+                archivedLimit: archivedLimit,
+                allProfiles: allProfiles
+            ),
             method: "GET"
         )
     }
