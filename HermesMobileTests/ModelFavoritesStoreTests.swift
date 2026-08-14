@@ -364,6 +364,42 @@ final class ModelFavoritesStoreTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: outsideFile.path))
     }
 
+    func testProviderAppearanceOnlyRemovesGeneratedArtworkBasenames() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ProviderAppearanceFilenameTests-\(UUID().uuidString)", isDirectory: true)
+        let directory = root.appendingPathComponent("ProviderArtwork", isDirectory: true)
+        let nestedDirectory = directory.appendingPathComponent("nested", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: nestedDirectory, withIntermediateDirectories: true)
+
+        let uuid = UUID().uuidString
+        let files: [(provider: String, persistedName: String, url: URL)] = [
+            ("absolute", root.appendingPathComponent("absolute.png").path, root.appendingPathComponent("absolute.png")),
+            ("nested", "nested/\(uuid).png", nestedDirectory.appendingPathComponent("\(uuid).png")),
+            ("nonuuid", "not-a-uuid.png", directory.appendingPathComponent("not-a-uuid.png")),
+            ("extension", "\(uuid).PNG", directory.appendingPathComponent("\(uuid).PNG"))
+        ]
+        for file in files {
+            try Data("keep".utf8).write(to: file.url)
+        }
+        let providers = Dictionary(uniqueKeysWithValues: files.map { file in
+            (file.provider, ["artworkFileName": file.persistedName, "usesFallback": false] as [String: Any])
+        })
+        let payload: [String: Any] = ["servers": ["server": providers]]
+        defaults.set(try JSONSerialization.data(withJSONObject: payload), forKey: "provider-appearance-filenames")
+        let store = ProviderAppearanceStore(
+            defaults: defaults,
+            storageKey: "provider-appearance-filenames",
+            artworkDirectory: directory
+        )
+
+        for file in files {
+            XCTAssertNil(store.artworkImage(serverID: "server", providerID: file.provider))
+            store.reset(serverID: "server", providerID: file.provider)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: file.url.path), file.persistedName)
+        }
+    }
+
     func testCustomModelFavoriteAndRecentOptionsRemainVisibleWithoutCatalogEntry() {
         let custom = ModelCatalogOption(
             id: "moonshotai/kimi-k2-0905",
