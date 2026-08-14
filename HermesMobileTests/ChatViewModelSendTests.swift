@@ -6502,6 +6502,187 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testCompletedStreamSessionKeepsCurrentOffsetWhenDoneReturnsWidenedWindow() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                    ],
+                    "_messages_truncated": true,
+                    "_messages_offset": 2
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let didStart = await viewModel.sendMessage("Newest question")
+        // `.done` widens the window all the way back to the session start
+        // (offset 0). The rows already on screen must keep their positional
+        // renderIDs, so the current offset wins and the widened head is trimmed.
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {"role": "user", "content": "Older question", "message_id": "u-0"},
+            {"role": "assistant", "content": "Older answer", "message_id": "a-1"},
+            {"role": "user", "content": "Recent question", "message_id": "u-2"},
+            {"role": "assistant", "content": "Recent answer", "message_id": "a-3"},
+            {"role": "user", "content": "Newest question", "message_id": "u-4"},
+            {"role": "assistant", "content": "Newest answer", "message_id": "a-5"}
+          ],
+          "_messages_truncated": false,
+          "_messages_offset": 0
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Recent question",
+            "Recent answer",
+            "Newest question",
+            "Newest answer"
+        ])
+        XCTAssertEqual(viewModel.messagesOffset, 2)
+        XCTAssertTrue(viewModel.hasOlderMessages)
+        XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
+    }
+
+    @MainActor
+    func testCompletedStreamSessionKeepsCurrentOffsetWhenDoneOmitsOffset() async throws {
+        let streamClient = SpySSEStreamingClient()
+        let viewModel = try makeViewModel(streamClient: streamClient) { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                    ],
+                    "_messages_truncated": true,
+                    "_messages_offset": 2
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-123"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let didStart = await viewModel.sendMessage("Newest question")
+        // `.done` without `_messages_offset` used to resolve to offset 0 and
+        // renumber every on-screen row. The overlap trim must keep offset 2.
+        let completedSession = try makeSessionDetail("""
+        {
+          "session_id": "session-abc",
+          "messages": [
+            {"role": "user", "content": "Older question", "message_id": "u-0"},
+            {"role": "assistant", "content": "Older answer", "message_id": "a-1"},
+            {"role": "user", "content": "Recent question", "message_id": "u-2"},
+            {"role": "assistant", "content": "Recent answer", "message_id": "a-3"},
+            {"role": "user", "content": "Newest question", "message_id": "u-4"},
+            {"role": "assistant", "content": "Newest answer", "message_id": "a-5"}
+          ]
+        }
+        """)
+
+        streamClient.emit(.done(DoneStreamEvent(session: completedSession)))
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Recent question",
+            "Recent answer",
+            "Newest question",
+            "Newest answer"
+        ])
+        XCTAssertEqual(viewModel.messagesOffset, 2)
+        XCTAssertTrue(viewModel.hasOlderMessages)
+        XCTAssertFalse(viewModel.responseCompletionNeedsTranscriptRefresh)
+    }
+
+    @MainActor
+    func testReloadWithoutOverlapStillReplacesTranscript() async throws {
+        var sessionRequestCount = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            sessionRequestCount += 1
+            if sessionRequestCount == 1 {
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                    ],
+                    "_messages_truncated": true,
+                    "_messages_offset": 2
+                  }
+                }
+                """, for: request)
+            }
+
+            // Truncation/compaction rewrote history: no overlap with the
+            // on-screen window, so the reload must fully replace it.
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Rewritten question", "timestamp": 5, "message_id": "u-9"},
+                  {"role": "assistant", "content": "Rewritten answer", "timestamp": 6, "message_id": "a-10"}
+                ],
+                "_messages_truncated": false,
+                "_messages_offset": 0
+              }
+            }
+            """, for: request)
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Rewritten question",
+            "Rewritten answer"
+        ])
+        XCTAssertEqual(viewModel.messagesOffset, 0)
+        XCTAssertFalse(viewModel.hasOlderMessages)
+    }
+
+    @MainActor
     func testLoadOlderMessagesKeepsAffordanceWhenAnotherOlderPageExists() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/session")
