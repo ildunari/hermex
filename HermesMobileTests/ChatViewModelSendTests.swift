@@ -2439,13 +2439,18 @@ final class ChatViewModelSendTests: XCTestCase {
             alreadyStreamed: true
         )))
 
-        XCTAssertEqual(viewModel.messages.last?.content, "")
+        // The interim boundary no longer clears the bubble: provisional prose
+        // stays readable until the next prose lands or the turn ends.
+        XCTAssertEqual(viewModel.messages.last?.content, "Inspecting repo structure.")
         XCTAssertEqual(viewModel.liveReasoningText, "Inspecting repo structure.")
 
         streamClient.emit(.token("Final answer."))
         viewModel.flushPendingStreamingContent()
 
+        // The re-homing still happens before the answer is appended, so the
+        // bubble holds only the answer and the prose lives in Thought.
         XCTAssertEqual(viewModel.messages.last?.content, "Final answer.")
+        XCTAssertEqual(viewModel.liveReasoningText, "Inspecting repo structure.")
     }
 
     @MainActor

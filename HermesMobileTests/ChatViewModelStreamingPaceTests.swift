@@ -812,17 +812,33 @@ final class StreamActivitySignalTests: XCTestCase {
         XCTAssertEqual(viewModel.liveReasoningText, "Inspecting\n\nNow I will verify.")
         XCTAssertEqual(
             viewModel.messages.last(where: { $0.role == "assistant" })?.content,
-            "",
-            "late already-streamed reconciliation must remove progress from the answer bubble"
+            "Now I will verify.",
+            "already-streamed reconciliation must keep progress readable in the bubble until the final answer starts"
         )
 
         streamClient.emit(.toolStarted(toolEvent(id: "t1", type: "tool_started")))
         XCTAssertEqual(viewModel.turnPhase, .toolCalling)
         XCTAssertFalse(viewModel.isAnswerPhaseActive)
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Now I will verify.",
+            "a later tool must not erase already-visible interim prose"
+        )
 
         streamClient.emit(.token("Final answer", phase: .finalAnswer))
         XCTAssertEqual(viewModel.turnPhase, .respondingText)
         XCTAssertTrue(viewModel.isAnswerPhaseActive)
+        viewModel.flushPendingStreamingContent()
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Final answer",
+            "the final-answer boundary re-homes interim prose so only the answer remains"
+        )
+        XCTAssertEqual(
+            viewModel.liveReasoningText,
+            "Inspecting\n\nNow I will verify.",
+            "re-homed prose stays in Thought"
+        )
     }
 
     @MainActor
@@ -861,6 +877,38 @@ final class StreamActivitySignalTests: XCTestCase {
             viewModel.messages.last(where: { $0.role == "assistant" })?.content,
             "Checking the repo"
         )
+    }
+
+    @MainActor
+    func testInterimProseIsRehomedWhenStreamEndsWithoutFinalAnswer() async throws {
+        let streamClient = PacingSpySSEStreamingClient()
+        let viewModel = try makeActivityViewModel(streamClient: streamClient)
+
+        _ = await viewModel.sendMessage("Inspect with tools")
+        streamClient.emit(.token("Now I will verify."))
+        viewModel.flushPendingStreamingContent()
+        streamClient.emit(.interimAssistant(InterimAssistantStreamEvent(
+            text: "Now I will verify.",
+            alreadyStreamed: true
+        )))
+
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "Now I will verify.",
+            "prose stays visible while the turn is still running"
+        )
+
+        // No `.finalAnswer` token: the stream just ends (cancel / error /
+        // transport loss). The resting transcript must still converge on the
+        // pre-deferral behaviour rather than stranding duplicated prose.
+        viewModel.streamCoordinatorDidFinishStream()
+
+        XCTAssertEqual(
+            viewModel.messages.last(where: { $0.role == "assistant" })?.content,
+            "",
+            "stream teardown must apply any pending re-homing"
+        )
+        XCTAssertEqual(viewModel.liveReasoningText, "Now I will verify.")
     }
 
     private func toolEvent(

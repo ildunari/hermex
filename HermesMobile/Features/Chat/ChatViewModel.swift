@@ -338,6 +338,11 @@ final class ChatViewModel {
     @ObservationIgnored private var pendingAssistantTokenChunks: [String] = []
     @ObservationIgnored private var pendingReasoningChunks: [String] = []
     @ObservationIgnored private var pendingReasoningStartsNewSegment = false
+    /// Interim prose that has already been shown in the answer bubble and is
+    /// awaiting re-homing into the Thought block. The move is deferred to the
+    /// final-answer boundary (or the end of the turn) so provisional commentary
+    /// stays readable while later tools and reasoning steps run.
+    @ObservationIgnored private var deferredInterimRehomings: [DeferredInterimRehoming] = []
     @ObservationIgnored private var pendingStreamingContentFlushTask: Task<Void, Never>?
     private(set) var completedToolCallGroups: [ToolCallGroup] = []
     private var completedToolCallGroupLookup = ToolCallGroupAnchorLookup()
@@ -2351,6 +2356,10 @@ final class ChatViewModel {
         lastError = nil
         archiveLiveReasoningIfNeeded()
         archiveLiveToolCallsIfNeeded()
+        // Apply rather than discard: the previous turn's messages still exist
+        // here, and its reasoning was just archived into Thought. Dropping the
+        // queue instead would leave that prose in both places permanently.
+        applyDeferredInterimRehomings()
         liveReasoningText = ""
         liveToolCalls = []
         turnPhase = .idle
@@ -2560,6 +2569,9 @@ final class ChatViewModel {
         hasOlderMessages = false
         setCompletedToolCallGroups([])
         completedReasoningGroups = []
+        // The messages array is being cleared, so any pending removal now
+        // points at a message that no longer exists.
+        deferredInterimRehomings = []
         liveToolCalls = []
         liveReasoningText = ""
         turnPhase = .idle
@@ -3334,6 +3346,10 @@ final class ChatViewModel {
         sendErrorMessage = nil
         archiveLiveReasoningIfNeeded()
         archiveLiveToolCallsIfNeeded()
+        // Apply rather than discard: the previous turn's messages still exist
+        // here, and its reasoning was just archived into Thought. Dropping the
+        // queue instead would leave that prose in both places permanently.
+        applyDeferredInterimRehomings()
         liveReasoningText = ""
         liveToolCalls = []
         turnPhase = .idle
@@ -3995,6 +4011,7 @@ final class ChatViewModel {
                 completedReasoningGroups: completedReasoningGroups,
                 liveToolCalls: liveToolCalls,
                 liveReasoningText: liveReasoningText,
+                deferredInterimRehomings: deferredInterimRehomings,
                 activeStreamLastEventID: streamCoordinator.lastEventID,
                 streamingAssistantMessageID: streamingAssistantMessageID,
                 toolCallAnchorMessageID: toolCallAnchorMessageID,
@@ -4047,6 +4064,22 @@ final class ChatViewModel {
             from: snapshot.streamingAssistantMessageID,
             to: streamingAssistantMessageID
         )
+        // Pending re-homings are anchored to a message ID like the anchors
+        // above, so they need the same remap: the merge can replace the
+        // client-local `stream-<UUID>` bubble with the server's persisted
+        // assistant message. Without this the drain looks up an ID that no
+        // longer exists, silently no-ops, and the prose rests duplicated in
+        // both the bubble and Thought.
+        deferredInterimRehomings = snapshot.deferredInterimRehomings.map { rehoming in
+            DeferredInterimRehoming(
+                messageID: Self.remappedAnchorMessageID(
+                    rehoming.messageID,
+                    from: snapshot.streamingAssistantMessageID,
+                    to: streamingAssistantMessageID
+                ) ?? rehoming.messageID,
+                text: rehoming.text
+            )
+        }
         contextWindowSnapshot = contextWindowSnapshot ?? snapshot.contextWindowSnapshot
         attachmentCoordinator.mergeLocalAttachmentPreviews(snapshot.localAttachmentPreviews)
         pinnedLocalNotices = snapshot.pinnedLocalNotices
@@ -4223,7 +4256,12 @@ final class ChatViewModel {
         flushPendingStreamingContent()
         let messageID = ensureStreamingAssistantMessage()
         if payload.alreadyStreamed == true {
-            removeAlreadyStreamedInterimText(text, fromMessageID: messageID)
+            // Deferred on purpose: removing the prose here is what made
+            // provisional commentary vanish the moment the next tool or
+            // reasoning step arrived. Record the intent and apply it at the
+            // final-answer boundary instead, so the text stays visible for the
+            // rest of the turn while the end state remains unchanged.
+            deferInterimRehoming(text, forMessageID: messageID)
         }
         if reasoningAnchorMessageID == nil {
             reasoningAnchorMessageID = messageID
@@ -4251,6 +4289,34 @@ final class ChatViewModel {
         liveReasoningText += separator + textToAppend
         scheduleStreamingScrollTrigger()
         return true
+    }
+
+    /// Queues an already-streamed interim segment for later removal from the
+    /// answer bubble. Segments are applied newest-first at the boundary so the
+    /// `.backwards`/`.anchored` suffix match in
+    /// `removeAlreadyStreamedInterimText` still sees the trailing text it
+    /// expects when a turn produced several interim blocks.
+    private func deferInterimRehoming(_ text: String, forMessageID messageID: String) {
+        deferredInterimRehomings.append(
+            DeferredInterimRehoming(messageID: messageID, text: text)
+        )
+    }
+
+    /// Applies every queued interim re-homing. Called at the final-answer
+    /// boundary and again at turn teardown, so a turn that ends without an
+    /// explicit final-answer marker (error, cancel, transport loss) still
+    /// converges on the same transcript as before this change.
+    private func applyDeferredInterimRehomings() {
+        guard !deferredInterimRehomings.isEmpty else { return }
+
+        let pending = deferredInterimRehomings
+        deferredInterimRehomings = []
+        for rehoming in pending.reversed() {
+            removeAlreadyStreamedInterimText(
+                rehoming.text,
+                fromMessageID: rehoming.messageID
+            )
+        }
     }
 
     private func removeAlreadyStreamedInterimText(_ text: String, fromMessageID messageID: String) {
@@ -4297,6 +4363,12 @@ final class ChatViewModel {
                 previousMessagesOffset: previousMessagesOffset
             )
             didApplyCompletedTranscript = true
+            // The server transcript is authoritative and already reflects the
+            // reclassification, so any queued removal is now meaningless. Clear
+            // it explicitly rather than relying on the lookup happening to
+            // no-op — a stale entry must never be applied against
+            // server-authored content.
+            deferredInterimRehomings = []
         }
 
         if let title = completedSession.title {
@@ -5310,6 +5382,11 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
 
     func streamCoordinatorDidFinishStream() {
         flushPendingStreamingContent()
+        // Convergence guarantee: a turn that ended without an explicit
+        // final-answer marker (error, cancel, transport loss, or a provider
+        // that never sends one) still re-homes its interim prose here, so the
+        // resting transcript matches the pre-deferral behaviour.
+        applyDeferredInterimRehomings()
         responseCompletionNeedsTranscriptRefresh = false
         // Stream ended without a `done` (error / cancel / transport loss): the
         // stint clock is abandoned, not recorded — `done` is the only path that
@@ -5381,6 +5458,15 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
             // completion boundary. The prose itself still renders immediately.
             break
         }
+        // Re-home any interim prose immediately before new prose lands in the
+        // same bubble. This is the last instant the interim text is still the
+        // trailing content, which is what the anchored suffix match requires.
+        // Doing it here rather than at the interim boundary is what keeps
+        // commentary readable across intervening tool and reasoning steps, and
+        // it also covers providers that never emit a `final_answer` marker —
+        // for those, deferring to the marker alone would append the answer onto
+        // the un-removed prose and strand a duplicate.
+        applyDeferredInterimRehomings()
         return appendAssistantToken(text)
     }
 
@@ -5548,6 +5634,11 @@ private struct ActiveChatStreamSnapshot: Equatable {
     let completedReasoningGroups: [ReasoningGroup]
     let liveToolCalls: [ToolCall]
     let liveReasoningText: String
+    /// Persisted so a mid-turn restore keeps the pending answer-bubble
+    /// removals. Without this the snapshot would restore prose that is still
+    /// visible in the bubble while its re-homing intent was lost, leaving the
+    /// same text duplicated in both the bubble and Thought.
+    let deferredInterimRehomings: [DeferredInterimRehoming]
     let activeStreamLastEventID: String?
     let streamingAssistantMessageID: String?
     let toolCallAnchorMessageID: String?
@@ -5612,6 +5703,14 @@ private final class ActiveChatStreamSnapshotStore {
 private struct QueuedSlashMessage {
     let text: String
     let attachments: [PendingAttachment]
+}
+
+/// A single already-streamed interim segment awaiting removal from the answer
+/// bubble. Deferring the removal to the final-answer boundary is what keeps
+/// provisional commentary on screen while later tools and reasoning run.
+struct DeferredInterimRehoming: Equatable {
+    let messageID: String
+    let text: String
 }
 
 struct ReasoningGroup: Identifiable, Equatable {

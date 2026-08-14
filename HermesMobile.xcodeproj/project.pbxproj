@@ -99,6 +99,7 @@
 		C09900000000000000000013 /* SessionListControlsCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09900000000000000000014 /* SessionListControlsCaptureTests.swift */; };
 		C09900000000000000000011 /* SessionListControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C09900000000000000000012 /* SessionListControlsUITests.swift */; };
 		D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000016 /* ActivityDisclosureUITests.swift */; };
+		D11100000000000000000093 /* OpusActivityPersistenceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000092 /* OpusActivityPersistenceUITests.swift */; };
 		D11100000000000000000019 /* ModelPickerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D11100000000000000000018 /* ModelPickerUITests.swift */; };
 		C14300000000000000000003 /* StreamingMarkdownSupportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C14300000000000000000004 /* StreamingMarkdownSupportTests.swift */; };
 		C13000000000000000000001 /* ChatVerticalScrollAxisGuardTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C13000000000000000000002 /* ChatVerticalScrollAxisGuardTests.swift */; };
@@ -414,6 +415,7 @@
 		C09900000000000000000014 /* SessionListControlsCaptureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListControlsCaptureTests.swift; sourceTree = "<group>"; };
 		C09900000000000000000012 /* SessionListControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListControlsUITests.swift; sourceTree = "<group>"; };
 		D11100000000000000000016 /* ActivityDisclosureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivityDisclosureUITests.swift; sourceTree = "<group>"; };
+		D11100000000000000000092 /* OpusActivityPersistenceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpusActivityPersistenceUITests.swift; sourceTree = "<group>"; };
 		D11100000000000000000018 /* ModelPickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModelPickerUITests.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B0 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000B1 /* AuthManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthManager.swift; sourceTree = "<group>"; };
@@ -938,6 +940,7 @@
 				D11100000000000000000016 /* ActivityDisclosureUITests.swift */,
 				C09900000000000000000012 /* SessionListControlsUITests.swift */,
 				C09900000000000000000014 /* SessionListControlsCaptureTests.swift */,
+				D11100000000000000000092 /* OpusActivityPersistenceUITests.swift */,
 				D11100000000000000000018 /* ModelPickerUITests.swift */,
 			);
 			path = HermesMobileUITests;
@@ -1881,6 +1884,7 @@
 				D11100000000000000000017 /* ActivityDisclosureUITests.swift in Sources */,
 				C09900000000000000000011 /* SessionListControlsUITests.swift in Sources */,
 				C09900000000000000000013 /* SessionListControlsCaptureTests.swift in Sources */,
+				D11100000000000000000093 /* OpusActivityPersistenceUITests.swift in Sources */,
 				D11100000000000000000019 /* ModelPickerUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
