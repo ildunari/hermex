@@ -3295,6 +3295,14 @@ final class SessionListRefreshBenchmarkTests: XCTestCase {
         XCTAssertEqual(viewModel.sessions.count, 2)
         XCTAssertEqual(viewModel.projects.count, 1)
         XCTAssertEqual(viewModel.activeProfileName, "work")
+        // Regression guard: fully serial would be 300 + 200 + 200 = 700ms.
+        // Running the profile fetch alongside sessions puts the floor at
+        // sessions + projects = 500ms; the bound leaves room for sim overhead.
+        XCTAssertLessThan(
+            elapsed,
+            Self.sessionsLatency + Self.projectsLatency + Self.profilesLatency - 0.05,
+            "The refresh path regressed to serial fetches"
+        )
     }
 
     /// Metric (b): `/api/sessions` request count for 3 automatic triggers <1s.
@@ -3310,7 +3318,13 @@ final class SessionListRefreshBenchmarkTests: XCTestCase {
         let sessionRequests = counts.count(forPath: "/api/sessions")
         Self.record("b.sessions-requests-for-3-triggers", Double(sessionRequests))
         Self.record("b.trigger-burst-ms", elapsed * 1000)
-        XCTAssertGreaterThanOrEqual(sessionRequests, 1)
+        // Regression guard: the pre-fix code issued one fetch per trigger (3).
+        // Single-flight plus the staleness gate must collapse the burst to one.
+        XCTAssertEqual(
+            sessionRequests,
+            1,
+            "A burst of automatic triggers must cost a single /api/sessions fetch"
+        )
     }
 
     /// Metric (c): time until the list row reflects the chat you just left.
@@ -3342,6 +3356,10 @@ final class SessionListRefreshBenchmarkTests: XCTestCase {
         let patched = viewModel.sessions.first { $0.sessionId == "bench-2" }
         XCTAssertEqual(patched?.title, "Patched from chat")
         XCTAssertEqual(patched?.lastMessageAt, 1_800_000_500)
+        // Regression guard: the pre-fix path needed a full list round trip
+        // (~300ms). The local patch must need none.
+        XCTAssertEqual(patchRequests, 0, "Returning from a chat must not require a fetch")
+        XCTAssertLessThan(elapsed, 0.016, "The row must be correct within a frame")
     }
 
     // MARK: - Harness
