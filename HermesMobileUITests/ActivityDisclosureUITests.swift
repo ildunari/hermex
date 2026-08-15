@@ -551,18 +551,28 @@ final class ActivityDisclosureUITests: XCTestCase {
             .matching(identifier: "subagents.details.run-gallery_sa-contract").firstMatch
         XCTAssertTrue(firstDetails.waitForExistence(timeout: 5))
 
+        let runningScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        runningScreenshot.name = "agents-running-model-effort"
+        runningScreenshot.lifetime = .keepAlways
+        add(runningScreenshot)
+
         second.tap()
         let secondDetails = app.descendants(matching: .any)
             .matching(identifier: "subagents.details.run-gallery_sa-client").firstMatch
         XCTAssertTrue(secondDetails.waitForExistence(timeout: 5))
         XCTAssertTrue(firstDetails.waitForNonExistence(timeout: 5), "Only one agent row may be expanded.")
 
-        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-        screenshot.name = "agents-status-expanded"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        let accordionScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        accordionScreenshot.name = "agents-accordion-second-row"
+        accordionScreenshot.lifetime = .keepAlways
+        add(accordionScreenshot)
 
         header.tap()
         XCTAssertTrue(rows.waitForNonExistence(timeout: 5))
+
+        let collapsedScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        collapsedScreenshot.name = "agents-pill-collapsed"
+        collapsedScreenshot.lifetime = .keepAlways
+        add(collapsedScreenshot)
     }
 }
