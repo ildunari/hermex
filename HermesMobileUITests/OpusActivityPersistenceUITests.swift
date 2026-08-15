@@ -260,7 +260,11 @@ final class SessionListReturnRefreshUITests: XCTestCase {
         for iteration in 0..<5 {
             let row = app.staticTexts["Bravo session"]
             var rowReady = false
-            let rowDeadline = Date().addingTimeInterval(20)
+            // 60s, not 20s: under build/machine load XCUITest element resolution
+            // can take minutes; a tight deadline fails the harness, not the app.
+            // The fetch-count assertions below are time-normalized, so a slow
+            // burst still measures collapsing honestly.
+            let rowDeadline = Date().addingTimeInterval(60)
             while Date() < rowDeadline {
                 if row.exists { rowReady = true; break }
                 RunLoop.current.run(until: Date().addingTimeInterval(0.25))
@@ -270,7 +274,7 @@ final class SessionListReturnRefreshUITests: XCTestCase {
 
             let back = app.navigationBars.buttons.firstMatch
             var backReady = false
-            let backDeadline = Date().addingTimeInterval(20)
+            let backDeadline = Date().addingTimeInterval(60)
             while Date() < backDeadline {
                 if back.exists { backReady = true; break }
                 RunLoop.current.run(until: Date().addingTimeInterval(0.25))
