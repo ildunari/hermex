@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 final class SessionListMutationTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.requestHandler = nil
+        ConcurrentMockURLProtocol.requestHandler = nil
         super.tearDown()
     }
 
@@ -2770,6 +2771,123 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["other-profile"])
     }
 
+    /// P0-1: a mutation reconciles by loading the list. If it is allowed to join
+    /// a fetch that was issued *before* the mutation, the pre-mutation response
+    /// resurrects the row the user just deleted.
+    @MainActor
+    func testMutationIsNeverServedAPreMutationInFlightResponse() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let didDelete = LockedFlag(initialValue: false)
+        let viewModel = try makeConcurrentViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                _ = counts.incrementLoadCount()
+                // The body is decided the moment the request is *issued*, exactly
+                // like a real server that answered before the delete landed.
+                return ConcurrentMockURLProtocol.Reply(delay: 0.3, json: didDelete.value ? """
+                {
+                  "sessions": [
+                    { "session_id": "keep-me", "title": "Keep", "archived": false }
+                  ]
+                }
+                """ : """
+                {
+                  "sessions": [
+                    { "session_id": "keep-me", "title": "Keep", "archived": false },
+                    { "session_id": "delete-me", "title": "Delete", "archived": false }
+                  ]
+                }
+                """)
+            case "/api/session/delete":
+                didDelete.value = true
+                return ConcurrentMockURLProtocol.Reply(delay: 0, json: #"{"ok": true}"#)
+            default:
+                return ConcurrentMockURLProtocol.Reply(delay: 0, json: "{}")
+            }
+        }
+
+        await viewModel.load()
+        XCTAssertEqual(viewModel.sessions.count, 2)
+
+        // An automatic refresh (monitor loop / scene-active) is already in flight
+        // and was handed the pre-delete list.
+        async let staleLoad: Bool = viewModel.load()
+        try await waitUntilSessionRequestCount(counts, isAtLeast: 2)
+
+        let session = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "delete-me" })
+        let didSucceed = await viewModel.delete(session)
+        _ = await staleLoad
+
+        XCTAssertTrue(didSucceed)
+        XCTAssertEqual(
+            viewModel.sessions.compactMap(\.sessionId),
+            ["keep-me"],
+            "A mutation must reconcile against a fetch issued after it, not a stale in-flight one"
+        )
+    }
+
+    /// The same coalescing bug makes pull-to-refresh a no-op when it lands on an
+    /// in-flight automatic load, so the explicit `forceFresh` entry point must
+    /// always issue its own fetch.
+    @MainActor
+    func testForceFreshLoadIssuesItsOwnFetchInsteadOfJoiningAnInFlightOne() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeConcurrentViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            let count = counts.incrementLoadCount()
+            return ConcurrentMockURLProtocol.Reply(delay: 0.2, json: """
+            {
+              "sessions": [
+                { "session_id": "row-\(count)", "title": "Row \(count)", "archived": false }
+              ]
+            }
+            """)
+        }
+
+        async let automatic = viewModel.load()
+        try await waitUntilSessionRequestCount(counts, isAtLeast: 1)
+        let pullToRefresh = await viewModel.load(forceFresh: true)
+        let automaticResult = await automatic
+
+        XCTAssertTrue(automaticResult)
+        XCTAssertTrue(pullToRefresh)
+        XCTAssertEqual(counts.snapshot.loadCount, 2, "Pull-to-refresh must always hit the network")
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["row-2"])
+    }
+
+    /// Polls until the mock transport has *received* `isAtLeast` session
+    /// requests, so a scenario can order a mutation strictly after an
+    /// already-issued fetch without depending on task-scheduling luck.
+    @MainActor
+    private func waitUntilSessionRequestCount(
+        _ counts: LockedSessionMutationRequestCounts,
+        isAtLeast target: Int,
+        timeout: TimeInterval = 3
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if counts.snapshot.loadCount >= target { return }
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+
+        XCTFail("Timed out waiting for \(target) /api/sessions requests")
+    }
+
+    @MainActor
+    private func makeConcurrentViewModel(
+        handler: @escaping (URLRequest) -> ConcurrentMockURLProtocol.Reply
+    ) throws -> SessionListViewModel {
+        ConcurrentMockURLProtocol.requestHandler = handler
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ConcurrentMockURLProtocol.self]
+        configuration.httpMaximumConnectionsPerHost = 8
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = APIClient(baseURL: server, session: URLSession(configuration: configuration))
+
+        return SessionListViewModel(server: server, client: client)
+    }
+
     @MainActor
     func testSuccessfulLoadRecordsStalenessTimestampAndSuppressesImmediateAutomaticRefresh() async throws {
         let viewModel = try makeViewModel { request in
@@ -3483,6 +3601,64 @@ extension SessionListRefreshBenchmarkTests {
                 activeStreamID: .some(nil)
             )
         )
+    }
+}
+
+/// A URL protocol that answers *asynchronously*, so overlapping requests really
+/// do overlap. `MockURLProtocol` runs its handler inline on `startLoading`,
+/// which serializes every request and makes an in-flight-load scenario
+/// impossible to express. The reply body is decided when the request is issued,
+/// mirroring a real server that answers with the state it saw at that moment.
+final class ConcurrentMockURLProtocol: URLProtocol {
+    struct Reply {
+        let delay: TimeInterval
+        let json: String
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _requestHandler: ((URLRequest) -> Reply)?
+
+    static var requestHandler: ((URLRequest) -> Reply)? {
+        get { lock.lock(); defer { lock.unlock() }; return _requestHandler }
+        set { lock.lock(); defer { lock.unlock() }; _requestHandler = newValue }
+    }
+
+    private var isStopped = false
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let handler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        let reply = handler(request)
+        let request = request
+        DispatchQueue.global().asyncAfter(deadline: .now() + reply.delay) { [weak self] in
+            guard let self, !self.isStopped else { return }
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                      url: url,
+                      statusCode: 200,
+                      httpVersion: nil,
+                      headerFields: ["Content-Type": "application/json"]
+                  )
+            else {
+                self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+                return
+            }
+
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: Data(reply.json.utf8))
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() {
+        isStopped = true
     }
 }
 

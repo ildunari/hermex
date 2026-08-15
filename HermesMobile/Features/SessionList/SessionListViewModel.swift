@@ -250,7 +250,8 @@ final class SessionListViewModel {
         modelContext: ModelContext? = nil,
         animation: Animation? = nil,
         includeArchived: Bool = false,
-        allProfiles: Bool = false
+        allProfiles: Bool = false,
+        forceFresh: Bool = false
     ) async -> Bool {
         let parameters = LoadParameters(includeArchived: includeArchived, allProfiles: allProfiles)
 
@@ -260,14 +261,21 @@ final class SessionListViewModel {
         // duplicates. A caller asking for a *different* list (archived rows, all
         // profiles) awaits the in-flight one, then runs its own fetch so it is
         // never silently served the wrong list.
+        //
+        // `forceFresh` callers (mutations reconciling their own write,
+        // pull-to-refresh) must never join a fetch that was issued *before*
+        // they acted: that response predates the change and would resurrect the
+        // row the user just deleted — and refresh `lastSuccessfulLoadAt` while
+        // doing it, gating away the next 5s of automatic recovery.
         if let inFlight = activeLoadTask {
             let sharedResult = await inFlight.task.value
-            guard inFlight.parameters != parameters else { return sharedResult }
+            guard inFlight.parameters != parameters || forceFresh else { return sharedResult }
             return await load(
                 modelContext: modelContext,
                 animation: animation,
                 includeArchived: includeArchived,
-                allProfiles: allProfiles
+                allProfiles: allProfiles,
+                forceFresh: forceFresh
             )
         }
 
@@ -1467,7 +1475,10 @@ final class SessionListViewModel {
 
         do {
             try await operation()
-            return await load(modelContext: modelContext, animation: animation)
+            // forceFresh: the reconcile must see the server state *after* this
+            // mutation. Joining an already-in-flight fetch would apply a
+            // pre-mutation response and put the deleted/archived row back.
+            return await load(modelContext: modelContext, animation: animation, forceFresh: true)
         } catch {
             guard !isCancellationError(error) else { return false }
 

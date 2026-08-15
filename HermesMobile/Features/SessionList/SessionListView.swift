@@ -281,7 +281,10 @@ struct SessionListView: View {
                 refreshAfterReturningIfNeeded()
             }
             .refreshable {
-                await refreshSessionsAndActiveProfile()
+                // Pull-to-refresh is an explicit user request for current state:
+                // it must never be silently satisfied by a fetch that was already
+                // in flight when the gesture started (review P0-1).
+                await refreshSessionsAndActiveProfile(forceFresh: true)
             }
             .modifier(
                 SessionActionConfirmations(
@@ -1028,8 +1031,8 @@ struct SessionListView: View {
     /// (Perf 5). Projects stay sequential-after-sessions on purpose: whether to
     /// fetch them at all depends on `isViewingCachedData`, which is only known
     /// once the list load has resolved.
-    private func refreshSessionsAndActiveProfile() async {
-        async let sessions: Void = loadSessions()
+    private func refreshSessionsAndActiveProfile(forceFresh: Bool = false) async {
+        async let sessions: Void = loadSessions(forceFresh: forceFresh)
         async let profile: Void = viewModel.loadActiveProfile()
         _ = await (sessions, profile)
     }
@@ -1173,11 +1176,12 @@ struct SessionListView: View {
         await loadSessions()
     }
 
-    private func loadSessions() async {
+    private func loadSessions(forceFresh: Bool = false) async {
         await viewModel.load(
             modelContext: modelContext,
             includeArchived: sessionIncludesArchived,
-            allProfiles: sessionShowsAllProfiles
+            allProfiles: sessionShowsAllProfiles,
+            forceFresh: forceFresh
         )
         guard !Task.isCancelled else { return }
         handleLastError()
