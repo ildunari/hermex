@@ -128,6 +128,7 @@ struct ChatTranscriptView: View {
             }
         }
         .background(chatPalette.chatBackground)
+        .accessibilityIdentifier(isLoading ? "chat.transcript.loading" : "chat.transcript.ready")
     }
 
     private var transcriptScrollView: some View {

@@ -94,6 +94,13 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 """, for: request)
             case "/api/models":
                 requestPaths.noteProfileScopedRequest("/api/models")
+                XCTAssertEqual(
+                    URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?
+                        .queryItems?
+                        .first(where: { $0.name == "freshness" })?
+                        .value,
+                    "session_visit"
+                )
                 return apiTestJSONResponse("""
                 {
                   "default_model": "\(openRouterModel)",
@@ -467,6 +474,13 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 }
                 """, for: request)
             case "/api/models":
+                XCTAssertEqual(
+                    URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?
+                        .queryItems?
+                        .first(where: { $0.name == "freshness" })?
+                        .value,
+                    "session_visit"
+                )
                 return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
             case "/api/reasoning":
                 return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)

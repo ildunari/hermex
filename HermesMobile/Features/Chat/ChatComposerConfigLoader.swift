@@ -109,7 +109,7 @@ struct ChatComposerConfigLoader {
         let sessionPinsProfile = Self.nonEmpty(state.currentProfile) != nil
         async let earlyModelsResult: Result<ModelsResponse, Error>? = sessionPinsProfile
             ? nil
-            : await Self.capture { try await client.models() }
+            : await Self.capture { try await client.models(freshness: .sessionVisit) }
         async let earlyWorkspacesResult: Result<WorkspacesResponse, Error>? = sessionPinsProfile
             ? nil
             : await Self.capture { try await client.workspaces() }
@@ -189,7 +189,7 @@ struct ChatComposerConfigLoader {
         // Reuse the speculative results when the session pinned no profile;
         // otherwise issue them now that the barrier has cleared.
         async let lateModelsResult: Result<ModelsResponse, Error>? = sessionPinsProfile
-            ? await Self.capture { try await client.models() }
+            ? await Self.capture { try await client.models(freshness: .sessionVisit) }
             : nil
         async let lateWorkspacesResult: Result<WorkspacesResponse, Error>? = sessionPinsProfile
             ? await Self.capture { try await client.workspaces() }

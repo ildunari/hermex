@@ -579,6 +579,7 @@ struct SessionInteractiveRow: View {
             )
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("sessionRow.\(session.id)")
         .id(session.id)
         .background(
             session.sessionId == selectedSessionID

@@ -121,6 +121,71 @@ final class OpusActivityPersistenceUITests: XCTestCase {
     }
 }
 
+/// Opt-in benchmark of the production session-list-to-transcript path.
+///
+/// The harness supplies a live server config plus a real session ID. The clock
+/// starts immediately before the row tap and stops only after the transcript's
+/// network reconcile finishes, so this catches navigation, `/api/session`, and
+/// initial canvas rendering regressions together.
+final class SessionOpenPerformanceUITests: XCTestCase {
+    private struct LiveServer: Decodable {
+        let url: String
+        let password: String
+    }
+
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    func testLiveSessionCanvasBecomesReadyWithinBudget() throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let sessionID = environment["HERMEX_BENCH_SESSION_ID"], !sessionID.isEmpty else {
+            throw XCTSkip("Set HERMEX_BENCH_SESSION_ID to a real session ID.")
+        }
+        let budget = TimeInterval(environment["HERMEX_BENCH_BUDGET_SECONDS"] ?? "2.0") ?? 2.0
+        let server = try liveServer()
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "--auto-connect-server", server.url,
+            "--auto-connect-password", server.password,
+        ]
+        app.launch()
+
+        if app.textViews.firstMatch.waitForExistence(timeout: 8) {
+            let back = app.navigationBars.buttons.firstMatch
+            XCTAssertTrue(back.waitForExistence(timeout: 5), "Could not leave the restored session.")
+            back.tap()
+        }
+
+        let row = app.buttons["sessionRow.\(sessionID)"]
+        XCTAssertTrue(row.waitForExistence(timeout: 30), "Benchmark session was not visible in the session list.")
+
+        let startedAt = Date()
+        row.tap()
+        let ready = app.descendants(matching: .any)
+            .matching(identifier: "chat.transcript.ready").firstMatch
+        XCTAssertTrue(ready.waitForExistence(timeout: max(10, budget * 3)), "Transcript never became ready.")
+        let elapsed = Date().timeIntervalSince(startedAt)
+
+        print("HERMEX_SESSION_OPEN_BENCHMARK_SECONDS=\(String(format: "%.3f", elapsed))")
+        XCTAssertLessThan(
+            elapsed,
+            budget,
+            "Session canvas took \(String(format: "%.3f", elapsed))s; budget is \(budget)s."
+        )
+    }
+
+    private func liveServer() throws -> LiveServer {
+        let path = ProcessInfo.processInfo.environment["HERMEX_UITEST_CONFIG"]
+            ?? "/tmp/hermex-uitest-live-server.json"
+        guard let data = FileManager.default.contents(atPath: path) else {
+            throw XCTSkip("Missing live-server config at \(path).")
+        }
+        return try JSONDecoder().decode(LiveServer.self, from: data)
+    }
+}
+
 /// In-simulator navigation coverage for the session-list refresh work.
 ///
 /// These drive real taps (enter a chat, come back) because that is the trigger

@@ -7,6 +7,43 @@ import UniformTypeIdentifiers
 @testable import HermesMobile
 
 final class APIClientConfigurationTests: APIClientTestCase {
+    func testSessionVisitModelsUsesNonBlockingFreshnessHint() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/models")
+            XCTAssertEqual(request.httpMethod, "GET")
+
+            let components = URLComponents(
+                url: try XCTUnwrap(request.url),
+                resolvingAgainstBaseURL: false
+            )
+            let query = Dictionary(
+                uniqueKeysWithValues: (components?.queryItems ?? []).map { ($0.name, $0.value) }
+            )
+            XCTAssertEqual(query["freshness"], "session_visit")
+
+            return apiTestJSONResponse(
+                #"{"default_model":"gpt-5.6","groups":[]}"#,
+                for: request
+            )
+        }
+
+        let response = try await client.models(freshness: .sessionVisit)
+        XCTAssertEqual(response.defaultModel, "gpt-5.6")
+    }
+
+    func testExplicitModelsRefreshKeepsBareEndpoint() async throws {
+        let client = makeClient { request in
+            XCTAssertEqual(request.url?.path, "/api/models")
+            XCTAssertNil(request.url?.query)
+            return apiTestJSONResponse(
+                #"{"default_model":"gpt-5.6","groups":[]}"#,
+                for: request
+            )
+        }
+
+        _ = try await client.models()
+    }
+
     func testReasoningDisplayPrefersStructuredThinkingAndStripsVisibleAnswerEcho() {
         let finalAnswer = """
         **Terminal:** `/Users/hermes` directory listed.
