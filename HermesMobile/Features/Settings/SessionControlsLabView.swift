@@ -4,7 +4,7 @@ import SwiftUI
 /// Deterministic host for the session-list header controls
 /// (`--session-controls-lab`).
 ///
-/// Gesture behaviour for the bell and sort menu has to be verified without a
+/// Gesture behaviour for the inbox toggle and sort menu has to be verified without a
 /// server: the assertions are about filtering, grouping, and badge mechanics,
 /// which must hold regardless of whose sessions are on screen. This mounts the
 /// production `SessionListHeaderControls` and the production grouping/filter
@@ -146,7 +146,11 @@ struct SessionControlsLabView: View {
                 ForEach(sections) { section in
                     Section(section.title) {
                         ForEach(section.sessions, id: \.sessionId) { session in
-                            Text(session.title ?? session.sessionId ?? "—")
+                            SessionRowView(
+                                session: session,
+                                usesInboxStyle: preferences.usesInboxStyle,
+                                projects: Self.catalog
+                            )
                         }
                     }
                 }

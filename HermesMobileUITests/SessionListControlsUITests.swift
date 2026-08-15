@@ -1,6 +1,6 @@
 import XCTest
 
-/// Gesture-level verification for the session-list bell and sort menu.
+/// Gesture-level verification for the session-list inbox toggle and sort menu.
 ///
 /// These are tap behaviours on a `Menu`, which cannot be exercised from unit
 /// tests, and driving the Simulator with synthetic host clicks is unreliable on
@@ -70,14 +70,26 @@ final class SessionListControlsUITests: XCTestCase {
         XCTAssertTrue(inbox.waitForExistence(timeout: 5), "inbox control missing")
         XCTAssertTrue(inbox.isEnabled, "inbox must stay tappable with no pending work")
         XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "list")
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "sessionRow.inboxCard").count,
+            0,
+            "compact mode should not render inbox cards"
+        )
 
         inbox.tap()
         XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "inbox")
         XCTAssertEqual(visibleRows(app), allRows, "inbox is a render mode, not a filter")
+        let inboxCards = app.descendants(matching: .any).matching(identifier: "sessionRow.inboxCard")
+        XCTAssertTrue(inboxCards.firstMatch.waitForExistence(timeout: 5), "inbox cards did not appear")
 
         inbox.tap()
         XCTAssertEqual(app.staticTexts["lab.inboxMode"].label, "list")
         XCTAssertEqual(visibleRows(app), allRows, "second tap should leave the list intact")
+        XCTAssertEqual(
+            app.descendants(matching: .any).matching(identifier: "sessionRow.inboxCard").count,
+            0,
+            "second tap should restore compact rows"
+        )
     }
 
     func testAllProfilesMenuItemTogglesScope() {

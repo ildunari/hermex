@@ -449,6 +449,7 @@ struct SessionListRowsSection: View {
                     session: session,
                     showsMessageCount: showsMessageCount,
                     showsWorkspace: showsWorkspace,
+                    usesInboxStyle: preferences.usesInboxStyle,
                     selectedSessionID: selectedSessionID,
                     actions: actions
                 )
