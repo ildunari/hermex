@@ -984,7 +984,8 @@ struct SessionListView: View {
         return ActiveSessionMonitorTaskID(
             streamIDs: SessionListViewModel.activeStreamIDs(in: activeSessions),
             hasActiveRows: !activeSessions.isEmpty,
-            isViewingCachedData: viewModel.isViewingCachedData
+            isViewingCachedData: viewModel.isViewingCachedData,
+            scenePhase: scenePhase
         )
     }
 
@@ -1136,9 +1137,9 @@ struct SessionListView: View {
             // Nothing to reconcile, or the app is backgrounded: keep the loop
             // alive but skip the request (Perf 8 — no polling while inactive)
             // and idle at a slower cadence so a dormant loop is nearly free.
-            let isPollable = taskID.hasActiveRows
-                && !taskID.isViewingCachedData
-                && scenePhase == .active
+            // The phase comes from the task identity, so a phase change has
+            // already restarted this loop with a fresh value (review P1-2).
+            let isPollable = taskID.isPollable
 
             do {
                 try await Task.sleep(
@@ -1562,10 +1563,25 @@ private struct SessionSearchTaskID: Hashable {
     let isViewingCachedData: Bool
 }
 
-private struct ActiveSessionMonitorTaskID: Hashable {
+/// Identity for the active-row monitor loop.
+///
+/// `scenePhase` is part of the identity on purpose. `monitorActiveSessionRows`
+/// is a method on the `SessionListView` *struct*, and the `.task(id:)` closure
+/// captures a copy of it. `@Environment(\.scenePhase)` is a resolved stored
+/// value on that copy — unlike `@State`/`viewModel`, which are live boxes — so a
+/// running loop would otherwise read a frozen phase forever: polling on in the
+/// background, or never resuming after a foreground (review P1-2). Including it
+/// here tears the loop down and restarts it with the current phase.
+struct ActiveSessionMonitorTaskID: Hashable {
     let streamIDs: [String]
     let hasActiveRows: Bool
     let isViewingCachedData: Bool
+    let scenePhase: ScenePhase
+
+    /// True when the loop should actually issue requests this tick.
+    var isPollable: Bool {
+        hasActiveRows && !isViewingCachedData && scenePhase == .active
+    }
 }
 
 private struct PendingNewChatView: View {

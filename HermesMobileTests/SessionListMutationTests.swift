@@ -2,6 +2,7 @@ import XCTest
 import AVFoundation
 import ImageIO
 import SwiftData
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 @testable import HermesMobile
@@ -2997,6 +2998,78 @@ final class SessionListMutationTests: XCTestCase {
         let result = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-1"])
 
         XCTAssertEqual(result, .failed)
+    }
+
+    // MARK: - Active-row monitor identity (review P1-2)
+
+    /// The monitor loop is a `.task(id:)` on a SwiftUI *struct*, so anything it
+    /// reads must either be a live box (`@State`/`viewModel`) or part of the task
+    /// identity. `@Environment(\.scenePhase)` is neither, so it must be carried
+    /// in the identity or the running loop reads a frozen phase forever.
+    @MainActor
+    func testMonitorTaskIdentityChangesWithScenePhaseSoTheLoopIsRestarted() {
+        let active = ActiveSessionMonitorTaskID(
+            streamIDs: ["stream-1"],
+            hasActiveRows: true,
+            isViewingCachedData: false,
+            scenePhase: .active
+        )
+        let backgrounded = ActiveSessionMonitorTaskID(
+            streamIDs: ["stream-1"],
+            hasActiveRows: true,
+            isViewingCachedData: false,
+            scenePhase: .background
+        )
+
+        XCTAssertNotEqual(
+            active,
+            backgrounded,
+            "Backgrounding must change the task identity, or the loop keeps polling while inactive"
+        )
+        XCTAssertTrue(active.isPollable)
+        XCTAssertFalse(backgrounded.isPollable, "Perf 8: no polling while the app is inactive")
+    }
+
+    /// Failure B from the review: a loop started while inactive must become
+    /// pollable again on foreground without waiting for stream IDs to change.
+    @MainActor
+    func testMonitorBecomesPollableAgainWhenReturningToActive() {
+        let inactive = ActiveSessionMonitorTaskID(
+            streamIDs: ["stream-1"],
+            hasActiveRows: true,
+            isViewingCachedData: false,
+            scenePhase: .inactive
+        )
+        let foregrounded = ActiveSessionMonitorTaskID(
+            streamIDs: inactive.streamIDs,
+            hasActiveRows: inactive.hasActiveRows,
+            isViewingCachedData: inactive.isViewingCachedData,
+            scenePhase: .active
+        )
+
+        XCTAssertFalse(inactive.isPollable)
+        XCTAssertNotEqual(inactive, foregrounded)
+        XCTAssertTrue(foregrounded.isPollable)
+    }
+
+    @MainActor
+    func testMonitorIsNotPollableWithoutActiveRowsOrOnCachedData() {
+        XCTAssertFalse(
+            ActiveSessionMonitorTaskID(
+                streamIDs: [],
+                hasActiveRows: false,
+                isViewingCachedData: false,
+                scenePhase: .active
+            ).isPollable
+        )
+        XCTAssertFalse(
+            ActiveSessionMonitorTaskID(
+                streamIDs: ["stream-1"],
+                hasActiveRows: true,
+                isViewingCachedData: true,
+                scenePhase: .active
+            ).isPollable
+        )
     }
 
     // MARK: - Local row patch (Perf 6)
