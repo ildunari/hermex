@@ -101,6 +101,13 @@ final class SessionListViewModel {
     /// Pull-to-refresh and the initial load are always allowed through.
     static let automaticRefreshStaleness: TimeInterval = 5
 
+    /// Consecutive `/api/chat/stream/status` failures per stream ID. A stream
+    /// that vanished server-side errors forever, so after
+    /// `deadStreamFailureThreshold` strikes the row is reconciled with a list
+    /// reload rather than polled indefinitely.
+    private var streamStatusFailureCounts: [String: Int] = [:]
+    static let deadStreamFailureThreshold = 3
+
     private struct LoadParameters: Equatable {
         let includeArchived: Bool
         let allProfiles: Bool
@@ -506,6 +513,7 @@ final class SessionListViewModel {
         for streamID in streamIDs {
             do {
                 let response = try await client.chatStreamStatus(streamID: streamID)
+                streamStatusFailureCounts[streamID] = nil
                 guard response.active == false else { continue }
                 return await load(modelContext: modelContext) ? .reloaded : loadFailureRefreshResult
             } catch {
@@ -514,7 +522,18 @@ final class SessionListViewModel {
                     lastError = error
                     return .failed
                 }
-                continue
+
+                // A stream that no longer exists server-side errors on every
+                // poll. Treating that as "still running" left the row stuck
+                // "active" forever, so after a few consecutive strikes the row
+                // is reconciled against the list instead of polled again. A
+                // transient blip resets the count on its next success.
+                let failureCount = (streamStatusFailureCounts[streamID] ?? 0) + 1
+                streamStatusFailureCounts[streamID] = failureCount
+                guard failureCount >= Self.deadStreamFailureThreshold else { continue }
+
+                streamStatusFailureCounts[streamID] = nil
+                return await load(modelContext: modelContext) ? .reloaded : loadFailureRefreshResult
             }
         }
 

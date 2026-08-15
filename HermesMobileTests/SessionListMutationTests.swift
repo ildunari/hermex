@@ -2808,6 +2808,79 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    // MARK: - Dead stream reconciliation (Bug 3)
+
+    @MainActor
+    func testRepeatedStreamStatusFailuresReconcileTheRowWithAListReload() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                _ = counts.incrementLoadCount()
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            default:
+                throw URLError(.badServerResponse)
+            }
+        }
+
+        for attempt in 1..<SessionListViewModel.deadStreamFailureThreshold {
+            let result = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["ghost-stream"])
+            XCTAssertEqual(result, .unchanged, "Attempt \(attempt) must not reload yet")
+            XCTAssertEqual(counts.snapshot.loadCount, 0)
+        }
+
+        let finalResult = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["ghost-stream"])
+
+        XCTAssertEqual(finalResult, .reloaded)
+        XCTAssertEqual(counts.snapshot.loadCount, 1)
+    }
+
+    @MainActor
+    func testStreamStatusFailureCounterResetsAfterAnActiveResponse() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let shouldFail = LockedFlag(initialValue: true)
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                _ = counts.incrementLoadCount()
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            default:
+                if shouldFail.value { throw URLError(.badServerResponse) }
+                return apiTestJSONResponse(#"{"active": true}"#, for: request)
+            }
+        }
+
+        // Two strikes, then a healthy response clears the count.
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["live-stream"])
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["live-stream"])
+        shouldFail.value = false
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["live-stream"])
+        shouldFail.value = true
+
+        // A fresh strike must therefore not immediately trip the threshold.
+        let result = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["live-stream"])
+
+        XCTAssertEqual(result, .unchanged)
+        XCTAssertEqual(counts.snapshot.loadCount, 0)
+    }
+
+    @MainActor
+    func testUnauthorizedStreamStatusStillFailsImmediatelyWithoutRetries() async throws {
+        let viewModel = try makeViewModel { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+
+        let result = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["stream-1"])
+
+        XCTAssertEqual(result, .failed)
+    }
+
     @MainActor
     private func makeViewModel(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
