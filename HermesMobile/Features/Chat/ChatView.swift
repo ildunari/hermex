@@ -281,6 +281,11 @@ struct ChatView: View {
     let session: SessionSummary
     let server: URL
     let onAPIError: (Error) -> Void
+    /// Publishes what this chat knows about its own row — new title, new
+    /// recency, streaming state — so the session list can be correct the moment
+    /// you leave, without waiting for a network reconcile. Defaults to a no-op
+    /// for the surfaces that don't own a list (gallery, archived, forks).
+    let onSessionUpdate: (SessionLocalUpdate) -> Void
     let loadsInitialMessages: Bool
     /// When true, the composer auto-starts voice dictation on appear — set by the
     /// "New Chat with Voice" App Intent (#338). Defaults to false for normal opens.
@@ -335,6 +340,7 @@ struct ChatView: View {
         session: SessionSummary,
         server: URL,
         onAPIError: @escaping (Error) -> Void,
+        onSessionUpdate: @escaping (SessionLocalUpdate) -> Void = { _ in },
         initialDraft: String = "",
         initialAttachments: [SharedAttachmentImport] = [],
         loadsInitialMessages: Bool = true,
@@ -344,6 +350,7 @@ struct ChatView: View {
         self.session = session
         self.server = server
         self.onAPIError = onAPIError
+        self.onSessionUpdate = onSessionUpdate
         self.loadsInitialMessages = loadsInitialMessages
         self.autoStartsVoiceInput = autoStartsVoiceInput
         _draftMessage = State(initialValue: initialDraft)
@@ -1571,6 +1578,9 @@ struct ChatView: View {
 
         if didStart {
             ChatHaptics.messageSent(isEnabled: isHapticsEnabled)
+            // A send makes this the most recent session; publish immediately so
+            // the list row jumps to the top even if the user leaves mid-turn.
+            publishSessionUpdate(isStreaming: nil, activeStreamID: nil)
             if shouldRestoreFocusAfterSend {
                 requestComposerFocusIfPossible()
             } else {
@@ -1988,6 +1998,11 @@ struct ChatView: View {
             activeStreamStatusRefreshTask?.cancel()
             activeStreamStatusRefreshTask = nil
 
+            // The turn just ended: tell the session list its row is idle again
+            // and carries this chat's current title/recency, so the row is right
+            // immediately instead of after the next list fetch.
+            publishSessionUpdate(isStreaming: false, activeStreamID: .some(nil))
+
             if responseCompletionNotificationTracker.shouldEndBackgroundTaskOnStreamInactive(
                 completionTrigger: viewModel.responseCompletionHapticTrigger
             ) {
@@ -2003,7 +2018,29 @@ struct ChatView: View {
             return
         }
 
+        publishSessionUpdate(isStreaming: true, activeStreamID: .some(activeStreamID))
         startActiveStreamStatusRefreshTask(streamID: activeStreamID)
+    }
+
+    /// Sends this chat's current row metadata to whoever owns the session list.
+    /// `lastActive` is a unix timestamp in seconds, matching the list's
+    /// `last_message_at` / `updated_at` fields.
+    private func publishSessionUpdate(isStreaming: Bool?, activeStreamID: String??) {
+        // The view's `session` is the row that opened this chat, so its ID is the
+        // one the list keys on. `ChatViewModel.sessionID` is private and would be
+        // the same value for an opened session anyway.
+        let sessionID = session.sessionId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !sessionID.isEmpty else { return }
+
+        onSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: sessionID,
+                title: viewModel.displayTitle,
+                lastActive: Date().timeIntervalSince1970,
+                isStreaming: isStreaming,
+                activeStreamID: activeStreamID
+            )
+        )
     }
 
     private func startActiveStreamStatusRefreshTask(streamID: String) {

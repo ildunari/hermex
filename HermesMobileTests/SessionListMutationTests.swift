@@ -2999,6 +2999,50 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    /// The chat→list channel contract: `ChatView` publishes a title + recency +
+    /// idle streaming state when a turn ends, and the list must adopt all of it
+    /// in one patch, clearing the finished stream so the row stops rendering as
+    /// active.
+    @MainActor
+    func testChatTurnEndUpdateClearsStreamingAndRefreshesRowMetadata() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-1",
+                  "title": "Untitled",
+                  "last_message_at": 100,
+                  "is_streaming": true,
+                  "active_stream_id": "stream-1",
+                  "message_count": 2,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        XCTAssertTrue(SessionRowView.isActiveStreaming(try XCTUnwrap(viewModel.sessions.first)))
+
+        // Exactly the payload ChatView.publishSessionUpdate sends at turn end.
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "session-1",
+                title: "Renamed by the agent",
+                lastActive: 1_800_000_000,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
+
+        let row = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertEqual(row.title, "Renamed by the agent")
+        XCTAssertEqual(row.lastMessageAt, 1_800_000_000)
+        XCTAssertFalse(SessionRowView.isActiveStreaming(row))
+        XCTAssertEqual(row.messageCount, 2)
+    }
+
     @MainActor
     private func makeViewModel(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
