@@ -270,7 +270,7 @@ struct SessionListView: View {
                     from: oldValue,
                     to: newValue,
                     suppressEmptyPlaceholders: viewModel.removeEmptySidebarPlaceholders,
-                    refreshSessions: refreshAfterReturningIfNeeded
+                    refreshSessions: refreshAfterReturningIfNeeded(force:)
                 )
             }
             .onChange(of: scenePhase) { _, newPhase in
@@ -380,7 +380,8 @@ struct SessionListView: View {
                 server: server,
                 viewModel: viewModel,
                 onAPIError: authManager.handleAPIError,
-                onSessionCreated: rememberCreatedSession
+                onSessionCreated: rememberCreatedSession,
+                onSessionUpdate: applyLocalSessionUpdate
             )
             .id(route.id)
         case .utility(let destination):
@@ -1117,9 +1118,13 @@ struct SessionListView: View {
     /// Bumps the return-refresh trigger, subject to the staleness gate so a
     /// burst of automatic triggers (onAppear + destination change + scene-active)
     /// costs one fetch rather than three.
-    private func refreshAfterReturningIfNeeded() {
+    ///
+    /// `force` bypasses the gate for the one return that is not merely
+    /// "the list might be stale": leaving a new chat, where the just-created row
+    /// exists nowhere locally and a suppressed refresh loses it entirely.
+    private func refreshAfterReturningIfNeeded(force: Bool = false) {
         guard didCompleteInitialLoad else { return }
-        guard viewModel.shouldRunAutomaticRefresh() else { return }
+        guard force || viewModel.shouldRunAutomaticRefresh() else { return }
         returnRefreshID = UUID()
     }
 
@@ -1417,11 +1422,18 @@ enum SessionListNewChatReturn {
     /// it exists so a just-created Untitled placeholder cannot flash during the
     /// navigation transition, and running it for ordinary sessions would prune
     /// rows the server still considers real.
+    ///
+    /// A newChat return refreshes with `force: true`. `createSession` never
+    /// inserts the new row (a fresh session is an `isEmptySidebarPlaceholder`),
+    /// so the row only exists after a refetch — but suppression runs
+    /// unconditionally while the refresh goes through the 5s staleness gate.
+    /// Send "hi" and back out inside that window and the session was pruned
+    /// locally, not refetched, and unreachable from the sidebar (review P1-3).
     static func run(
         from oldValue: SessionNavigationDestination?,
         to newValue: SessionNavigationDestination?,
         suppressEmptyPlaceholders: () -> Void,
-        refreshSessions: () -> Void
+        refreshSessions: (_ force: Bool) -> Void
     ) {
         guard didLeaveChat(from: oldValue, to: newValue) else { return }
 
@@ -1430,9 +1442,11 @@ enum SessionListNewChatReturn {
             // during the navigation transition. The refresh then adopts the server's
             // latest metadata for a new chat that has become contentful.
             suppressEmptyPlaceholders()
+            refreshSessions(true)
+            return
         }
 
-        refreshSessions()
+        refreshSessions(false)
     }
 
     /// True when the destination change means the user left a chat: the old
@@ -1584,7 +1598,7 @@ struct ActiveSessionMonitorTaskID: Hashable {
     }
 }
 
-private struct PendingNewChatView: View {
+struct PendingNewChatView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
@@ -1594,6 +1608,11 @@ private struct PendingNewChatView: View {
     let viewModel: SessionListViewModel
     let onAPIError: (Error) -> Void
     let onSessionCreated: (SessionSummary) -> Void
+    /// Forwarded to the created chat's `ChatView`. A brand-new chat is exactly
+    /// the session the list knows nothing about — no title, no recency, no row
+    /// at all — so leaving it without this channel wired meant the local-patch
+    /// path was missing for its highest-value case (review P1-4).
+    let onSessionUpdate: (SessionLocalUpdate) -> Void
     let initialAttachments: [SharedAttachmentImport]
     let autoStartsVoiceInput: Bool
     let profileName: String?
@@ -1613,12 +1632,14 @@ private struct PendingNewChatView: View {
         server: URL,
         viewModel: SessionListViewModel,
         onAPIError: @escaping (Error) -> Void,
-        onSessionCreated: @escaping (SessionSummary) -> Void = { _ in }
+        onSessionCreated: @escaping (SessionSummary) -> Void = { _ in },
+        onSessionUpdate: @escaping (SessionLocalUpdate) -> Void = { _ in }
     ) {
         self.server = server
         self.viewModel = viewModel
         self.onAPIError = onAPIError
         self.onSessionCreated = onSessionCreated
+        self.onSessionUpdate = onSessionUpdate
         self.initialAttachments = initialAttachments
         self.autoStartsVoiceInput = autoStartsVoiceInput
         self.profileName = profileName
@@ -1628,15 +1649,7 @@ private struct PendingNewChatView: View {
     var body: some View {
         Group {
             if let createdSession {
-                ChatView(
-                    session: createdSession,
-                    server: server,
-                    onAPIError: onAPIError,
-                    initialDraft: draftMessage,
-                    initialAttachments: initialAttachments,
-                    loadsInitialMessages: false,
-                    autoStartsVoiceInput: autoStartsVoiceInput
-                )
+                chatView(for: createdSession)
             } else {
                 pendingContent
             }
@@ -1649,6 +1662,21 @@ private struct PendingNewChatView: View {
         .task {
             await createSessionIfNeeded()
         }
+    }
+
+    /// Extracted so a test can assert the created chat really carries the
+    /// session-update channel; a SwiftUI body cannot be driven headlessly.
+    func chatView(for session: SessionSummary) -> ChatView {
+        ChatView(
+            session: session,
+            server: server,
+            onAPIError: onAPIError,
+            onSessionUpdate: onSessionUpdate,
+            initialDraft: draftMessage,
+            initialAttachments: initialAttachments,
+            loadsInitialMessages: false,
+            autoStartsVoiceInput: autoStartsVoiceInput
+        )
     }
 
     private var pendingContent: some View {

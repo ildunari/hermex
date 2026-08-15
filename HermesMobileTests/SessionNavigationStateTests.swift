@@ -167,10 +167,12 @@ final class SessionNavigationStateTests: XCTestCase {
             from: oldDestination,
             to: state.destination,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
-        XCTAssertEqual(events, [.suppressedPlaceholders, .refreshedSessions])
+        // Forced: `createSession` never inserts the row locally, so a gated
+        // refresh here loses the session the user just created (review P1-3).
+        XCTAssertEqual(events, [.suppressedPlaceholders, .refreshedSessions(force: true)])
     }
 
     func testReturningFromEmptyNewChatSuppressesPlaceholderThenRefreshesSessions() {
@@ -185,10 +187,52 @@ final class SessionNavigationStateTests: XCTestCase {
             from: oldDestination,
             to: state.destination,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
-        XCTAssertEqual(events, [.suppressedPlaceholders, .refreshedSessions])
+        // Forced: `createSession` never inserts the row locally, so a gated
+        // refresh here loses the session the user just created (review P1-3).
+        XCTAssertEqual(events, [.suppressedPlaceholders, .refreshedSessions(force: true)])
+    }
+
+    /// P1-3: placeholder suppression runs unconditionally on a newChat return,
+    /// but the refresh went through the 5s staleness gate. Load the list, tap
+    /// New Chat, send "hi", back out inside 5s and the just-created row was
+    /// pruned locally and never refetched — present in no list row and, with the
+    /// `.newChat` route gone, unreachable from the sidebar. Only an *unforced*
+    /// refresh can be suppressed, so this return must force.
+    func testReturningFromNewChatForcesTheRefreshPastTheStalenessGate() {
+        var forcedRefreshes: [Bool] = []
+        var didSuppress = false
+
+        SessionListNewChatReturn.run(
+            from: .newChat(PendingNewChatRoute()),
+            to: nil,
+            suppressEmptyPlaceholders: { didSuppress = true },
+            refreshSessions: { forcedRefreshes.append($0) }
+        )
+
+        XCTAssertTrue(didSuppress)
+        XCTAssertEqual(
+            forcedRefreshes,
+            [true],
+            "Suppressing placeholders without a guaranteed refetch can lose a brand-new session"
+        )
+    }
+
+    /// The counterpart: an ordinary chat return has nothing that only exists
+    /// server-side, so it stays gated and a burst still costs one fetch.
+    func testReturningFromAnExistingChatStaysGated() {
+        var forcedRefreshes: [Bool] = []
+
+        SessionListNewChatReturn.run(
+            from: .session(SessionSummary(sessionId: "session-1")),
+            to: nil,
+            suppressEmptyPlaceholders: { XCTFail("newChat-only behavior") },
+            refreshSessions: { forcedRefreshes.append($0) }
+        )
+
+        XCTAssertEqual(forcedRefreshes, [false])
     }
 
     func testReplacingNewChatRouteDoesNotRefreshSessions() {
@@ -200,7 +244,7 @@ final class SessionNavigationStateTests: XCTestCase {
             from: .newChat(firstRoute),
             to: .newChat(secondRoute),
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
         XCTAssertTrue(events.isEmpty)
@@ -217,12 +261,12 @@ final class SessionNavigationStateTests: XCTestCase {
             from: .session(session),
             to: nil,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
         XCTAssertEqual(
             events,
-            [.refreshedSessions],
+            [.refreshedSessions(force: false)],
             "Placeholder suppression is a newChat-only behavior and must not run here"
         )
     }
@@ -234,10 +278,10 @@ final class SessionNavigationStateTests: XCTestCase {
             from: .session(SessionSummary(sessionId: "session-1")),
             to: .session(SessionSummary(sessionId: "session-2")),
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
-        XCTAssertEqual(events, [.refreshedSessions])
+        XCTAssertEqual(events, [.refreshedSessions(force: false)])
     }
 
     func testReselectingTheSameChatDoesNotRefresh() {
@@ -248,7 +292,7 @@ final class SessionNavigationStateTests: XCTestCase {
             from: .session(SessionSummary(sessionId: "session-1")),
             to: .session(session),
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
         XCTAssertTrue(events.isEmpty, "The same session is not a return")
@@ -261,7 +305,7 @@ final class SessionNavigationStateTests: XCTestCase {
             from: nil,
             to: .session(SessionSummary(sessionId: "session-1")),
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
         XCTAssertTrue(events.isEmpty)
@@ -274,7 +318,7 @@ final class SessionNavigationStateTests: XCTestCase {
             from: .utility(.settings(nil)),
             to: nil,
             suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
-            refreshSessions: { events.append(.refreshedSessions) }
+            refreshSessions: { force in events.append(.refreshedSessions(force: force)) }
         )
 
         XCTAssertTrue(events.isEmpty, "Settings and other utility screens do not change session rows")
@@ -363,7 +407,7 @@ final class SessionNavigationStateTests: XCTestCase {
 
 private enum NewChatReturnEvent: Equatable {
     case suppressedPlaceholders
-    case refreshedSessions
+    case refreshedSessions(force: Bool)
 }
 
 private actor SessionInitialLoadEventRecorder {

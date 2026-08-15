@@ -3072,6 +3072,39 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    // MARK: - New-chat local-patch wiring (review P1-4)
+
+    /// The highest-value case for the local-patch channel is a brand-new chat:
+    /// the list has no row for it at all, so its title/recency/streaming state
+    /// exist nowhere else. `PendingNewChatView` built its `ChatView` without
+    /// `onSessionUpdate`, silently taking the no-op default, so a new chat never
+    /// published anything.
+    @MainActor
+    func testPendingNewChatForwardsTheSessionUpdateChannelIntoItsChatView() throws {
+        let published = LockedSessionUpdateRecorder()
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+        let pendingNewChat = PendingNewChatView(
+            server: server,
+            viewModel: viewModel,
+            onAPIError: { _ in },
+            onSessionUpdate: { published.record($0) }
+        )
+
+        let chatView = pendingNewChat.chatView(for: SessionSummary(sessionId: "created-session"))
+        chatView.onSessionUpdate(
+            SessionLocalUpdate(sessionID: "created-session", title: "First turn", lastActive: 42)
+        )
+
+        XCTAssertEqual(
+            published.updates,
+            [SessionLocalUpdate(sessionID: "created-session", title: "First turn", lastActive: 42)],
+            "A new chat must be able to publish its row metadata to the list"
+        )
+    }
+
     // MARK: - Local row patch (Perf 6)
 
     @MainActor
@@ -3674,6 +3707,24 @@ extension SessionListRefreshBenchmarkTests {
                 activeStreamID: .some(nil)
             )
         )
+    }
+}
+
+/// Collects `SessionLocalUpdate`s published through a chat's update channel.
+final class LockedSessionUpdateRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _updates: [SessionLocalUpdate] = []
+
+    func record(_ update: SessionLocalUpdate) {
+        lock.lock()
+        defer { lock.unlock() }
+        _updates.append(update)
+    }
+
+    var updates: [SessionLocalUpdate] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _updates
     }
 }
 
