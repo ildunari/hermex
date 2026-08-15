@@ -540,6 +540,22 @@ final class SessionListViewModel {
         return .unchanged
     }
 
+    /// Applies a locally known change to one row — the title the chat just set,
+    /// its new recency, its streaming state — with no network round trip, so the
+    /// list is correct the instant you leave a chat. The background reconcile
+    /// still runs and wins if the server disagrees.
+    ///
+    /// Rows are sorted at render time in `visibleSessions`, so the stored array
+    /// intentionally keeps its order here; the patched row moves on next render.
+    func applyLocalSessionUpdate(_ update: SessionLocalUpdate) {
+        guard !update.isEmpty,
+              let sessionID = Self.nonEmpty(update.sessionID),
+              let index = sessions.firstIndex(where: { $0.sessionId == sessionID })
+        else { return }
+
+        sessions[index] = sessions[index].applying(update)
+    }
+
     func loadSessionForDeepLink(id rawSessionID: String, modelContext: ModelContext? = nil) async -> SessionSummary? {
         let sessionID = rawSessionID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !sessionID.isEmpty else { return nil }

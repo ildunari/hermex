@@ -356,6 +356,86 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             attention: attention
         )
     }
+
+    /// Mirrors all stored fields so a local update preserves session-list
+    /// metadata. Same pitfall as ``replacingTitle(with:)``: update this when
+    /// `SessionSummary` gains a new stored property, or the patch silently drops
+    /// badges, attention state, or source markers.
+    func applying(_ update: SessionLocalUpdate) -> SessionSummary {
+        SessionSummary(
+            sessionId: sessionId,
+            title: update.title ?? title,
+            workspace: workspace,
+            model: model,
+            modelProvider: modelProvider,
+            messageCount: messageCount,
+            createdAt: createdAt,
+            updatedAt: update.lastActive ?? updatedAt,
+            lastMessageAt: update.lastActive ?? lastMessageAt,
+            pinned: pinned,
+            archived: archived,
+            projectId: projectId,
+            profile: profile,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            estimatedCost: estimatedCost,
+            // Double optional: `.none` leaves the value alone, `.some(nil)`
+            // explicitly clears a finished stream.
+            activeStreamId: update.activeStreamID ?? activeStreamId,
+            isStreaming: update.isStreaming ?? isStreaming,
+            isCliSession: isCliSession,
+            userMessageCount: userMessageCount,
+            hasPendingUserMessage: hasPendingUserMessage,
+            pendingStartedAt: pendingStartedAt,
+            worktreePath: worktreePath,
+            sourceTag: sourceTag,
+            rawSource: rawSource,
+            sessionSource: sessionSource,
+            sourceLabel: sourceLabel,
+            parentSessionId: parentSessionId,
+            relationshipType: relationshipType,
+            readOnly: readOnly,
+            isReadOnly: isReadOnly,
+            matchType: matchType,
+            attention: attention
+        )
+    }
+}
+
+/// A change to one session row that the app already knows locally — typically
+/// produced when a chat finishes a turn — so the session list can be correct
+/// before any network reconcile lands.
+///
+/// Every field is optional and `nil` means "leave it alone". `activeStreamID` is
+/// a double optional so a finished stream can be cleared explicitly
+/// (`.some(nil)`) rather than merely left untouched.
+struct SessionLocalUpdate: Equatable {
+    let sessionID: String
+    let title: String?
+    /// Unix timestamp in seconds, matching `lastMessageAt` / `updatedAt`.
+    let lastActive: Double?
+    let isStreaming: Bool?
+    let activeStreamID: String??
+
+    init(
+        sessionID: String,
+        title: String? = nil,
+        lastActive: Double? = nil,
+        isStreaming: Bool? = nil,
+        activeStreamID: String?? = nil
+    ) {
+        self.sessionID = sessionID
+        self.title = title
+        self.lastActive = lastActive
+        self.isStreaming = isStreaming
+        self.activeStreamID = activeStreamID
+    }
+
+    /// True when the update carries nothing to apply, so callers can skip work
+    /// (and view state churn) entirely.
+    var isEmpty: Bool {
+        title == nil && lastActive == nil && isStreaming == nil && activeStreamID == nil
+    }
 }
 
 extension SessionSummary {

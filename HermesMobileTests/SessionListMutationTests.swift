@@ -2881,6 +2881,124 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertEqual(result, .failed)
     }
 
+    // MARK: - Local row patch (Perf 6)
+
+    @MainActor
+    func testApplyLocalSessionUpdatePatchesRowWithoutNetwork() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            _ = counts.incrementLoadCount()
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-1",
+                  "title": "Old title",
+                  "last_message_at": 100,
+                  "message_count": 3,
+                  "pinned": true,
+                  "archived": false,
+                  "project_id": "project-1",
+                  "profile": "work",
+                  "attention": { "kind": "approval", "count": 2, "severity": "critical" }
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        let requestsAfterLoad = counts.snapshot.loadCount
+
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "session-1",
+                title: "New title",
+                lastActive: 500,
+                isStreaming: true,
+                activeStreamID: .some("stream-9")
+            )
+        )
+
+        let patched = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "session-1" })
+        XCTAssertEqual(patched.title, "New title")
+        XCTAssertEqual(patched.lastMessageAt, 500)
+        XCTAssertEqual(patched.updatedAt, 500)
+        XCTAssertEqual(patched.isStreaming, true)
+        XCTAssertEqual(patched.activeStreamId, "stream-9")
+        XCTAssertEqual(counts.snapshot.loadCount, requestsAfterLoad, "Local patch must not fetch")
+        // The pitfall guarded by replacingTitle: every unrelated field survives.
+        XCTAssertEqual(patched.messageCount, 3)
+        XCTAssertEqual(patched.pinned, true)
+        XCTAssertEqual(patched.projectId, "project-1")
+        XCTAssertEqual(patched.profile, "work")
+        XCTAssertEqual(patched.attention, SessionAttention(kind: .approval, count: 2, severity: .critical))
+    }
+
+    @MainActor
+    func testApplyLocalSessionUpdateIgnoresNilFieldsAndUnknownSessions() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-1",
+                  "title": "Keep me",
+                  "last_message_at": 100,
+                  "is_streaming": true,
+                  "active_stream_id": "stream-1",
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        let before = viewModel.sessions
+
+        viewModel.applyLocalSessionUpdate(SessionLocalUpdate(sessionID: "session-1"))
+        XCTAssertEqual(viewModel.sessions, before, "An empty update must be a no-op")
+
+        viewModel.applyLocalSessionUpdate(SessionLocalUpdate(sessionID: "missing", title: "Nope"))
+        XCTAssertEqual(viewModel.sessions, before, "An unknown session must be a no-op")
+
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(sessionID: "session-1", isStreaming: false, activeStreamID: .some(nil))
+        )
+        let cleared = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertEqual(cleared.title, "Keep me")
+        XCTAssertEqual(cleared.isStreaming, false)
+        XCTAssertNil(cleared.activeStreamId)
+    }
+
+    /// Sorting happens at render time in `visibleSessions`, so the patched row
+    /// must surface in the right order there even though the stored array is
+    /// left in place.
+    @MainActor
+    func testLocalPatchReordersVisibleSessionsByNewRecency() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                { "session_id": "older", "title": "Older", "last_message_at": 100, "archived": false },
+                { "session_id": "newer", "title": "Newer", "last_message_at": 200, "archived": false }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["newer", "older"]
+        )
+
+        viewModel.applyLocalSessionUpdate(SessionLocalUpdate(sessionID: "older", lastActive: 300))
+
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["older", "newer"]
+        )
+    }
+
     @MainActor
     private func makeViewModel(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -3256,27 +3374,37 @@ extension SessionListRefreshBenchmarkTests {
     /// BENCHMARK-SUBJECT: mirrors `SessionListView.refreshSessionsAndActiveProfile`.
     @MainActor
     static func refreshSessionsAndActiveProfile(_ viewModel: SessionListViewModel) async {
+        async let sessions: Void = loadSessions(viewModel)
+        async let profile: Void = viewModel.loadActiveProfile()
+        _ = await (sessions, profile)
+    }
+
+    /// BENCHMARK-SUBJECT: mirrors `SessionListView.loadSessions`.
+    @MainActor
+    static func loadSessions(_ viewModel: SessionListViewModel) async {
         await viewModel.load()
         if !viewModel.isViewingCachedData {
             await viewModel.loadProjects()
         }
-        await viewModel.loadActiveProfile()
     }
 
     /// BENCHMARK-SUBJECT: three automatic refresh triggers (onAppear +
-    /// returnRefreshID + scene-active) firing inside one second.
+    /// return-from-chat + scene-active) firing inside one second. Each goes
+    /// through the staleness gate the view now consults.
     @MainActor
     static func runAutomaticTriggerBurst(_ viewModel: SessionListViewModel) async {
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<3 {
                 group.addTask { @MainActor in
+                    guard viewModel.shouldRunAutomaticRefresh() else { return }
                     await refreshSessionsAndActiveProfile(viewModel)
                 }
             }
         }
     }
 
-    /// BENCHMARK-SUBJECT: bringing the list row up to date after leaving a chat.
+    /// BENCHMARK-SUBJECT: bringing the list row up to date after leaving a chat,
+    /// via the local patch channel `SessionListView` wires into `ChatView`.
     @MainActor
     static func applyChatReturnUpdate(
         _ viewModel: SessionListViewModel,
@@ -3284,9 +3412,15 @@ extension SessionListRefreshBenchmarkTests {
         title: String,
         lastActive: Double
     ) async {
-        // No local patch channel yet, so the row is only correct once a full
-        // list fetch returns.
-        await viewModel.load()
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: sessionID,
+                title: title,
+                lastActive: lastActive,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
     }
 }
 
