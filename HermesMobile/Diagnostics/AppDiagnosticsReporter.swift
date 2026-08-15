@@ -4,6 +4,7 @@ import MetricKit
 
 enum AppDiagnosticsPreference {
     static let isEnabledKey = "appDiagnostics.shareWithServer"
+    static let needsPurgeKey = "appDiagnostics.needsConsentPurge"
 
     static var isEnabled: Bool {
         let defaults = UserDefaults.standard
@@ -12,11 +13,67 @@ enum AppDiagnosticsPreference {
         }
         return defaults.bool(forKey: isEnabledKey)
     }
+
+    static var needsPurge: Bool {
+        UserDefaults.standard.bool(forKey: needsPurgeKey)
+    }
 }
 
 struct MetricKitDiagnosticCapture: Sendable {
     let json: Data
     let capturedAt: Date
+}
+
+private final class DiagnosticsConsentState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var generation = 0
+    private var enabled: Bool
+
+    init(enabled: Bool) {
+        self.enabled = enabled
+    }
+
+    func tokenIfEnabled() -> Int? {
+        lock.lock()
+        defer { lock.unlock() }
+        return enabled ? generation : nil
+    }
+
+    func currentGeneration() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return generation
+    }
+
+    func update(isEnabled: Bool) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        generation += 1
+        enabled = isEnabled
+        return generation
+    }
+}
+
+private actor DiagnosticsUploadStartGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        guard !isOpen else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func open() {
+        guard !isOpen else { return }
+        isOpen = true
+        let pending = waiters
+        waiters.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
+    }
 }
 
 enum ClientDiagnosticEnvelopeBuilder {
@@ -66,25 +123,36 @@ enum ClientDiagnosticEnvelopeError: Error {
 
 actor AppDiagnosticsQueue {
     typealias Uploader = @Sendable (_ report: Data, _ server: URL) async throws -> Void
+    typealias Remover = @Sendable (_ reportURL: URL) throws -> Void
 
     static let maxPendingReports = 20
     static let maxReportBytes = 2 * 1024 * 1024
 
     private let directory: URL
     private let uploader: Uploader
+    private let remover: Remover
+    private var sharingEnabled: Bool
+    private var consentGeneration = 0
 
     init(
         directory: URL = AppDiagnosticsQueue.defaultDirectory(),
+        sharingEnabled: Bool = AppDiagnosticsPreference.isEnabled,
+        remover: @escaping Remover = { try FileManager.default.removeItem(at: $0) },
         uploader: @escaping Uploader = { report, server in
             try await APIClient(baseURL: server).uploadClientDiagnostic(report)
         }
     ) {
         self.directory = directory
+        self.sharingEnabled = sharingEnabled
+        self.remover = remover
         self.uploader = uploader
     }
 
-    func enqueue(_ capture: MetricKitDiagnosticCapture) {
-        guard AppDiagnosticsPreference.isEnabled else { return }
+    func enqueue(_ capture: MetricKitDiagnosticCapture, consentGeneration: Int? = nil) {
+        guard sharingEnabled,
+              AppDiagnosticsPreference.isEnabled,
+              !AppDiagnosticsPreference.needsPurge,
+              consentGeneration == nil || consentGeneration == self.consentGeneration else { return }
         do {
             let report = try ClientDiagnosticEnvelopeBuilder.make(capture: capture)
             guard report.data.count <= Self.maxReportBytes else { return }
@@ -102,19 +170,70 @@ actor AppDiagnosticsQueue {
         }
     }
 
-    func flush(to server: URL) async {
-        guard AppDiagnosticsPreference.isEnabled else { return }
+    func flush(to server: URL, consentGeneration: Int? = nil) async {
+        guard sharingEnabled,
+              AppDiagnosticsPreference.isEnabled,
+              !AppDiagnosticsPreference.needsPurge,
+              consentGeneration == nil || consentGeneration == self.consentGeneration else { return }
         for url in pendingReportURLs() {
-            guard !Task.isCancelled else { return }
+            guard sharingEnabled,
+                  AppDiagnosticsPreference.isEnabled,
+                  !AppDiagnosticsPreference.needsPurge,
+                  consentGeneration == nil || consentGeneration == self.consentGeneration,
+                  !Task.isCancelled else { return }
             do {
                 let data = try Data(contentsOf: url, options: .mappedIfSafe)
                 try await uploader(data, server)
-                try? FileManager.default.removeItem(at: url)
+                guard sharingEnabled,
+                      AppDiagnosticsPreference.isEnabled,
+                      !AppDiagnosticsPreference.needsPurge,
+                      consentGeneration == nil || consentGeneration == self.consentGeneration,
+                      !Task.isCancelled else { return }
+                try? remover(url)
+            } catch APIError.http(let statusCode, _) where statusCode == 400 || statusCode == 413 {
+                // This exact envelope can never succeed unchanged. Drop only
+                // permanent validation/size failures so one poison report does
+                // not block every newer crash; retain auth, compatibility,
+                // throttling, network, and server failures for retry.
+                try? remover(url)
+                continue
             } catch {
                 // Preserve the report for the next foreground/connect attempt.
                 return
             }
         }
+    }
+
+    @discardableResult
+    func removeAll() -> Bool {
+        var removedEverything = true
+        for url in pendingReportURLs() {
+            do {
+                try remover(url)
+            } catch {
+                removedEverything = false
+            }
+        }
+        return removedEverything && pendingReportURLs().isEmpty
+    }
+
+    @discardableResult
+    func applySharingPreference(_ isEnabled: Bool, generation: Int) -> Bool {
+        // Disable first, then purge, then optionally allow future callbacks.
+        // This actor operation has no suspension point, so enqueue/flush cannot
+        // slip through the consent boundary while files are being removed.
+        guard generation >= consentGeneration else { return false }
+        consentGeneration = generation
+        sharingEnabled = false
+        guard removeAll() else {
+            UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.needsPurgeKey)
+            return false
+        }
+        sharingEnabled = isEnabled
+        if isEnabled {
+            UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        }
+        return true
     }
 
     func pendingCount() -> Int {
@@ -142,7 +261,7 @@ actor AppDiagnosticsQueue {
         let urls = pendingReportURLs()
         guard urls.count > Self.maxPendingReports else { return }
         for url in urls.prefix(urls.count - Self.maxPendingReports) {
-            try? FileManager.default.removeItem(at: url)
+            try? remover(url)
         }
     }
 
@@ -171,17 +290,26 @@ final class AppDiagnosticsReporter: @unchecked Sendable {
     static let shared = AppDiagnosticsReporter()
 
     private let queue: AppDiagnosticsQueue
+    private let consentState: DiagnosticsConsentState
     private let subscriber: MetricKitDiagnosticSubscriber
     private let lock = NSLock()
     private var started = false
     private var initialCaptureTask: Task<Void, Never>?
+    private var uploadTask: Task<Void, Never>?
+    private var uploadGeneration = 0
 
     init(queue: AppDiagnosticsQueue = AppDiagnosticsQueue()) {
+        let consentState = DiagnosticsConsentState(enabled: AppDiagnosticsPreference.isEnabled)
         self.queue = queue
+        self.consentState = consentState
         self.subscriber = MetricKitDiagnosticSubscriber { captures in
+            guard AppDiagnosticsPreference.isEnabled,
+                  !AppDiagnosticsPreference.needsPurge,
+                  let generation = consentState.tokenIfEnabled() else { return }
             Task {
                 for capture in captures {
-                    await queue.enqueue(capture)
+                    guard !Task.isCancelled else { return }
+                    await queue.enqueue(capture, consentGeneration: generation)
                 }
             }
         }
@@ -197,10 +325,19 @@ final class AppDiagnosticsReporter: @unchecked Sendable {
         lock.unlock()
 
         MXMetricManager.shared.add(subscriber)
-        capturePastDiagnostics()
+        if AppDiagnosticsPreference.isEnabled, !AppDiagnosticsPreference.needsPurge {
+            capturePastDiagnostics()
+        } else {
+            scheduleConsentTransition(
+                isEnabled: AppDiagnosticsPreference.isEnabled,
+                generation: consentState.currentGeneration()
+            )
+        }
     }
 
     func capturePastDiagnostics() {
+        guard let generation = consentState.tokenIfEnabled(),
+              !AppDiagnosticsPreference.needsPurge else { return }
         let captures = MXMetricManager.shared.pastDiagnosticPayloads.map {
             MetricKitDiagnosticCapture(json: $0.jsonRepresentation(), capturedAt: $0.timeStampEnd)
         }
@@ -208,7 +345,8 @@ final class AppDiagnosticsReporter: @unchecked Sendable {
         let task = Task {
             await previousTask?.value
             for capture in captures {
-                await queue.enqueue(capture)
+                guard !Task.isCancelled else { return }
+                await queue.enqueue(capture, consentGeneration: generation)
             }
         }
         lock.lock()
@@ -217,15 +355,93 @@ final class AppDiagnosticsReporter: @unchecked Sendable {
     }
 
     func uploadPending(to server: URL) async {
+        let consentTask = consentTaskSnapshot()
+        await consentTask?.value
         let initialTask = initialCaptureTaskSnapshot()
         await initialTask?.value
-        await queue.flush(to: server)
+        guard AppDiagnosticsPreference.isEnabled,
+              !Task.isCancelled,
+              let consentGeneration = consentState.tokenIfEnabled() else { return }
+
+        let (task, gate, generation) = prepareUploadTask(
+            to: server,
+            consentGeneration: consentGeneration
+        )
+        await gate.open()
+        await task.value
+        clearUploadTask(ifGeneration: generation)
+    }
+
+    /// Applies the user's consent boundary immediately. Disabling cancels the
+    /// active request and purges queued payloads. Re-enabling intentionally
+    /// does not replay `pastDiagnosticPayloads`, which may cover the disabled
+    /// interval; only future MetricKit callbacks are eligible.
+    func sharingPreferenceDidChange(isEnabled: Bool) {
+        if !isEnabled {
+            // Persist this synchronously. If the process terminates before the
+            // actor purge runs, the next launch/re-enable must purge before it
+            // captures or uploads anything.
+            UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        }
+        let generation = consentState.update(isEnabled: isEnabled)
+        lock.lock()
+        uploadGeneration += 1
+        uploadTask?.cancel()
+        uploadTask = nil
+        initialCaptureTask?.cancel()
+        lock.unlock()
+        scheduleConsentTransition(isEnabled: isEnabled, generation: generation)
     }
 
     private func initialCaptureTaskSnapshot() -> Task<Void, Never>? {
         lock.lock()
         defer { lock.unlock() }
         return initialCaptureTask
+    }
+
+    private var consentTask: Task<Void, Never>?
+
+    private func consentTaskSnapshot() -> Task<Void, Never>? {
+        lock.lock()
+        defer { lock.unlock() }
+        return consentTask
+    }
+
+    private func scheduleConsentTransition(isEnabled: Bool, generation: Int) {
+        lock.lock()
+        let previous = consentTask
+        let task = Task { [queue] in
+            await previous?.value
+            await queue.applySharingPreference(isEnabled, generation: generation)
+        }
+        consentTask = task
+        lock.unlock()
+    }
+
+    private func prepareUploadTask(
+        to server: URL,
+        consentGeneration: Int
+    ) -> (Task<Void, Never>, DiagnosticsUploadStartGate, Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        uploadTask?.cancel()
+        uploadGeneration += 1
+        let gate = DiagnosticsUploadStartGate()
+        let task = Task { [queue] in
+            await gate.wait()
+            guard !Task.isCancelled else { return }
+            await queue.flush(to: server, consentGeneration: consentGeneration)
+        }
+        uploadTask = task
+        return (task, gate, uploadGeneration)
+    }
+
+    private func clearUploadTask(ifGeneration generation: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        if uploadGeneration == generation {
+            uploadTask = nil
+        }
     }
 }
 

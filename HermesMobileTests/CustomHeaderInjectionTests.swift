@@ -652,6 +652,31 @@ final class CrossOriginRedirectHeaderTests: XCTestCase {
         XCTAssertNil(outgoing.value(forHTTPHeaderField: "X-Api-Key"))
     }
 
+    func testRejectsCrossOriginRedirectForDiagnosticUploadBody() throws {
+        let stripper = CrossOriginHeaderStripper(baseURL: baseURL, customHeaderProvider: { [] })
+        var original = URLRequest(url: try XCTUnwrap(URL(string: "https://example.test/api/client-diagnostics")))
+        original.httpMethod = "POST"
+        original.httpBody = Data(#"{"payload":{"crashDiagnostics":[]}}"#.utf8)
+        var redirected = URLRequest(url: try XCTUnwrap(URL(string: "https://third-party.example/leak")))
+        redirected.httpMethod = "POST"
+        redirected.httpBody = original.httpBody
+        let response = try XCTUnwrap(
+            HTTPURLResponse(url: original.url!, statusCode: 307, httpVersion: "HTTP/1.1", headerFields: nil)
+        )
+        let session = URLSession(configuration: .ephemeral)
+        let task = session.dataTask(with: original)
+        var didCallCompletion = false
+        var outcome: URLRequest?
+
+        stripper.urlSession(session, task: task, willPerformHTTPRedirection: response, newRequest: redirected) {
+            didCallCompletion = true
+            outcome = $0
+        }
+
+        XCTAssertTrue(didCallCompletion)
+        XCTAssertNil(outcome, "Sensitive diagnostic POST bodies must never follow a cross-origin redirect")
+    }
+
     // AC4: end-to-end via a redirect-emitting URLProtocol — the production guard,
     // wired into the client's session, strips the custom header so the actual
     // second hop on the wire (cross-origin) never carries it. Exercises the real

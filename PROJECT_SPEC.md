@@ -622,8 +622,8 @@ Each phase ends in a working, committable state. Run on the simulator after ever
 - [x] Dynamic Type support (test at largest size).
 - [x] VoiceOver labels for all interactive elements, including new context menus and server panels.
 - [x] Privacy strings for Photos/file import, microphone, and speech recognition where required. Camera remains deferred and is not declared.
-- [x] Privacy manifest (`PrivacyInfo.xcprivacy`) — declares no tracking, no developer-collected data, and required-reason `UserDefaults` access for app-only preferences.
-- [ ] Crash reporting? **Skip for v1** unless owner wants Firebase Crashlytics.
+- [x] Privacy manifest (`PrivacyInfo.xcprivacy`) — declares no tracking; non-linked crash, performance, and other diagnostic data used for app functionality; and required-reason `UserDefaults` access for app-only preferences.
+- [x] Optional self-hosted crash reporting — Apple MetricKit crash/hang/diagnostic payloads are queued locally with bounded retention, uploaded only to the user's authenticated active Hermes server through `POST /api/client-diagnostics`, and can be disabled in Settings. No Gmail or third-party crash service is used.
 
 #### 12.1 Sessions and Settings glass polish
 - **User-facing goal:** Overhaul the Sessions screen and Settings page so they feel visually consistent with the glass-forward chat/composer direction (§2b).

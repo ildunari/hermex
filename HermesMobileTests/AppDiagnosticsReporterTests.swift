@@ -35,6 +35,7 @@ struct AppDiagnosticsReporterTests {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
         let recorder = UploadRecorder()
         let queue = AppDiagnosticsQueue(directory: directory) { data, server in
             await recorder.record(data: data, server: server)
@@ -64,6 +65,7 @@ struct AppDiagnosticsReporterTests {
         let directory = temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
         let queue = AppDiagnosticsQueue(directory: directory) { _, _ in
             throw StubUploadError.offline
         }
@@ -79,6 +81,32 @@ struct AppDiagnosticsReporterTests {
         #expect(pending == 1)
     }
 
+    @Test("Permanent rejection drops only the poison report and continues")
+    func permanentRejectionDoesNotBlockLaterReports() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        let recorder = RejectFirstUploadRecorder()
+        let queue = AppDiagnosticsQueue(directory: directory) { _, _ in
+            if await recorder.nextAttemptShouldFail() {
+                throw APIError.http(statusCode: 400, body: nil)
+            }
+        }
+        for index in 0..<2 {
+            await queue.enqueue(MetricKitDiagnosticCapture(
+                json: Data("{\"crashDiagnostics\":[{\"index\":\(index)}]}".utf8),
+                capturedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            ))
+        }
+
+        let server = try #require(URL(string: "https://hermes.example"))
+        await queue.flush(to: server)
+
+        #expect(await recorder.attempts == 2)
+        #expect(await queue.pendingCount() == 0)
+    }
+
     @Test("Queue is bounded and disabled collection does not persist")
     func queueIsBoundedAndHonorsPreference() async {
         let directory = temporaryDirectory()
@@ -86,6 +114,7 @@ struct AppDiagnosticsReporterTests {
         let queue = AppDiagnosticsQueue(directory: directory) { _, _ in }
 
         UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
         await queue.enqueue(MetricKitDiagnosticCapture(
             json: Data(#"{"crashDiagnostics":[{"index":-1}]}"#.utf8),
             capturedAt: .now
@@ -102,6 +131,112 @@ struct AppDiagnosticsReporterTests {
         }
         let boundedCount = await queue.pendingCount()
         #expect(boundedCount == AppDiagnosticsQueue.maxPendingReports)
+    }
+
+    @Test("Opting out cancels upload and purges every queued report")
+    func optOutCancelsAndPurges() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        defer {
+            UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+            UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        }
+        let recorder = CancellableUploadRecorder()
+        let queue = AppDiagnosticsQueue(directory: directory) { _, _ in
+            await recorder.markStarted()
+            try await Task.sleep(for: .seconds(30))
+            await recorder.markCompleted()
+        }
+        for index in 0..<2 {
+            await queue.enqueue(MetricKitDiagnosticCapture(
+                json: Data("{\"crashDiagnostics\":[{\"index\":\(index)}]}".utf8),
+                capturedAt: Date(timeIntervalSince1970: TimeInterval(index))
+            ))
+        }
+        let reporter = AppDiagnosticsReporter(queue: queue)
+        let server = try #require(URL(string: "https://hermes.example"))
+        let upload = Task { await reporter.uploadPending(to: server) }
+
+        while !(await recorder.started) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.isEnabledKey)
+        reporter.sharingPreferenceDidChange(isEnabled: false)
+        await upload.value
+        while (await queue.pendingCount()) != 0 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+
+        #expect(await recorder.completed == 0)
+        #expect(await queue.pendingCount() == 0)
+
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        reporter.sharingPreferenceDidChange(isEnabled: true)
+        await reporter.uploadPending(to: server)
+        #expect(await recorder.completed == 0)
+        #expect(await queue.pendingCount() == 0)
+    }
+
+    @Test("Failed purge keeps sharing disabled and the consent marker durable")
+    func failedPurgeFailsClosed() async throws {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        defer {
+            UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+            UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        }
+        let recorder = UploadRecorder()
+        let queue = AppDiagnosticsQueue(
+            directory: directory,
+            remover: { _ in throw StubUploadError.cannotDelete }
+        ) { data, server in
+            await recorder.record(data: data, server: server)
+        }
+        await queue.enqueue(MetricKitDiagnosticCapture(
+            json: Data(#"{"crashDiagnostics":[{}]}"#.utf8),
+            capturedAt: .now
+        ))
+
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        let didApply = await queue.applySharingPreference(true, generation: 1)
+        let server = try #require(URL(string: "https://hermes.example"))
+        await queue.flush(to: server)
+
+        #expect(didApply == false)
+        #expect(AppDiagnosticsPreference.needsPurge)
+        #expect(await queue.pendingCount() == 1)
+        #expect(await recorder.uploads.isEmpty)
+    }
+
+    @Test("Stale capture generation cannot cross a rapid disable and re-enable")
+    func staleCaptureGenerationIsRejected() async {
+        let directory = temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        let queue = AppDiagnosticsQueue(directory: directory) { _, _ in }
+        let staleCapture = MetricKitDiagnosticCapture(
+            json: Data(#"{"crashDiagnostics":[{"generation":0}]}"#.utf8),
+            capturedAt: .now
+        )
+        let currentCapture = MetricKitDiagnosticCapture(
+            json: Data(#"{"crashDiagnostics":[{"generation":2}]}"#.utf8),
+            capturedAt: .now
+        )
+
+        UserDefaults.standard.set(false, forKey: AppDiagnosticsPreference.isEnabledKey)
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.needsPurgeKey)
+        _ = await queue.applySharingPreference(false, generation: 1)
+        UserDefaults.standard.set(true, forKey: AppDiagnosticsPreference.isEnabledKey)
+        _ = await queue.applySharingPreference(true, generation: 2)
+        await queue.enqueue(staleCapture, consentGeneration: 0)
+        await queue.enqueue(currentCapture, consentGeneration: 2)
+
+        #expect(await queue.pendingCount() == 1)
     }
 
     @Test("Client diagnostics endpoint uses the authenticated WebUI route")
@@ -128,6 +263,29 @@ private actor UploadRecorder {
     }
 }
 
+private actor CancellableUploadRecorder {
+    private(set) var started = false
+    private(set) var completed = 0
+
+    func markStarted() {
+        started = true
+    }
+
+    func markCompleted() {
+        completed += 1
+    }
+}
+
+private actor RejectFirstUploadRecorder {
+    private(set) var attempts = 0
+
+    func nextAttemptShouldFail() -> Bool {
+        attempts += 1
+        return attempts == 1
+    }
+}
+
 private enum StubUploadError: Error {
     case offline
+    case cannotDelete
 }

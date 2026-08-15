@@ -346,6 +346,15 @@ final class CrossOriginHeaderStripper: NSObject, URLSessionTaskDelegate, @unchec
             return
         }
 
+        // MetricKit payloads can contain call stacks and other sensitive
+        // diagnostics. A 307/308 preserves the POST body, so stripping headers
+        // is not sufficient: never allow this endpoint to leave the configured
+        // server's origin.
+        if task.originalRequest?.url?.path == Endpoint.clientDiagnostics.path {
+            completionHandler(nil)
+            return
+        }
+
         // Cross-origin hop: drop every configured custom header by name so none of
         // the user's (possibly secret) headers reach the new host. Names match
         // case-insensitively because HTTP field names are case-insensitive.

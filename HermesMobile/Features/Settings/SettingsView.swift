@@ -571,14 +571,10 @@ struct SettingsView: View {
                         isOn: $sharesDiagnosticsWithServer
                     )
                     .onChange(of: sharesDiagnosticsWithServer) { _, isEnabled in
-                        guard isEnabled else { return }
-                        AppDiagnosticsReporter.shared.capturePastDiagnostics()
-                        Task {
-                            await AppDiagnosticsReporter.shared.uploadPending(to: server)
-                        }
+                        AppDiagnosticsReporter.shared.sharingPreferenceDidChange(isEnabled: isEnabled)
                     }
 
-                    SettingsFootnote(String(localized: "Sends Apple crash and hang diagnostics to your active Hermes server. Reports contain system call stacks and app/build details, never chat content or credentials."))
+                    SettingsFootnote(String(localized: "Sends Apple crash and hang diagnostics to your active Hermes server. Hermex does not add chat content or credentials. Apple reports may include call stacks, exception details, and device/app metadata."))
 
                     SettingsDivider()
 
