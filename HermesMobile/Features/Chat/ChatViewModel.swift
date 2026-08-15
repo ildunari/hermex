@@ -325,6 +325,11 @@ final class ChatViewModel {
     private(set) var cacheErrorMessage: String?
     private(set) var lastError: Error?
     private(set) var displayTitle: String
+    /// The session's *raw* server title, or nil when the server has not titled
+    /// it yet. `displayTitle` is a presentation string — it is never nil,
+    /// falling back to the localized "Untitled Session" — so it must never be
+    /// written into the `title` data field or the offline cache (review P1-5).
+    private(set) var sessionTitle: String?
     private(set) var listeningMessageID: String?
     private(set) var streamingScrollTrigger = 0
     /// Bumped when a cache-first cold open (#289) finishes reconciling the network
@@ -654,6 +659,11 @@ final class ChatViewModel {
     private var hasCompletedCurrentResponse: Bool { streamCoordinator.hasCompletedCurrentResponse }
     private var isStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
     var isActiveStreamConnectionSuspended: Bool { streamCoordinator.isConnectionSuspended }
+    /// True when the active stream was cleared by a cache fallback rather than a
+    /// real completion — see `ChatStreamCoordinator` (review P1-6).
+    var didClearActiveStreamForCacheFallback: Bool {
+        streamCoordinator.didClearActiveStreamForCacheFallback
+    }
     private var hasLoadedPersonalitySuggestions = false
     private var isLoadingPersonalitySuggestions = false
     private var hasLoadedSkillSlashSuggestions = false
@@ -735,6 +745,7 @@ final class ChatViewModel {
         self.listenPlaybackSpeed = ListenPlaybackSpeed.stored(in: userDefaults)
         self.serverTTSAudioPlayerFactory = serverTTSAudioPlayerFactory
             ?? { try ServerTTSAudioPlayer(data: $0) }
+        sessionTitle = Self.nonEmpty(session.title)
         displayTitle = Self.displayTitle(from: session.title)
         self.streamCoordinator.attach(delegate: self)
         self.pendingActionCoordinator.delegate = self
@@ -1511,7 +1522,7 @@ final class ChatViewModel {
                 }
             }
             if let title = session?.title {
-                displayTitle = Self.displayTitle(from: title)
+                applySessionTitle(title)
             }
             setCompletedToolCallGroups(ToolCallGroup.groups(
                 persistedToolCalls: session?.toolCalls ?? [],
@@ -1730,7 +1741,7 @@ final class ChatViewModel {
                 estimatedCost: session.estimatedCost
             )
             if let title = session.title {
-                displayTitle = Self.displayTitle(from: title)
+                applySessionTitle(title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
             currentModel = session.model ?? currentModel
@@ -3029,7 +3040,7 @@ final class ChatViewModel {
             if let error = response.error {
                 return .unsupported(friendlyMessage: error)
             }
-            displayTitle = Self.displayTitle(from: response.session?.title ?? title)
+            applySessionTitle(response.session?.title ?? title)
             return .executed(message: String(localized: "Title set to **\(displayTitle)**."))
         } catch {
             lastError = error
@@ -3285,7 +3296,7 @@ final class ChatViewModel {
             )
             contextWindowSnapshot = snapshot.replacingTokensUsed(response.summary?.compressedTokenEstimate)
             if let title = session.title {
-                displayTitle = Self.displayTitle(from: title)
+                applySessionTitle(title)
             }
             currentWorkspace = session.workspace ?? currentWorkspace
             currentModel = session.model ?? currentModel
@@ -5015,8 +5026,16 @@ final class ChatViewModel {
     }
 
     private func applyLiveActivitySessionTitle(_ title: String) {
-        displayTitle = Self.displayTitle(from: title)
+        applySessionTitle(title)
         liveActivityManager.update(.sessionTitle(displayTitle))
+    }
+
+    /// Single writer for the session title, so the raw data value
+    /// (``sessionTitle``, nil when the server has not titled the session) and the
+    /// presentation value (``displayTitle``, never nil) can never drift apart.
+    private func applySessionTitle(_ title: String?) {
+        sessionTitle = Self.nonEmpty(title)
+        displayTitle = Self.displayTitle(from: title)
     }
 
     private func finishListening() {

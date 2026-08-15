@@ -2001,7 +2001,15 @@ struct ChatView: View {
             // The turn just ended: tell the session list its row is idle again
             // and carries this chat's current title/recency, so the row is right
             // immediately instead of after the next list fetch.
-            publishSessionUpdate(isStreaming: false, activeStreamID: .some(nil))
+            //
+            // Unless the stream ID was cleared by a cache fallback: that is this
+            // chat losing connectivity, not the stream finishing. Publishing it
+            // dropped the row's streaming badge, took `hasActiveRows` false so
+            // the monitor stopped polling it, and nothing corrected the list
+            // until a full refetch (review P1-6).
+            if !viewModel.didClearActiveStreamForCacheFallback {
+                publishSessionUpdate(isStreaming: false, activeStreamID: .some(nil))
+            }
 
             if responseCompletionNotificationTracker.shouldEndBackgroundTaskOnStreamInactive(
                 completionTrigger: viewModel.responseCompletionHapticTrigger
@@ -2025,6 +2033,13 @@ struct ChatView: View {
     /// Sends this chat's current row metadata to whoever owns the session list.
     /// `lastActive` is a unix timestamp in seconds, matching the list's
     /// `last_message_at` / `updated_at` fields.
+    ///
+    /// The title published is the *raw* server title (nil when untitled), never
+    /// `displayTitle`: that is a localized presentation string, and stamping it
+    /// into `SessionSummary.title` wrote a UI string into a data field — cached
+    /// to disk, matched by local search, wrong after a language change, and
+    /// (with `messageCount` still 0 on a not-yet-refetched row) enough to make a
+    /// real session look like an empty placeholder and be pruned (review P1-5).
     private func publishSessionUpdate(isStreaming: Bool?, activeStreamID: String??) {
         // The view's `session` is the row that opened this chat, so its ID is the
         // one the list keys on. `ChatViewModel.sessionID` is private and would be
@@ -2035,7 +2050,7 @@ struct ChatView: View {
         onSessionUpdate(
             SessionLocalUpdate(
                 sessionID: sessionID,
-                title: viewModel.displayTitle,
+                title: viewModel.sessionTitle,
                 lastActive: Date().timeIntervalSince1970,
                 isStreaming: isStreaming,
                 activeStreamID: activeStreamID

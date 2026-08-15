@@ -91,6 +91,12 @@ final class ChatStreamCoordinator {
     private var showsLiveActivityResponseExcerpts: Bool
 
     private(set) var activeStreamID: String?
+    /// True when `activeStreamID` was last cleared by a cache fallback — this
+    /// chat lost connectivity and fell back to the offline transcript — rather
+    /// than by a real completion. The stream may well still be running on the
+    /// server, so this local blip must not be published to the session list as
+    /// authoritative "stream finished" (review P1-6).
+    private(set) var didClearActiveStreamForCacheFallback = false
     private(set) var recoveryState: ActiveStreamRecoveryState = .idle
     private(set) var isConnectionSuspended = false
     private(set) var hasCompletedCurrentResponse = false
@@ -147,6 +153,7 @@ final class ChatStreamCoordinator {
         liveTokensPerSecond = nil
         runGeneration &+= 1
         activeStreamID = streamID
+        didClearActiveStreamForCacheFallback = false
         isConnectionSuspended = false
         if replayAfterSeq == nil {
             lastEventID = nil
@@ -213,12 +220,17 @@ final class ChatStreamCoordinator {
         liveTokensPerSecond = nil
 
         if usedCacheFallback {
+            // A connectivity blip, not a completion: flag the clear so the chat
+            // does not tell the session list this stream finished (review P1-6).
+            didClearActiveStreamForCacheFallback = activeStreamID != nil
             activeStreamID = nil
             isConnectionSuspended = false
             delegate?.streamCoordinatorStreamingAssistantMessageID = nil
             resetRecoveryState()
             return
         }
+
+        didClearActiveStreamForCacheFallback = false
 
         let loadedActiveStreamID = rawLoadedActiveStreamID?.trimmingCharacters(in: .whitespacesAndNewlines)
         if preparation.shouldPrepareSuspendedStreamResume {
@@ -702,6 +714,8 @@ final class ChatStreamCoordinator {
         delegate?.streamCoordinatorFlushPinnedLocalNoticesToTranscript()
         delegate?.streamCoordinatorRemoveSnapshot(streamID: finishedStreamID)
         activeStreamID = nil
+        // A real end of stream, so the next idle publish is authoritative.
+        didClearActiveStreamForCacheFallback = false
         lastEventID = nil
         liveTokensPerSecond = nil
         delegate?.streamCoordinatorStreamingAssistantMessageID = nil

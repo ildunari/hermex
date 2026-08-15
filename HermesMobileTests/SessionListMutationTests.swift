@@ -3105,6 +3105,172 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    // MARK: - Published title is data, not presentation (review P1-5)
+
+    /// `displayTitle` is never nil: for an untitled session it is the localized
+    /// "Untitled Session". Publishing it stamped a UI string into the
+    /// `SessionSummary.title` *data* field, which `SessionListView` then wrote
+    /// to the offline cache. The chat must expose the raw optional title.
+    @MainActor
+    func testChatExposesTheRawOptionalTitleSeparatelyFromTheDisplayString() throws {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = try makeClient(server: server) { request in
+            apiTestJSONResponse("{}", for: request)
+        }
+
+        let untitled = ChatViewModel(
+            session: SessionSummary(sessionId: "session-1", title: nil),
+            server: server,
+            client: client
+        )
+        XCTAssertNil(untitled.sessionTitle, "An untitled session has no title to publish")
+        XCTAssertEqual(
+            untitled.displayTitle,
+            String(localized: "Untitled Session"),
+            "The presentation string is unchanged; only the published data value differs"
+        )
+
+        let titled = ChatViewModel(
+            session: SessionSummary(sessionId: "session-2", title: "Real title"),
+            server: server,
+            client: client
+        )
+        XCTAssertEqual(titled.sessionTitle, "Real title")
+        XCTAssertEqual(titled.displayTitle, "Real title")
+    }
+
+    /// The consequence the review called out: the localized placeholder written
+    /// into `title`, combined with `isStreaming: false` + a cleared stream on a
+    /// row whose `messageCount` is still 0, turns a real session into an
+    /// `isEmptySidebarPlaceholder` that the next suppression pass prunes.
+    /// Publishing nil leaves the server's own title in place.
+    @MainActor
+    func testTurnEndUpdateWithNoServerTitleDoesNotTurnTheRowIntoAPrunablePlaceholder() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "session-1",
+                  "title": "Server title",
+                  "last_message_at": 100,
+                  "message_count": 0,
+                  "is_streaming": true,
+                  "active_stream_id": "stream-1",
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+
+        // Exactly what ChatView publishes at turn end for an untitled chat.
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "session-1",
+                title: nil,
+                lastActive: 1_800_000_000,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
+
+        let row = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertEqual(row.title, "Server title", "A nil title must leave the data field alone")
+        viewModel.removeEmptySidebarPlaceholders()
+        XCTAssertEqual(
+            viewModel.sessions.compactMap(\.sessionId),
+            ["session-1"],
+            "A real session must survive placeholder suppression after a turn ends"
+        )
+    }
+
+    // MARK: - Cache fallback is not a stream completion (review P1-6)
+
+    /// `reconcileSessionLoad(usedCacheFallback: true)` clears `activeStreamID`
+    /// because this chat lost connectivity and fell back to the cached
+    /// transcript. That is a local blip, not the stream finishing — the run is
+    /// very likely still going server-side — so it must be distinguishable from
+    /// a real completion before `ChatView` publishes "idle" to the list.
+    @MainActor
+    func testCacheFallbackMarksTheStreamClearAsNotACompletion() throws {
+        let coordinator = try makeStreamCoordinator()
+        coordinator.start(streamID: "stream-live")
+        XCTAssertEqual(coordinator.activeStreamID, "stream-live")
+        XCTAssertFalse(coordinator.didClearActiveStreamForCacheFallback)
+
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: nil,
+            preparation: ChatStreamLoadPreparation(
+                activeStreamIDBeforeLoad: "stream-live",
+                shouldPrepareSuspendedStreamResume: true
+            ),
+            usedCacheFallback: true
+        )
+
+        XCTAssertNil(coordinator.activeStreamID)
+        XCTAssertTrue(
+            coordinator.didClearActiveStreamForCacheFallback,
+            "A connectivity blip must not be publishable to the list as 'stream finished'"
+        )
+    }
+
+    /// The complement: a normal load that finds no active stream, and a real
+    /// stream start, both leave the flag clear so genuine completions still
+    /// publish.
+    @MainActor
+    func testNormalReconcileAndStreamStartLeaveTheCacheFallbackFlagClear() throws {
+        let coordinator = try makeStreamCoordinator()
+        coordinator.start(streamID: "stream-live")
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: nil,
+            preparation: ChatStreamLoadPreparation(
+                activeStreamIDBeforeLoad: "stream-live",
+                shouldPrepareSuspendedStreamResume: true
+            ),
+            usedCacheFallback: true
+        )
+        XCTAssertTrue(coordinator.didClearActiveStreamForCacheFallback)
+
+        // Reconnecting to a real stream clears the flag again.
+        coordinator.start(streamID: "stream-live-2")
+        XCTAssertFalse(coordinator.didClearActiveStreamForCacheFallback)
+
+        // So does an ordinary (non-fallback) load that finds nothing running.
+        coordinator.reconcileSessionLoad(
+            loadedActiveStreamID: nil,
+            preparation: ChatStreamLoadPreparation(
+                activeStreamIDBeforeLoad: nil,
+                shouldPrepareSuspendedStreamResume: true
+            ),
+            usedCacheFallback: false
+        )
+        XCTAssertFalse(coordinator.didClearActiveStreamForCacheFallback)
+    }
+
+    @MainActor
+    private func makeStreamCoordinator() throws -> ChatStreamCoordinator {
+        let server = try XCTUnwrap(URL(string: "https://example.test"))
+        let client = try makeClient(server: server) { request in
+            apiTestJSONResponse(#"{"active": true}"#, for: request)
+        }
+        let viewModel = ChatViewModel(
+            session: SessionSummary(sessionId: "session-1", title: "Live"),
+            server: server,
+            client: client,
+            streamClient: InertSSEStreamingClient()
+        )
+        let coordinator = ChatStreamCoordinator(
+            client: client,
+            streamClient: InertSSEStreamingClient(),
+            liveActivityManager: InertLiveActivityManager(),
+            showsLiveActivityResponseExcerpts: false
+        )
+        coordinator.attach(delegate: viewModel)
+        return coordinator
+    }
+
     // MARK: - Local row patch (Perf 6)
 
     @MainActor
@@ -3708,6 +3874,28 @@ extension SessionListRefreshBenchmarkTests {
             )
         )
     }
+}
+
+/// Stream/live-activity doubles for coordinator tests that only exercise state
+/// transitions and must never touch the network or ActivityKit.
+@MainActor
+final class InertSSEStreamingClient: SSEStreamingClient {
+    private(set) var lastEventID: String?
+
+    func start(url: URL, onEvent: @escaping @MainActor (SSEEvent) -> Void) {}
+
+    func stop() {}
+}
+
+@MainActor
+final class InertLiveActivityManager: AgentLiveActivityManaging {
+    func start(sessionID: String, sessionTitle: String, streamID: String?) {}
+
+    func update(_ event: AgentLiveActivityEvent) {}
+
+    func markStale() {}
+
+    func end(status: AgentRunActivityStatus, activity: String, errorSummary: String?) {}
 }
 
 /// Collects `SessionLocalUpdate`s published through a chat's update channel.
