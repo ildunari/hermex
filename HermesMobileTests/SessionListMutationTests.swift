@@ -2714,6 +2714,100 @@ final class SessionListMutationTests: XCTestCase {
         )
     }
 
+    // MARK: - Refresh coalescing and staleness (issue: session list refresh)
+
+    @MainActor
+    func testConcurrentLoadsShareASingleSessionsFetch() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            _ = counts.incrementLoadCount()
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+
+        async let first = viewModel.load()
+        async let second = viewModel.load()
+        async let third = viewModel.load()
+        let results = await [first, second, third]
+
+        XCTAssertEqual(results, [true, true, true])
+        XCTAssertEqual(counts.snapshot.loadCount, 1)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["session-abc"])
+    }
+
+    /// A concurrent caller asking for a *different* list (archived rows, all
+    /// profiles) must not be silently served the in-flight default list.
+    @MainActor
+    func testConcurrentLoadWithDifferentParametersStillFetchesItsOwnList() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            let count = counts.incrementLoadCount()
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+
+            if request.url?.query?.contains("all_profiles") == true {
+                return apiTestJSONResponse("""
+                {
+                  "sessions": [
+                    {
+                      "session_id": "other-profile",
+                      "title": "Other profile row",
+                      "message_count": 4,
+                      "archived": false
+                    }
+                  ]
+                }
+                """, for: request)
+            }
+
+            return apiTestJSONResponse(self.sessionListJSON(forLoadCount: count), for: request)
+        }
+
+        async let first = viewModel.load()
+        async let second = viewModel.load(allProfiles: true)
+        _ = await [first, second]
+
+        XCTAssertEqual(counts.snapshot.loadCount, 2)
+        XCTAssertEqual(viewModel.sessions.compactMap(\.sessionId), ["other-profile"])
+    }
+
+    @MainActor
+    func testSuccessfulLoadRecordsStalenessTimestampAndSuppressesImmediateAutomaticRefresh() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+        }
+        XCTAssertTrue(viewModel.shouldRunAutomaticRefresh(), "A never-loaded list must always refresh")
+
+        await viewModel.load()
+
+        let loadedAt = try XCTUnwrap(viewModel.lastSuccessfulLoadAt)
+        XCTAssertFalse(viewModel.shouldRunAutomaticRefresh(now: loadedAt.addingTimeInterval(1)))
+        XCTAssertTrue(
+            viewModel.shouldRunAutomaticRefresh(
+                now: loadedAt.addingTimeInterval(SessionListViewModel.automaticRefreshStaleness + 0.1)
+            )
+        )
+    }
+
+    @MainActor
+    func testFailedLoadLeavesStalenessTimestampUntouchedSoRecoveryIsNotBlocked() async throws {
+        let context = try makeContext()
+        try CacheStore.cacheSessions(
+            [SessionSummary(sessionId: "cached-row", title: "Cached", archived: false)],
+            serverURL: try XCTUnwrap(URL(string: "https://example.test")),
+            in: context
+        )
+        let viewModel = try makeViewModel { _ in throw URLError(.timedOut) }
+
+        await viewModel.load(modelContext: context)
+
+        XCTAssertTrue(viewModel.isViewingCachedData)
+        XCTAssertNil(viewModel.lastSuccessfulLoadAt)
+        XCTAssertTrue(
+            viewModel.shouldRunAutomaticRefresh(),
+            "A cache fallback must not look fresh, or the list can never recover"
+        )
+    }
+
     @MainActor
     private func makeViewModel(
         handler: @escaping (URLRequest) throws -> (HTTPURLResponse, Data)
@@ -3117,9 +3211,25 @@ extension SessionListRefreshBenchmarkTests {
         title: String,
         lastActive: Double
     ) async {
-        // Base behavior: no local patch channel, so the row is only correct once
-        // a full list fetch returns.
+        // No local patch channel yet, so the row is only correct once a full
+        // list fetch returns.
         await viewModel.load()
+    }
+}
+
+/// A lock-guarded flag so a `MockURLProtocol` handler (called off the main
+/// actor) can be flipped from a test body mid-scenario.
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value: Bool
+
+    init(initialValue: Bool) {
+        _value = initialValue
+    }
+
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
     }
 }
 

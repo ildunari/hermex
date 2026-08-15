@@ -91,6 +91,29 @@ final class SessionListViewModel {
     private(set) var remoteContentSearchSessionIDs: [String] = []
     private var activeRemoteSearchQuery: String?
 
+    /// Timestamp of the last `/api/sessions` fetch that actually succeeded.
+    /// Cache fallbacks and errors leave it untouched, so a failing server never
+    /// looks "fresh" to the automatic refresh gate.
+    private(set) var lastSuccessfulLoadAt: Date?
+
+    /// Automatic refresh triggers (scene-active, return-from-chat) skip the
+    /// network when the list was loaded less than this many seconds ago.
+    /// Pull-to-refresh and the initial load are always allowed through.
+    static let automaticRefreshStaleness: TimeInterval = 5
+
+    private struct LoadParameters: Equatable {
+        let includeArchived: Bool
+        let allProfiles: Bool
+    }
+
+    private struct InFlightLoad {
+        let token: UUID
+        let parameters: LoadParameters
+        let task: Task<Bool, Never>
+    }
+
+    private var activeLoadTask: InFlightLoad?
+
     private let client: APIClient
     private let sessionMutator: SessionMutator
     private let server: URL
@@ -222,6 +245,62 @@ final class SessionListViewModel {
         includeArchived: Bool = false,
         allProfiles: Bool = false
     ) async -> Bool {
+        let parameters = LoadParameters(includeArchived: includeArchived, allProfiles: allProfiles)
+
+        // Single-flight: the app fires several automatic refresh triggers close
+        // together (onAppear, return-from-chat, scene-active). Concurrent callers
+        // asking for the same list share one network fetch instead of stacking
+        // duplicates. A caller asking for a *different* list (archived rows, all
+        // profiles) awaits the in-flight one, then runs its own fetch so it is
+        // never silently served the wrong list.
+        if let inFlight = activeLoadTask {
+            let sharedResult = await inFlight.task.value
+            guard inFlight.parameters != parameters else { return sharedResult }
+            return await load(
+                modelContext: modelContext,
+                animation: animation,
+                includeArchived: includeArchived,
+                allProfiles: allProfiles
+            )
+        }
+
+        let token = UUID()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return false }
+            let didLoad = await self.performLoad(
+                modelContext: modelContext,
+                animation: animation,
+                includeArchived: includeArchived,
+                allProfiles: allProfiles
+            )
+            // Retire the slot *inside* the task, before any awaiting caller
+            // resumes. Clearing it in the calling frame instead would let a
+            // differing-parameter caller wake up, still see this finished task,
+            // and recurse into it forever.
+            if self.activeLoadTask?.token == token {
+                self.activeLoadTask = nil
+            }
+            return didLoad
+        }
+        activeLoadTask = InFlightLoad(token: token, parameters: parameters, task: task)
+
+        return await task.value
+    }
+
+    /// Whether an automatic (non-user-initiated) refresh should hit the network.
+    /// Pull-to-refresh and the initial load bypass this gate; the automatic
+    /// triggers use it so a burst of them costs at most one fetch.
+    func shouldRunAutomaticRefresh(now: Date = Date()) -> Bool {
+        guard let lastSuccessfulLoadAt else { return true }
+        return now.timeIntervalSince(lastSuccessfulLoadAt) >= Self.automaticRefreshStaleness
+    }
+
+    private func performLoad(
+        modelContext: ModelContext?,
+        animation: Animation?,
+        includeArchived: Bool,
+        allProfiles: Bool
+    ) async -> Bool {
         isLoading = true
         errorMessage = nil
         cacheErrorMessage = nil
@@ -240,6 +319,7 @@ final class SessionListViewModel {
             }
             applySessions(visibleSessions, archivedCount: response.archivedCount, animation: animation)
             isViewingCachedData = false
+            lastSuccessfulLoadAt = Date()
 
             if let modelContext {
                 do {
