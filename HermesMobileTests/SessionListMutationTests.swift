@@ -3431,6 +3431,101 @@ final class SessionListMutationTests: XCTestCase {
         XCTAssertNil(row.activeStreamId)
     }
 
+    // MARK: - Cheap review P2s
+
+    /// Failure counters were only ever cleared on success or when the threshold
+    /// tripped, so a long-lived list accumulated a dead key per stream that
+    /// simply went away.
+    @MainActor
+    func testStreamStatusFailureCountersArePrunedForStreamsNoLongerMonitored() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/sessions":
+                return apiTestJSONResponse(self.sessionListJSON(forLoadCount: 1), for: request)
+            default:
+                throw URLError(.badServerResponse)
+            }
+        }
+
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["gone-1", "gone-2"])
+        XCTAssertEqual(viewModel.streamStatusFailureCountKeys, ["gone-1", "gone-2"])
+
+        // The rows finished, so the monitor now watches a different stream.
+        _ = await viewModel.refreshActiveSessionStatesIfNeeded(streamIDs: ["still-here"])
+
+        XCTAssertEqual(
+            viewModel.streamStatusFailureCountKeys,
+            ["still-here"],
+            "Counters for streams that vanished must not accumulate"
+        )
+    }
+
+    /// A turn-end patch clears the streaming state, so the "Needs input" badge
+    /// (`hasPendingUserMessage`) must go with it rather than lingering locally
+    /// until the next reconcile.
+    @MainActor
+    func testTurnEndPatchClearsThePendingUserMessageBadge() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "row",
+                  "title": "Needs input",
+                  "last_message_at": 100,
+                  "message_count": 4,
+                  "is_streaming": true,
+                  "active_stream_id": "stream-1",
+                  "has_pending_user_message": true,
+                  "pending_started_at": 90,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        XCTAssertEqual(viewModel.sessions.first?.hasPendingUserMessage, true)
+
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "row",
+                lastActive: 1_800_000_000,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
+
+        let row = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertNil(row.hasPendingUserMessage, "The turn ended, so nothing is pending")
+        XCTAssertNil(row.pendingStartedAt)
+    }
+
+    /// A patch that says nothing about streaming must leave the badge alone.
+    @MainActor
+    func testAPatchThatDoesNotEndTheTurnLeavesThePendingBadgeAlone() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "row",
+                  "title": "Needs input",
+                  "message_count": 4,
+                  "has_pending_user_message": true,
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+
+        viewModel.applyLocalSessionUpdate(SessionLocalUpdate(sessionID: "row", title: "Renamed"))
+
+        XCTAssertEqual(viewModel.sessions.first?.hasPendingUserMessage, true)
+    }
+
     // MARK: - Local row patch (Perf 6)
 
     @MainActor
@@ -3847,10 +3942,13 @@ final class SessionListRefreshBenchmarkTests: XCTestCase {
         XCTAssertEqual(viewModel.activeProfileName, "work")
         // Regression guard: fully serial would be 300 + 200 + 200 = 700ms.
         // Running the profile fetch alongside sessions puts the floor at
-        // sessions + projects = 500ms; the bound leaves room for sim overhead.
+        // sessions + projects = 500ms. The bound sits at 600ms — halfway
+        // between the floor and the serial regression — so a serial regression
+        // (~700ms) is caught with real margin instead of the 50ms of headroom
+        // a 650ms bound left (review P2).
         XCTAssertLessThan(
             elapsed,
-            Self.sessionsLatency + Self.projectsLatency + Self.profilesLatency - 0.05,
+            0.6,
             "The refresh path regressed to serial fetches"
         )
     }
@@ -3907,9 +4005,11 @@ final class SessionListRefreshBenchmarkTests: XCTestCase {
         XCTAssertEqual(patched?.title, "Patched from chat")
         XCTAssertEqual(patched?.lastMessageAt, 1_800_000_500)
         // Regression guard: the pre-fix path needed a full list round trip
-        // (~300ms). The local patch must need none.
+        // (~300ms). The local patch must need none. The elapsed time is
+        // recorded as a metric but not asserted on: a bound around a
+        // synchronous array mutation can only fail on a pathological scheduler,
+        // so it was a tautology rather than a guard (review P2).
         XCTAssertEqual(patchRequests, 0, "Returning from a chat must not require a fetch")
-        XCTAssertLessThan(elapsed, 0.016, "The row must be correct within a frame")
     }
 
     // MARK: - Harness

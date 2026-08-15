@@ -1462,8 +1462,12 @@ enum SessionListNewChatReturn {
             if case .newChat = newValue { return false }
             return true
         case .session(let oldSession):
+            // Compare on `id`, not `sessionId`: `sessionId` is optional, so two
+            // different malformed rows both had `nil == nil` → "same session"
+            // and suppressed the refresh. `SessionSummary.id` falls back to a
+            // title/timestamp composite (review P2).
             if case .session(let newSession) = newValue,
-               oldSession.sessionId == newSession.sessionId {
+               oldSession.id == newSession.id {
                 return false
             }
             return true

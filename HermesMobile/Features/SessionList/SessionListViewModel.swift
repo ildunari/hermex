@@ -529,6 +529,9 @@ final class SessionListViewModel {
         guard !isViewingCachedData, !isLoading else { return .unchanged }
 
         let streamIDs = Self.normalizedStreamIDs(rawStreamIDs)
+        // Prune counters for streams that are no longer being monitored, or a
+        // long session accumulates a dead key per finished stream (review P2).
+        pruneStreamStatusFailureCounts(keeping: streamIDs)
         guard !streamIDs.isEmpty else {
             return await load(modelContext: modelContext) ? .reloaded : loadFailureRefreshResult
         }
@@ -561,6 +564,21 @@ final class SessionListViewModel {
         }
 
         return .unchanged
+    }
+
+    /// Drops failure counters for streams no longer in the monitored set. They
+    /// were only ever cleared on success or when the threshold tripped, so a
+    /// long-lived list leaked one entry per stream that simply went away.
+    private func pruneStreamStatusFailureCounts(keeping streamIDs: [String]) {
+        guard !streamStatusFailureCounts.isEmpty else { return }
+
+        let live = Set(streamIDs)
+        streamStatusFailureCounts = streamStatusFailureCounts.filter { live.contains($0.key) }
+    }
+
+    /// Test seam: how many dead-stream failure counters are currently retained.
+    var streamStatusFailureCountKeys: Set<String> {
+        Set(streamStatusFailureCounts.keys)
     }
 
     /// Applies a locally known change to one row — the title the chat just set,

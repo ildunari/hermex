@@ -235,6 +235,42 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertEqual(forcedRefreshes, [false])
     }
 
+    /// P2: `didLeaveChat` compared `oldSession.sessionId == newSession.sessionId`,
+    /// and `sessionId` is optional — so two *different* malformed rows both
+    /// compared `nil == nil` → "same session", suppressing the refresh. `id`
+    /// falls back to a title/timestamp composite, so they stay distinct.
+    func testSwappingTwoIDLessSessionsIsStillTreatedAsLeavingTheChat() {
+        var forcedRefreshes: [Bool] = []
+
+        SessionListNewChatReturn.run(
+            from: .session(SessionSummary(sessionId: nil, title: "First malformed row")),
+            to: .session(SessionSummary(sessionId: nil, title: "Second malformed row")),
+            suppressEmptyPlaceholders: { XCTFail("newChat-only behavior") },
+            refreshSessions: { forcedRefreshes.append($0) }
+        )
+
+        XCTAssertEqual(
+            forcedRefreshes,
+            [false],
+            "Two ID-less rows are not the same session, so the list must still reconcile"
+        )
+    }
+
+    /// The same ID-less row reselected is still not a return.
+    func testReselectingTheSameIDLessSessionDoesNotRefresh() {
+        let session = SessionSummary(sessionId: nil, title: "Malformed", createdAt: 42)
+        var didRefresh = false
+
+        SessionListNewChatReturn.run(
+            from: .session(session),
+            to: .session(session),
+            suppressEmptyPlaceholders: { XCTFail("newChat-only behavior") },
+            refreshSessions: { _ in didRefresh = true }
+        )
+
+        XCTAssertFalse(didRefresh)
+    }
+
     func testReplacingNewChatRouteDoesNotRefreshSessions() {
         let firstRoute = PendingNewChatRoute()
         let secondRoute = PendingNewChatRoute()

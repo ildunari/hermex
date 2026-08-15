@@ -385,8 +385,12 @@ struct SessionSummary: Decodable, Equatable, Hashable, Identifiable {
             isStreaming: update.isStreaming ?? isStreaming,
             isCliSession: isCliSession,
             userMessageCount: userMessageCount,
-            hasPendingUserMessage: hasPendingUserMessage,
-            pendingStartedAt: pendingStartedAt,
+            // A turn that just ended has nothing pending, so a stale "Needs
+            // input" badge must not survive the patch until the next reconcile.
+            // An update that says nothing about streaming leaves it alone
+            // (review P2).
+            hasPendingUserMessage: update.isStreaming == false ? nil : hasPendingUserMessage,
+            pendingStartedAt: update.isStreaming == false ? nil : pendingStartedAt,
             worktreePath: worktreePath,
             sourceTag: sourceTag,
             rawSource: rawSource,
