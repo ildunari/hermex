@@ -436,6 +436,22 @@ struct SessionLocalUpdate: Equatable {
     var isEmpty: Bool {
         title == nil && lastActive == nil && isStreaming == nil && activeStreamID == nil
     }
+
+    /// This update layered over an `earlier` one for the same row: every field
+    /// this update leaves alone keeps the earlier value. Used to accumulate a
+    /// row's unconfirmed local state, so a title published at turn start is not
+    /// dropped by a recency-only patch at turn end.
+    func merged(onto earlier: SessionLocalUpdate?) -> SessionLocalUpdate {
+        guard let earlier, earlier.sessionID == sessionID else { return self }
+
+        return SessionLocalUpdate(
+            sessionID: sessionID,
+            title: title ?? earlier.title,
+            lastActive: lastActive ?? earlier.lastActive,
+            isStreaming: isStreaming ?? earlier.isStreaming,
+            activeStreamID: activeStreamID ?? earlier.activeStreamID
+        )
+    }
 }
 
 extension SessionSummary {

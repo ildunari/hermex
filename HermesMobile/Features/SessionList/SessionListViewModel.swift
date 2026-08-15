@@ -121,6 +121,21 @@ final class SessionListViewModel {
 
     private var activeLoadTask: InFlightLoad?
 
+    /// Local row patches that the server has not confirmed yet, keyed by session
+    /// ID.
+    ///
+    /// `applyLocalSessionUpdate` mutates one element of `sessions`, but
+    /// `applySessions` replaces the whole array — so any load already in flight
+    /// silently reverts the patch when it resolves. On chat exit the
+    /// return-refresh fires almost immediately, so the patched row was routinely
+    /// overwritten by a response whose `last_message_at` predates the turn that
+    /// just finished: the row jumped back down the list and reverted its title,
+    /// then jumped again on the next fetch (review P1-7).
+    ///
+    /// Each entry is re-applied inside `applySessions` and dropped as soon as
+    /// the server's own row is at least as recent as the patch.
+    private var pendingLocalUpdates: [String: SessionLocalUpdate] = [:]
+
     private let client: APIClient
     private let sessionMutator: SessionMutator
     private let server: URL
@@ -557,9 +572,16 @@ final class SessionListViewModel {
     /// intentionally keeps its order here; the patched row moves on next render.
     func applyLocalSessionUpdate(_ update: SessionLocalUpdate) {
         guard !update.isEmpty,
-              let sessionID = Self.nonEmpty(update.sessionID),
-              let index = sessions.firstIndex(where: { $0.sessionId == sessionID })
+              let sessionID = Self.nonEmpty(update.sessionID)
         else { return }
+
+        // Remembered so a load that was already in flight cannot silently revert
+        // this patch when it resolves (review P1-7). Merged with any earlier
+        // unconfirmed patch for the same row so a title published at turn start
+        // is not lost by a recency-only patch at turn end.
+        pendingLocalUpdates[sessionID] = update.merged(onto: pendingLocalUpdates[sessionID])
+
+        guard let index = sessions.firstIndex(where: { $0.sessionId == sessionID }) else { return }
 
         sessions[index] = sessions[index].applying(update)
     }
@@ -1361,16 +1383,56 @@ final class SessionListViewModel {
         archivedCount newArchivedCount: Int?,
         animation: Animation?
     ) {
+        let reconciled = reapplyingPendingLocalUpdates(to: newSessions)
+
         guard let animation else {
-            sessions = newSessions
+            sessions = reconciled
             archivedCount = newArchivedCount
             return
         }
 
         withAnimation(animation) {
-            sessions = newSessions
+            sessions = reconciled
             archivedCount = newArchivedCount
         }
+    }
+
+    /// Re-applies still-unconfirmed local patches over a freshly fetched list,
+    /// and retires each patch the moment the server's own row is at least as
+    /// recent as it.
+    ///
+    /// Without this, a load already in flight when the user left a chat would
+    /// wholesale-replace `sessions` with a response that predates the turn that
+    /// just finished, reverting the row's title and bouncing it down the list
+    /// (review P1-7). A patch for a row the server no longer returns is dropped
+    /// too — the session was deleted or archived elsewhere.
+    private func reapplyingPendingLocalUpdates(
+        to newSessions: [SessionSummary]
+    ) -> [SessionSummary] {
+        guard !pendingLocalUpdates.isEmpty else { return newSessions }
+
+        var stillPending: [String: SessionLocalUpdate] = [:]
+        var reconciled = newSessions
+
+        for (sessionID, update) in pendingLocalUpdates {
+            guard let index = reconciled.firstIndex(where: { $0.sessionId == sessionID }) else {
+                continue
+            }
+
+            let serverRow = reconciled[index]
+            let serverTimestamp = Self.timestamp(for: serverRow)
+            // The server has caught up (or moved past the patch): it is now the
+            // better source for this row, so stop overriding it.
+            if let patchedAt = update.lastActive, serverTimestamp >= patchedAt {
+                continue
+            }
+
+            reconciled[index] = serverRow.applying(update)
+            stillPending[sessionID] = update
+        }
+
+        pendingLocalUpdates = stillPending
+        return reconciled
     }
 
     private func contentMatchIDs(from sessions: [SessionSummary]) -> [String] {

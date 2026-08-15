@@ -3271,6 +3271,166 @@ final class SessionListMutationTests: XCTestCase {
         return coordinator
     }
 
+    // MARK: - Local patches survive an in-flight response (review P1-7)
+
+    /// `applyLocalSessionUpdate` mutates one element, but `applySessions`
+    /// replaces the whole array — so a load that was already in flight when the
+    /// user left a chat reverts the patch when it resolves. On chat exit the
+    /// return-refresh fires almost immediately, so the row routinely jumped back
+    /// down the list and reverted its title, then jumped again on the next
+    /// fetch.
+    @MainActor
+    func testInFlightResponseDoesNotRevertALocalPatchItPredates() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeConcurrentViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/sessions")
+            _ = counts.incrementLoadCount()
+            // The pre-turn state: the server has not seen the turn that is about
+            // to finish, so its `last_message_at` predates the patch.
+            return ConcurrentMockURLProtocol.Reply(delay: 0.3, json: """
+            {
+              "sessions": [
+                { "session_id": "other", "title": "Other", "last_message_at": 900, "archived": false },
+                { "session_id": "left-chat", "title": "Old title", "last_message_at": 100, "archived": false }
+              ]
+            }
+            """)
+        }
+        await viewModel.load()
+
+        // Return-from-chat refresh is issued, then the chat publishes its patch
+        // while that fetch is still outstanding.
+        async let inFlight: Bool = viewModel.load()
+        try await waitUntilSessionRequestCount(counts, isAtLeast: 2)
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "left-chat",
+                title: "Renamed by the agent",
+                lastActive: 1_800_000_000,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
+        _ = await inFlight
+
+        let row = try XCTUnwrap(viewModel.sessions.first { $0.sessionId == "left-chat" })
+        XCTAssertEqual(row.title, "Renamed by the agent", "The patch must survive the stale response")
+        XCTAssertEqual(row.lastMessageAt, 1_800_000_000)
+        XCTAssertEqual(
+            viewModel.visibleSessions(searchText: "", selectedProjectID: nil).compactMap(\.sessionId),
+            ["left-chat", "other"],
+            "The row must not bounce back down the list"
+        )
+    }
+
+    /// The patch is a stopgap, not a permanent override: once the server's own
+    /// row is at least as recent, it wins and the patch is retired.
+    @MainActor
+    func testServerWinsOnceItsRowIsAtLeastAsRecentAsThePatch() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            let count = counts.incrementLoadCount()
+            // Second fetch: the server has caught up with the finished turn.
+            let title = count >= 2 ? "Server-generated title" : "Old title"
+            let lastMessageAt = count >= 2 ? 1_800_000_005 : 100
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                {
+                  "session_id": "left-chat",
+                  "title": "\(title)",
+                  "last_message_at": \(lastMessageAt),
+                  "archived": false
+                }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(sessionID: "left-chat", title: "Local guess", lastActive: 1_800_000_000)
+        )
+        XCTAssertEqual(viewModel.sessions.first?.title, "Local guess")
+
+        await viewModel.load(forceFresh: true)
+
+        let row = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertEqual(row.title, "Server-generated title", "A newer server row must win")
+        XCTAssertEqual(row.lastMessageAt, 1_800_000_005)
+
+        // And the patch is retired, so a *later* older-looking response is not
+        // re-patched forever.
+        await viewModel.load(forceFresh: true)
+        XCTAssertEqual(viewModel.sessions.first?.title, "Server-generated title")
+    }
+
+    /// A patch for a row the server stopped returning (deleted or archived
+    /// elsewhere) must be dropped, never resurrect the row.
+    @MainActor
+    func testPendingPatchForADisappearedRowIsDroppedRatherThanResurrectingIt() async throws {
+        let counts = LockedSessionMutationRequestCounts()
+        let viewModel = try makeViewModel { request in
+            let count = counts.incrementLoadCount()
+            guard count == 1 else {
+                return apiTestJSONResponse(#"{"sessions": []}"#, for: request)
+            }
+
+            return apiTestJSONResponse("""
+            {
+              "sessions": [
+                { "session_id": "doomed", "title": "Doomed", "last_message_at": 100, "archived": false }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(sessionID: "doomed", title: "Patched", lastActive: 1_800_000_000)
+        )
+
+        await viewModel.load(forceFresh: true)
+
+        XCTAssertTrue(viewModel.sessions.isEmpty, "A deleted row must stay deleted")
+    }
+
+    /// Two patches for the same row accumulate rather than clobbering: a title
+    /// published at turn start survives a recency-only patch at turn end.
+    @MainActor
+    func testConsecutiveLocalPatchesForOneRowAccumulate() async throws {
+        let viewModel = try makeViewModel { request in
+            apiTestJSONResponse("""
+            {
+              "sessions": [
+                { "session_id": "row", "title": "Old", "last_message_at": 100, "archived": false }
+              ]
+            }
+            """, for: request)
+        }
+        await viewModel.load()
+
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(sessionID: "row", title: "Streamed title", isStreaming: true)
+        )
+        viewModel.applyLocalSessionUpdate(
+            SessionLocalUpdate(
+                sessionID: "row",
+                lastActive: 1_800_000_000,
+                isStreaming: false,
+                activeStreamID: .some(nil)
+            )
+        )
+
+        // The server response still predates both patches.
+        await viewModel.load(forceFresh: true)
+
+        let row = try XCTUnwrap(viewModel.sessions.first)
+        XCTAssertEqual(row.title, "Streamed title", "The earlier title must not be lost")
+        XCTAssertEqual(row.lastMessageAt, 1_800_000_000)
+        XCTAssertEqual(row.isStreaming, false)
+        XCTAssertNil(row.activeStreamId)
+    }
+
     // MARK: - Local row patch (Perf 6)
 
     @MainActor
