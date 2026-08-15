@@ -443,4 +443,70 @@ final class ActivityDisclosureUITests: XCTestCase {
             "Tapping the composer outside the expanded plan should collapse it."
         )
     }
+
+    func testLongGoalStaysBoundedScrollableAndMutuallyExclusiveWithPlan() {
+        let app = launchGallery(page: 28)
+        let details = app.descendants(matching: .any)
+            .matching(identifier: "goal.details-scroll").firstMatch
+        let goalHeader = app.descendants(matching: .any)
+            .matching(identifier: "goal.header").firstMatch
+        let planHeader = app.descendants(matching: .any)
+            .matching(identifier: "plan.header").firstMatch
+
+        XCTAssertTrue(details.waitForExistence(timeout: 15))
+        XCTAssertLessThanOrEqual(
+            details.frame.height,
+            301,
+            "A long goal must stay inside the 300pt detail window."
+        )
+        XCTAssertGreaterThanOrEqual(details.frame.minY, 0)
+        XCTAssertLessThanOrEqual(details.frame.maxY, app.windows.firstMatch.frame.maxY)
+        XCTAssertGreaterThanOrEqual(
+            details.frame.minX,
+            app.windows.firstMatch.frame.minX,
+            "The expanded goal must be fully visible at the leading edge."
+        )
+        XCTAssertLessThanOrEqual(
+            details.frame.maxX,
+            app.windows.firstMatch.frame.maxX,
+            "The rail must center the expanded goal instead of clipping its trailing edge."
+        )
+
+        details.swipeUp()
+        XCTAssertTrue(details.exists, "The long goal detail window must remain independently scrollable.")
+
+        goalHeader.tap()
+        XCTAssertTrue(details.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(planHeader.waitForExistence(timeout: 5))
+
+        planHeader.tap()
+        let planRows = app.descendants(matching: .any)
+            .matching(identifier: "plan.rows-scroll").firstMatch
+        XCTAssertTrue(planRows.waitForExistence(timeout: 5))
+        XCTAssertFalse(details.exists, "Opening the plan must not reopen or overlap the goal card.")
+    }
+
+    func testComposerStatusRailPansWhenFourGoalPillsDoNotFit() {
+        let app = launchGallery(page: 29)
+        let rail = app.descendants(matching: .any)
+            .matching(identifier: "composer-status.rail").firstMatch
+        let goalHeaders = app.descendants(matching: .any)
+            .matching(identifier: "goal.header")
+
+        XCTAssertTrue(rail.waitForExistence(timeout: 15))
+        XCTAssertEqual(goalHeaders.count, 4)
+
+        let trailingHeader = goalHeaders.element(boundBy: 3)
+        let initialX = trailingHeader.frame.minX
+        rail.swipeLeft()
+        let shiftedDeadline = Date().addingTimeInterval(5)
+        while trailingHeader.frame.minX >= initialX - 4, Date() < shiftedDeadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertLessThan(
+            trailingHeader.frame.minX,
+            initialX - 4,
+            "The pill band should scroll horizontally rather than compressing or wrapping."
+        )
+    }
 }

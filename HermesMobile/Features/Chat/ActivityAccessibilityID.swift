@@ -28,4 +28,10 @@ enum ActivityAccessibilityID {
     static let planHeader = "plan.header"
     /// The plan's bounded, scrollable checklist.
     static let planRowsScroll = "plan.rows-scroll"
+    /// The goal pill / expanded card header above the composer.
+    static let goalHeader = "goal.header"
+    /// The goal's bounded, independently scrolling detail body.
+    static let goalDetailsScroll = "goal.details-scroll"
+    /// Horizontally scrolling container shared by plan, goal, and future pills.
+    static let composerStatusRail = "composer-status.rail"
 }

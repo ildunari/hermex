@@ -1098,7 +1098,10 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(streamClient.startedURLs.first?.path, "/api/chat/stream")
         XCTAssertEqual(viewModel.messages.map(\.role), ["user"])
         XCTAssertEqual(viewModel.messages.last?.content, "Start executing the goal.")
-        XCTAssertEqual(viewModel.pinnedLocalNotices, ["Goal set."])
+        XCTAssertTrue(
+            viewModel.pinnedLocalNotices.isEmpty,
+            "Structured goals render in the bounded composer surface, not an unbounded pinned notice."
+        )
 
         streamClient.emit(.token("Working now."))
 

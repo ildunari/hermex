@@ -119,6 +119,7 @@
 		C05100000000000000000001 /* ChatTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000011 /* ChatTranscriptView.swift */; };
 		C05100000000000000000002 /* ChatMessageActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000012 /* ChatMessageActions.swift */; };
 		C05100000000000000000003 /* ChatGoalControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000013 /* ChatGoalControls.swift */; };
+		D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C500000000000000000002 /* ComposerStatusSurface.swift */; };
 		C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */; };
 		1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */; };
 		1A2B3C4D5E6F7000000000D1 /* SessionListViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */; };
@@ -497,6 +498,7 @@
 		C05100000000000000000011 /* ChatTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptView.swift; sourceTree = "<group>"; };
 		C05100000000000000000012 /* ChatMessageActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageActions.swift; sourceTree = "<group>"; };
 		C05100000000000000000013 /* ChatGoalControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGoalControls.swift; sourceTree = "<group>"; };
+		D0C500000000000000000002 /* ComposerStatusSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStatusSurface.swift; sourceTree = "<group>"; };
 		C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptSupportingViews.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D3 /* SessionListViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionListViewModel.swift; sourceTree = "<group>"; };
@@ -1101,6 +1103,7 @@
 				C05100000000000000000011 /* ChatTranscriptView.swift */,
 				C05100000000000000000012 /* ChatMessageActions.swift */,
 				C05100000000000000000013 /* ChatGoalControls.swift */,
+				D0C500000000000000000002 /* ComposerStatusSurface.swift */,
 				C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */,
 				C0CAM000000000000000B002 /* CameraPickerView.swift */,
 				C0DEC0DE0000000000000002 /* ChatComposerView.swift */,
@@ -1656,6 +1659,7 @@
 					C05100000000000000000001 /* ChatTranscriptView.swift in Sources */,
 					C05100000000000000000002 /* ChatMessageActions.swift in Sources */,
 					C05100000000000000000003 /* ChatGoalControls.swift in Sources */,
+					D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */,
 					C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */,
 					C0CAM000000000000000B001 /* CameraPickerView.swift in Sources */,
 				C0DEC0DE0000000000000001 /* ChatComposerView.swift in Sources */,

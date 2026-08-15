@@ -315,6 +315,7 @@ struct ChatView: View {
     @State private var showProfileNewSessionConfirmation = false
     @State private var goalDraft = ""
     @State private var showsGoalSheet = false
+    @State private var expandedComposerStatusSurface: ComposerStatusSurfaceID?
     @State private var activeGitSheet: ActiveGitSheet?
     @State private var turnDiffPresentation: TurnDiffPresentation?
     @State private var viewModel: ChatViewModel
@@ -367,6 +368,9 @@ struct ChatView: View {
             initialViewModel.isPlanExpanded = true
         }
         _viewModel = State(initialValue: initialViewModel)
+        _expandedComposerStatusSurface = State(
+            initialValue: initialPlanStateForTesting == nil ? nil : .plan
+        )
         _gitAvailabilityViewModel = State(initialValue: GitWorkspaceAvailabilityViewModel(
             session: session,
             server: server
@@ -560,7 +564,7 @@ struct ChatView: View {
             // anywhere on the conversation canvas dismisses the plan while
             // scrolling and existing transcript controls remain interactive.
             .simultaneousGesture(
-                TapGesture().onEnded { collapseExpandedPlan() }
+                TapGesture().onEnded { collapseExpandedComposerStatusSurface() }
             )
 
             BottomComposerMaterialFade(composerHeight: composerHeight)
@@ -1100,35 +1104,57 @@ struct ChatView: View {
         }
     }
 
-    /// The plan pill/card band, pinned just above the composer.
+    /// Interactive status-pill band pinned just above the composer.
     ///
     /// A separate layer from `composerAccessoryStack` because that stack sets
     /// `allowsHitTesting(false)` — everything in it is passive status chrome,
-    /// whereas the plan is tappable.
+    /// whereas plan, goal, and future delegate/subagent surfaces are tappable.
     ///
-    /// Absent entirely when the session has no plan. Hermes agents call the
-    /// `todo` tool only when they choose to, so most conversations never have
-    /// one; an empty state here would be permanent dead chrome above the
-    /// composer.
+    /// Absent entirely when the session has neither a plan nor a goal. The rail
+    /// keeps collapsed pills readable and becomes horizontally scrollable as
+    /// more session surfaces are added.
     @ViewBuilder
-    private var planTimelineLayer: some View {
-        if let planState = viewModel.planState, !planState.isEmpty {
-            PlanTimelineView(
-                state: planState,
-                isExpanded: Binding(
-                    get: { viewModel.isPlanExpanded },
-                    set: { viewModel.isPlanExpanded = $0 }
-                ),
-                isLive: viewModel.activeStreamID != nil
-            )
-            .padding(.horizontal)
+    private var composerStatusSurfaceLayer: some View {
+        if hasComposerStatusSurfaces {
+            ComposerStatusSurfaceRail(expandedSurface: expandedComposerStatusSurface) {
+                if expandedComposerStatusSurface != .goal,
+                   let planState = viewModel.planState,
+                   !planState.isEmpty {
+                    PlanTimelineView(
+                        state: planState,
+                        isExpanded: composerStatusBinding(for: .plan),
+                        isLive: viewModel.activeStreamID != nil
+                    )
+                    .id(ComposerStatusSurfaceID.plan)
+                }
+
+                if expandedComposerStatusSurface != .plan,
+                   let goal = viewModel.currentGoal {
+                    GoalStatusSurface(
+                        goal: goal,
+                        isExpanded: composerStatusBinding(for: .goal),
+                        isLive: viewModel.activeStreamID != nil
+                    )
+                    .id(ComposerStatusSurfaceID.goal)
+                }
+            }
             .padding(.bottom, 8)
-            // Centered over the composer. The collapsed pill is a small
-            // free-floating control, and hanging it off the leading edge made it
-            // read as attached to the transcript rather than to the composer.
-            .frame(maxWidth: .infinity, alignment: .center)
             .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
         }
+    }
+
+    private var hasComposerStatusSurfaces: Bool {
+        (viewModel.planState?.isEmpty == false) || viewModel.currentGoal != nil
+    }
+
+    private func composerStatusBinding(for surface: ComposerStatusSurfaceID) -> Binding<Bool> {
+        Binding(
+            get: { expandedComposerStatusSurface == surface },
+            set: { expanded in
+                expandedComposerStatusSurface = expanded ? surface : nil
+                viewModel.isPlanExpanded = expandedComposerStatusSurface == .plan
+            }
+        )
     }
 
     /// The composer plus anything docked directly to it.
@@ -1139,14 +1165,25 @@ struct ChatView: View {
     /// the composer grew (multi-line draft, attachment strip, git bar).
     private var composerDock: some View {
         VStack(spacing: 0) {
-            planTimelineLayer
+            composerStatusSurfaceLayer
 
             messageComposer
                 .simultaneousGesture(
-                    TapGesture().onEnded { collapseExpandedPlan() }
+                    TapGesture().onEnded { collapseExpandedComposerStatusSurface() }
                 )
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.currentGoal)
+        .onChange(of: viewModel.planState) { _, state in
+            guard expandedComposerStatusSurface == .plan,
+                  state?.isEmpty != false else { return }
+            expandedComposerStatusSurface = nil
+            viewModel.isPlanExpanded = false
+        }
+        .onChange(of: viewModel.currentGoal) { _, goal in
+            guard expandedComposerStatusSurface == .goal, goal == nil else { return }
+            expandedComposerStatusSurface = nil
+        }
         // Publish the height the dock actually sits in, so the plan card can
         // bound itself against that rather than against the whole screen —
         // which is wrong in Split View and with the keyboard raised.
@@ -1166,9 +1203,10 @@ struct ChatView: View {
         }
     }
 
-    private func collapseExpandedPlan() {
-        guard viewModel.isPlanExpanded else { return }
+    private func collapseExpandedComposerStatusSurface() {
+        guard expandedComposerStatusSurface != nil else { return }
         withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+            expandedComposerStatusSurface = nil
             viewModel.isPlanExpanded = false
         }
     }

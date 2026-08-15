@@ -182,6 +182,66 @@ final class TodoStateTests: XCTestCase {
         XCTAssertEqual(height, 150)
     }
 
+    // MARK: - Composer status surfaces
+
+    func testGoalStatusMapsEveryServerContractState() {
+        XCTAssertEqual(GoalPresentationStatus(rawValue: "active"), .active)
+        XCTAssertEqual(GoalPresentationStatus(rawValue: "PAUSED"), .paused)
+        XCTAssertEqual(GoalPresentationStatus(rawValue: "done"), .done)
+        XCTAssertEqual(GoalPresentationStatus(rawValue: "cleared"), .cleared)
+        XCTAssertEqual(GoalPresentationStatus(rawValue: "waiting"), .unknown("waiting"))
+    }
+
+    func testGoalTurnProgressClampsMalformedServerValues() {
+        XCTAssertEqual(
+            SubmittedGoal(goal: "Ship", status: "active", turnsUsed: 30, maxTurns: 20).turnProgress,
+            1
+        )
+        XCTAssertEqual(
+            SubmittedGoal(goal: "Ship", status: "active", turnsUsed: -3, maxTurns: 20).turnProgress,
+            0
+        )
+        XCTAssertNil(
+            SubmittedGoal(goal: "Ship", status: "active", turnsUsed: 3, maxTurns: 0).turnProgress
+        )
+    }
+
+    func testVeryLongGoalIsCappedAtThreeHundredPoints() {
+        let height = GoalStatusSurfaceLayout.detailsHeight(
+            measuredContentHeight: 2_000,
+            goalLength: 4_000,
+            availableHeight: 844
+        )
+
+        XCTAssertEqual(height, GoalStatusSurfaceLayout.maximumHeight)
+    }
+
+    func testGoalRespectsSqueezedDockHeight() {
+        let height = GoalStatusSurfaceLayout.detailsHeight(
+            measuredContentHeight: 2_000,
+            goalLength: 4_000,
+            availableHeight: 400
+        )
+
+        XCTAssertEqual(height, 176)
+    }
+
+    func testShortGoalUsesNaturalMeasuredHeight() {
+        let height = GoalStatusSurfaceLayout.detailsHeight(
+            measuredContentHeight: 128,
+            goalLength: 12,
+            availableHeight: 844
+        )
+
+        XCTAssertEqual(height, 128)
+    }
+
+    func testSharedExpandedSurfaceInsetsProtectEveryEdge() {
+        XCTAssertGreaterThanOrEqual(ComposerStatusSurfaceMetrics.horizontalPadding, 16)
+        XCTAssertGreaterThanOrEqual(ComposerStatusSurfaceMetrics.topPadding, 12)
+        XCTAssertGreaterThanOrEqual(ComposerStatusSurfaceMetrics.bottomPadding, 12)
+    }
+
     // MARK: - Transport
 
     func testSSEDecodesTodoStateEvent() {

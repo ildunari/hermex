@@ -402,4 +402,126 @@ private struct PlanLiveStressView: View {
         }
     }
 }
+
+/// Reproduces the long-goal overlay report while mounting the production rail,
+/// shared chrome, plan pill, goal surface, and composer together.
+struct GoalLongStressGalleryView: View {
+    @State private var expandedSurface: ComposerStatusSurfaceID? = .goal
+    @State private var dockHeight: CGFloat = 0
+    @State private var draft = ""
+    @Environment(\.colorScheme) private var colorScheme
+
+    private let plan = TodoState(todos: [
+        TodoItem(rawID: "1", content: "Inspect the active goal presentation", status: .completed),
+        TodoItem(rawID: "2", content: "Bound and verify the expanded goal", status: .inProgress),
+        TodoItem(rawID: "3", content: "Ship the verified build", status: .pending)
+    ])
+
+    private let goal = SubmittedGoal(
+        goal: Array(repeating: "Convert this app to run entirely on the official Hermes gateway protocol while preserving the SwiftUI interface. Follow the checkpoint plan, keep evidence for every verification step, fix failures forward, and continue until the integrated result is tested and shipped.", count: 10).joined(separator: "\n\n"),
+        status: "active",
+        turnsUsed: 7,
+        maxTurns: 20,
+        lastVerdict: "continue",
+        lastReason: "The implementation is still being verified in the simulator."
+    )
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("LONG GOAL REGRESSION · bounded card + scrollable rail")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(20)
+
+            Spacer()
+
+            ComposerStatusSurfaceRail(expandedSurface: expandedSurface) {
+                if expandedSurface != .goal {
+                    PlanTimelineView(
+                        state: plan,
+                        isExpanded: binding(for: .plan),
+                        isLive: true
+                    )
+                    .id(ComposerStatusSurfaceID.plan)
+                }
+                if expandedSurface != .plan {
+                    GoalStatusSurface(
+                        goal: goal,
+                        isExpanded: binding(for: .goal),
+                        isLive: true
+                    )
+                    .id(ComposerStatusSurfaceID.goal)
+                }
+            }
+            .padding(.bottom, 8)
+
+            TextField("Ask anything… /commands", text: $draft)
+                .textFieldStyle(.plain)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 15)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.07) : Color.white)
+                )
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
+        }
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear { dockHeight = proxy.size.height }
+                    .onChange(of: proxy.size.height) { _, height in dockHeight = height }
+            }
+        }
+        .environment(\.planDockHeight, dockHeight > 0 ? dockHeight : 844)
+    }
+
+    private func binding(for surface: ComposerStatusSurfaceID) -> Binding<Bool> {
+        Binding(
+            get: { expandedSurface == surface },
+            set: { expandedSurface = $0 ? surface : nil }
+        )
+    }
+}
+
+/// All server-backed goal states in one overflowing rail. This doubles as the
+/// future-capacity fixture: four intrinsic-width pills must pan horizontally
+/// rather than compressing, wrapping, or covering the composer.
+struct GoalStatusRailGalleryView: View {
+    @State private var expandedSurface: Int?
+
+    private let goals = [
+        SubmittedGoal(goal: "Active goal", status: "active", turnsUsed: 3, maxTurns: 20),
+        SubmittedGoal(goal: "Paused goal", status: "paused", turnsUsed: 5, maxTurns: 20, pausedReason: "Waiting for input"),
+        SubmittedGoal(goal: "Finished goal", status: "done", turnsUsed: 9, maxTurns: 20, lastVerdict: "done"),
+        SubmittedGoal(goal: "Cleared goal", status: "cleared", turnsUsed: 1, maxTurns: 20)
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("GOAL STATES · horizontal overflow")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 20)
+
+            ComposerStatusSurfaceRail {
+                ForEach(Array(goals.enumerated()), id: \.offset) { index, goal in
+                    GoalStatusSurface(
+                        goal: goal,
+                        isExpanded: Binding(
+                            get: { expandedSurface == index },
+                            set: { expandedSurface = $0 ? index : nil }
+                        ),
+                        isLive: index == 0
+                    )
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.top, 24)
+        .environment(\.planDockHeight, 844)
+    }
+}
 #endif
