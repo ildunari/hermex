@@ -131,6 +131,8 @@ final class SessionOpenPerformanceUITests: XCTestCase {
     private struct LiveServer: Decodable {
         let url: String
         let password: String
+        let benchmarkSessionID: String?
+        let benchmarkBudgetSeconds: TimeInterval?
     }
 
     override func setUp() {
@@ -140,11 +142,13 @@ final class SessionOpenPerformanceUITests: XCTestCase {
 
     func testLiveSessionCanvasBecomesReadyWithinBudget() throws {
         let environment = ProcessInfo.processInfo.environment
-        guard let sessionID = environment["HERMEX_BENCH_SESSION_ID"], !sessionID.isEmpty else {
+        let server = try liveServer()
+        guard let sessionID = environment["HERMEX_BENCH_SESSION_ID"] ?? server.benchmarkSessionID,
+              !sessionID.isEmpty else {
             throw XCTSkip("Set HERMEX_BENCH_SESSION_ID to a real session ID.")
         }
-        let budget = TimeInterval(environment["HERMEX_BENCH_BUDGET_SECONDS"] ?? "2.0") ?? 2.0
-        let server = try liveServer()
+        let budget = environment["HERMEX_BENCH_BUDGET_SECONDS"]
+            .flatMap(TimeInterval.init) ?? server.benchmarkBudgetSeconds ?? 2.0
         let app = XCUIApplication()
         app.launchArguments = [
             "--auto-connect-server", server.url,
@@ -163,12 +167,21 @@ final class SessionOpenPerformanceUITests: XCTestCase {
 
         let startedAt = Date()
         row.tap()
+        // ChatView's outer accessibility identifier is intentionally inherited
+        // by descendants on some iOS releases, so the probe's semantic label is
+        // the stable cross-version lookup key.
         let ready = app.descendants(matching: .any)
-            .matching(identifier: "chat.transcript.ready").firstMatch
+            .matching(NSPredicate(format: "label == %@", "Transcript ready"))
+            .firstMatch
         XCTAssertTrue(ready.waitForExistence(timeout: max(10, budget * 3)), "Transcript never became ready.")
         let elapsed = Date().timeIntervalSince(startedAt)
 
-        print("HERMEX_SESSION_OPEN_BENCHMARK_SECONDS=\(String(format: "%.3f", elapsed))")
+        let resultLine = "HERMEX_SESSION_OPEN_BENCHMARK_SECONDS=\(String(format: "%.3f", elapsed))"
+        print(resultLine)
+        let benchmarkAttachment = XCTAttachment(string: resultLine)
+        benchmarkAttachment.name = "session-open-benchmark"
+        benchmarkAttachment.lifetime = .keepAlways
+        add(benchmarkAttachment)
         XCTAssertLessThan(
             elapsed,
             budget,

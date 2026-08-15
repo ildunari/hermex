@@ -128,7 +128,15 @@ struct ChatTranscriptView: View {
             }
         }
         .background(chatPalette.chatBackground)
-        .accessibilityIdentifier(isLoading ? "chat.transcript.loading" : "chat.transcript.ready")
+        .overlay(alignment: .topLeading) {
+            Rectangle()
+                .fill(.clear)
+                .frame(width: 1, height: 1)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(isLoading ? "Transcript loading" : "Transcript ready")
+                .accessibilityIdentifier(isLoading ? "chat.transcript.loading" : "chat.transcript.ready")
+                .allowsHitTesting(false)
+        }
     }
 
     private var transcriptScrollView: some View {
