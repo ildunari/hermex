@@ -41,11 +41,6 @@ struct SubagentStatusSurface: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "cpu")
-                    .font(.system(size: ComposerStatusSurfaceMetrics.semanticIconSize, weight: .semibold))
-                    .foregroundStyle(palette.textSecondary)
-                    .accessibilityHidden(true)
-
                 aggregateStatusGlyph
 
                 Text(aggregateLabel)

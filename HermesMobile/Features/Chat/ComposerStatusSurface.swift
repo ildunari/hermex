@@ -22,7 +22,6 @@ enum ComposerStatusSurfaceMetrics {
     static let collapsedCornerRadius: CGFloat = 19
     static let expandedCornerRadius = ActivityBlockChrome.cornerRadius
     static let railSpacing: CGFloat = 8
-    static let semanticIconSize: CGFloat = 13
 }
 
 /// Horizontally scrolling home for composer status pills and their expanded cards.
@@ -33,28 +32,33 @@ enum ComposerStatusSurfaceMetrics {
 struct ComposerStatusSurfaceRail<Content: View>: View {
     var expandedSurface: ComposerStatusSurfaceID?
     @ViewBuilder let content: () -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            if expandedSurface == nil {
-                ScrollView(.horizontal) {
-                    surfaceRow
-                }
-                .scrollIndicators(.hidden)
-                .scrollBounceBehavior(.basedOnSize)
-                .scrollClipDisabled(false)
-                .defaultScrollAnchor(.center, for: .alignment)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                // Only one surface is rendered while expanded. Do not leave it
-                // inside the collapsed pill rail's horizontal ScrollView: that
-                // second scroll recognizer competes with the card's vertical
-                // ScrollView and can swallow taps intended for its canvas.
-                // Mounting the card directly restores descendant taps and keeps
-                // vertical scrolling independent for plan, goal, and future
-                // composer status surfaces.
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal) {
                 surfaceRow
-                    .frame(maxWidth: .infinity, alignment: .center)
+            }
+            .scrollIndicators(.hidden)
+            .scrollBounceBehavior(.basedOnSize)
+            // Collapsed pills own separate shadows. Clipping the scroll view
+            // sliced those shadows at a hard vertical edge and made adjacent
+            // pills read as one shared floating slab.
+            .scrollClipDisabled(true)
+            .defaultScrollAnchor(.center, for: .alignment)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: expandedSurface, initial: true) { _, surface in
+                guard let surface else { return }
+                // Keep the same scroll/content identity while the selected
+                // pill grows. Replacing the ScrollView with a second branch
+                // made SwiftUI insert the card from the dock's bottom edge
+                // instead of morphing outward from the tapped pill.
+                Task { @MainActor in
+                    await Task.yield()
+                    withAnimation(ChatMotion.cardChrome(reduceMotion: reduceMotion)) {
+                        proxy.scrollTo(surface, anchor: .center)
+                    }
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -114,9 +118,13 @@ private struct ComposerStatusSurfaceModifier: ViewModifier {
             )
             .clipShape(shape)
             .shadow(
-                color: .black.opacity(colorScheme == .dark ? 0.34 : 0.12),
-                radius: 8,
-                y: 3
+                color: .black.opacity(
+                    colorScheme == .dark
+                        ? (isExpanded ? 0.34 : 0.22)
+                        : (isExpanded ? 0.12 : 0.08)
+                ),
+                radius: isExpanded ? 8 : 3,
+                y: isExpanded ? 3 : 1.5
             )
             .borderBeam(
                 style: beamStyle,

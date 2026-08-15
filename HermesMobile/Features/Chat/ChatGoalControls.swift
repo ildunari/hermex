@@ -105,11 +105,6 @@ struct GoalStatusSurface: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "target")
-                    .font(.system(size: ComposerStatusSurfaceMetrics.semanticIconSize, weight: .semibold))
-                    .foregroundStyle(palette.textSecondary)
-                    .accessibilityHidden(true)
-
                 GoalStatusGlyph(
                     status: goal.presentationStatus,
                     isRunning: isRunning,

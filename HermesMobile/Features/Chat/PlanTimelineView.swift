@@ -80,11 +80,6 @@ struct PlanTimelineView: View {
             }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: "checklist")
-                    .font(.system(size: ComposerStatusSurfaceMetrics.semanticIconSize, weight: .semibold))
-                    .foregroundStyle(palette.textSecondary)
-                    .accessibilityHidden(true)
-
                 progressGlyph
 
                 Text(progressLabel)

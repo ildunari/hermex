@@ -522,6 +522,23 @@ final class ActivityDisclosureUITests: XCTestCase {
         XCTAssertTrue(rail.waitForExistence(timeout: 15))
         XCTAssertEqual(goalHeaders.count, 4)
 
+        let runningHeader = goalHeaders.element(boundBy: 0)
+        XCTAssertLessThanOrEqual(
+            runningHeader.frame.height,
+            45,
+            "The shared status control must keep the original 44-point resting pill height."
+        )
+        XCTAssertLessThanOrEqual(
+            runningHeader.frame.width,
+            110,
+            "A status glyph must replace—not sit beside—a second semantic icon in the compact pill."
+        )
+
+        let shadowScreenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shadowScreenshot.name = "status-pill-independent-shadows"
+        shadowScreenshot.lifetime = .keepAlways
+        add(shadowScreenshot)
+
         let trailingHeader = goalHeaders.element(boundBy: 3)
         let initialX = trailingHeader.frame.minX
         rail.swipeLeft()
