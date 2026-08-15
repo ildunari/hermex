@@ -6,6 +6,11 @@ import UIKit
 struct SessionListView: View {
     private static let searchChromeIconVisualSize: CGFloat = 36
     private static let searchChromeIconHitTarget: CGFloat = 44
+    /// Poll cadence while a row is actually streaming and the app is visible.
+    private static let activeMonitorInterval: UInt64 = 1_000_000_000
+    /// Cadence while the monitor has nothing to do. The loop stays alive (so it
+    /// recovers from a cache blip on its own) but wakes rarely.
+    private static let idleMonitorInterval: UInt64 = 5_000_000_000
 
     @Bindable var authManager: AuthManager
     let server: URL
@@ -18,6 +23,7 @@ struct SessionListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.scenePhase) private var scenePhase
     @State private var viewModel: SessionListViewModel
     @State private var navigationState: SessionNavigationState
     @State private var sessionPendingRename: SessionSummary?
@@ -267,6 +273,13 @@ struct SessionListView: View {
                     refreshSessions: refreshAfterReturningIfNeeded
                 )
             }
+            .onChange(of: scenePhase) { _, newPhase in
+                // Coming back from the background is the other moment the list is
+                // reliably stale (Bug 1). The staleness gate inside
+                // refreshAfterReturningIfNeeded keeps a quick app switch free.
+                guard newPhase == .active else { return }
+                refreshAfterReturningIfNeeded()
+            }
             .refreshable {
                 await refreshSessionsAndActiveProfile()
             }
@@ -348,8 +361,13 @@ struct SessionListView: View {
     private func navigationDestination(_ destination: SessionNavigationDestination) -> some View {
         switch destination {
         case .session(let session):
-            ChatView(session: session, server: server, onAPIError: authManager.handleAPIError)
-                .id(session.id)
+            ChatView(
+                session: session,
+                server: server,
+                onAPIError: authManager.handleAPIError,
+                onSessionUpdate: applyLocalSessionUpdate
+            )
+            .id(session.id)
         case .newChat(let route):
             PendingNewChatView(
                 initialDraft: route.initialDraft,
@@ -1005,10 +1023,15 @@ struct SessionListView: View {
         )
     }
 
+    /// Fetches the list and the active profile concurrently. They are unrelated
+    /// endpoints, so serializing them simply added one RTT to every refresh
+    /// (Perf 5). Projects stay sequential-after-sessions on purpose: whether to
+    /// fetch them at all depends on `isViewingCachedData`, which is only known
+    /// once the list load has resolved.
     private func refreshSessionsAndActiveProfile() async {
-        await loadSessions()
-        guard !Task.isCancelled else { return }
-        await viewModel.loadActiveProfile()
+        async let sessions: Void = loadSessions()
+        async let profile: Void = viewModel.loadActiveProfile()
+        _ = await (sessions, profile)
     }
 
     private func closeSearch() {
@@ -1071,23 +1094,60 @@ struct SessionListView: View {
         isSearchFocused = true
     }
 
+    /// Applies a row update published by an open chat, then mirrors it into the
+    /// offline cache so a later cold start / cache fallback shows the same row.
+    private func applyLocalSessionUpdate(_ update: SessionLocalUpdate) {
+        viewModel.applyLocalSessionUpdate(update)
+
+        guard let patched = viewModel.sessions.first(where: { $0.sessionId == update.sessionID })
+        else { return }
+
+        do {
+            try CacheStore.cacheSession(patched, serverURL: server, in: modelContext)
+        } catch {
+            // A cache write failure must never block the visible patch; the next
+            // successful list load rewrites the cache anyway.
+        }
+    }
+
+    /// Bumps the return-refresh trigger, subject to the staleness gate so a
+    /// burst of automatic triggers (onAppear + destination change + scene-active)
+    /// costs one fetch rather than three.
     private func refreshAfterReturningIfNeeded() {
         guard didCompleteInitialLoad else { return }
+        guard viewModel.shouldRunAutomaticRefresh() else { return }
         returnRefreshID = UUID()
     }
 
+    /// Polls active-stream rows once a second while the app is foregrounded.
+    ///
+    /// The loop sleeps rather than returning when there is nothing to poll: an
+    /// early `return` on cached data meant one network blip permanently killed
+    /// the monitor, leaving rows stuck "streaming" until the view was rebuilt
+    /// (Bug 2). Teardown is owned entirely by `.task(id:)`, which cancels this
+    /// task whenever `activeSessionMonitorTaskID` changes, so looping cannot
+    /// leak or double up.
     private func monitorActiveSessionRows() async {
         while !Task.isCancelled {
             let taskID = activeSessionMonitorTaskID
-            guard taskID.hasActiveRows, !taskID.isViewingCachedData else { return }
+            // Nothing to reconcile, or the app is backgrounded: keep the loop
+            // alive but skip the request (Perf 8 — no polling while inactive)
+            // and idle at a slower cadence so a dormant loop is nearly free.
+            let isPollable = taskID.hasActiveRows
+                && !taskID.isViewingCachedData
+                && scenePhase == .active
 
             do {
-                try await Task.sleep(nanoseconds: 1_000_000_000)
+                try await Task.sleep(
+                    nanoseconds: isPollable
+                        ? Self.activeMonitorInterval
+                        : Self.idleMonitorInterval
+                )
             } catch {
                 return
             }
 
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, isPollable else { continue }
 
             let refreshResult = await viewModel.refreshActiveSessionStatesIfNeeded(
                 streamIDs: taskID.streamIDs,
@@ -1343,20 +1403,54 @@ enum SessionListInitialLoad {
 }
 
 enum SessionListNewChatReturn {
+    /// Runs when a chat destination is left. Any chat return (not just the new-chat
+    /// route) now reconciles the list — on iPad the detail column swaps between
+    /// existing sessions without ever passing through `.newChat`, so gating on
+    /// that case left the sidebar stale (Bug 4).
+    ///
+    /// `suppressEmptyPlaceholders` stays synchronous and strictly newChat-only:
+    /// it exists so a just-created Untitled placeholder cannot flash during the
+    /// navigation transition, and running it for ordinary sessions would prune
+    /// rows the server still considers real.
     static func run(
         from oldValue: SessionNavigationDestination?,
         to newValue: SessionNavigationDestination?,
         suppressEmptyPlaceholders: () -> Void,
         refreshSessions: () -> Void
     ) {
-        guard case .newChat = oldValue else { return }
-        if case .newChat = newValue { return }
+        guard didLeaveChat(from: oldValue, to: newValue) else { return }
 
-        // Keep this synchronous so an empty Untitled placeholder cannot flash
-        // during the navigation transition. The refresh then adopts the server's
-        // latest metadata for a new chat that has become contentful.
-        suppressEmptyPlaceholders()
+        if case .newChat = oldValue {
+            // Keep this synchronous so an empty Untitled placeholder cannot flash
+            // during the navigation transition. The refresh then adopts the server's
+            // latest metadata for a new chat that has become contentful.
+            suppressEmptyPlaceholders()
+        }
+
         refreshSessions()
+    }
+
+    /// True when the destination change means the user left a chat: the old
+    /// destination was a chat, and the new one is not the same chat.
+    static func didLeaveChat(
+        from oldValue: SessionNavigationDestination?,
+        to newValue: SessionNavigationDestination?
+    ) -> Bool {
+        switch oldValue {
+        case .newChat:
+            // Replacing one new-chat route with another is still composing, not
+            // a return.
+            if case .newChat = newValue { return false }
+            return true
+        case .session(let oldSession):
+            if case .session(let newSession) = newValue,
+               oldSession.sessionId == newSession.sessionId {
+                return false
+            }
+            return true
+        case .utility, .none:
+            return false
+        }
     }
 }
 

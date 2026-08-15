@@ -206,6 +206,80 @@ final class SessionNavigationStateTests: XCTestCase {
         XCTAssertTrue(events.isEmpty)
     }
 
+    /// Bug 4: on iPad the detail column swaps straight from one session to
+    /// another, never passing through `.newChat`, so the old newChat-only gate
+    /// left the sidebar stale.
+    func testReturningFromExistingChatRefreshesWithoutSuppressingPlaceholders() {
+        let session = SessionSummary(sessionId: "session-1")
+        var events: [NewChatReturnEvent] = []
+
+        SessionListNewChatReturn.run(
+            from: .session(session),
+            to: nil,
+            suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
+            refreshSessions: { events.append(.refreshedSessions) }
+        )
+
+        XCTAssertEqual(
+            events,
+            [.refreshedSessions],
+            "Placeholder suppression is a newChat-only behavior and must not run here"
+        )
+    }
+
+    func testSwitchingBetweenTwoExistingChatsRefreshesTheList() {
+        var events: [NewChatReturnEvent] = []
+
+        SessionListNewChatReturn.run(
+            from: .session(SessionSummary(sessionId: "session-1")),
+            to: .session(SessionSummary(sessionId: "session-2")),
+            suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
+            refreshSessions: { events.append(.refreshedSessions) }
+        )
+
+        XCTAssertEqual(events, [.refreshedSessions])
+    }
+
+    func testReselectingTheSameChatDoesNotRefresh() {
+        var events: [NewChatReturnEvent] = []
+        let session = SessionSummary(sessionId: "session-1", title: "Renamed in place")
+
+        SessionListNewChatReturn.run(
+            from: .session(SessionSummary(sessionId: "session-1")),
+            to: .session(session),
+            suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
+            refreshSessions: { events.append(.refreshedSessions) }
+        )
+
+        XCTAssertTrue(events.isEmpty, "The same session is not a return")
+    }
+
+    func testOpeningAChatFromTheListDoesNotRefresh() {
+        var events: [NewChatReturnEvent] = []
+
+        SessionListNewChatReturn.run(
+            from: nil,
+            to: .session(SessionSummary(sessionId: "session-1")),
+            suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
+            refreshSessions: { events.append(.refreshedSessions) }
+        )
+
+        XCTAssertTrue(events.isEmpty)
+    }
+
+    func testLeavingAUtilityDestinationDoesNotRefresh() {
+        var events: [NewChatReturnEvent] = []
+
+        SessionListNewChatReturn.run(
+            from: .utility(.settings(nil)),
+            to: nil,
+            suppressEmptyPlaceholders: { events.append(.suppressedPlaceholders) },
+            refreshSessions: { events.append(.refreshedSessions) }
+        )
+
+        XCTAssertTrue(events.isEmpty, "Settings and other utility screens do not change session rows")
+    }
+
     func testRemovingSelectedSessionClearsDestinationAndRestorationID() {
         let session = SessionSummary(sessionId: "session-1")
         var state = SessionNavigationState()
