@@ -424,6 +424,16 @@ final class ActivityDisclosureUITests: XCTestCase {
         let header = app.descendants(matching: .any)
             .matching(identifier: "plan.header").firstMatch
         XCTAssertTrue(rows.waitForExistence(timeout: 15), "The fixture should start with its plan expanded.")
+
+        rows.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.18)).tap()
+        XCTAssertTrue(
+            rows.waitForNonExistence(timeout: 5),
+            "Tapping the plan canvas inside the production status rail should collapse it."
+        )
+
+        XCTAssertTrue(header.waitForExistence(timeout: 5))
+        header.tap()
+        XCTAssertTrue(rows.waitForExistence(timeout: 5))
         let window = app.windows.firstMatch
         let canvasY = max(60, rows.frame.minY - 60)
         window.coordinate(
@@ -475,6 +485,15 @@ final class ActivityDisclosureUITests: XCTestCase {
         details.swipeUp()
         XCTAssertTrue(details.exists, "The long goal detail window must remain independently scrollable.")
 
+        details.coordinate(withNormalizedOffset: CGVector(dx: 0.18, dy: 0.20)).tap()
+        XCTAssertTrue(
+            details.waitForNonExistence(timeout: 5),
+            "Tapping the expanded goal canvas should collapse the shared status surface."
+        )
+
+        XCTAssertTrue(goalHeader.waitForExistence(timeout: 5))
+        goalHeader.tap()
+        XCTAssertTrue(details.waitForExistence(timeout: 5))
         goalHeader.tap()
         XCTAssertTrue(details.waitForNonExistence(timeout: 5))
         XCTAssertTrue(planHeader.waitForExistence(timeout: 5))

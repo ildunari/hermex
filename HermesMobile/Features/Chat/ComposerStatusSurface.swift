@@ -33,35 +33,39 @@ struct ComposerStatusSurfaceRail<Content: View>: View {
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal) {
-                HStack(alignment: .bottom, spacing: ComposerStatusSurfaceMetrics.railSpacing) {
-                    content()
+        Group {
+            if expandedSurface == nil {
+                ScrollView(.horizontal) {
+                    surfaceRow
                 }
-                .fixedSize(horizontal: true, vertical: false)
-                .padding(.horizontal)
-            }
-            .scrollIndicators(.hidden)
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollClipDisabled(false)
-            .defaultScrollAnchor(.center, for: .alignment)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .onChange(of: expandedSurface, initial: true) { _, surface in
-                guard let surface else { return }
-                // Expansion changes the child's width. Defer until that layout
-                // commits, then center the selected card so a preceding pill
-                // cannot push it beyond the phone's trailing edge.
-                Task { @MainActor in
-                    await Task.yield()
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        proxy.scrollTo(surface, anchor: .center)
-                    }
-                }
+                .scrollIndicators(.hidden)
+                .scrollBounceBehavior(.basedOnSize)
+                .scrollClipDisabled(false)
+                .defaultScrollAnchor(.center, for: .alignment)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                // Only one surface is rendered while expanded. Do not leave it
+                // inside the collapsed pill rail's horizontal ScrollView: that
+                // second scroll recognizer competes with the card's vertical
+                // ScrollView and can swallow taps intended for its canvas.
+                // Mounting the card directly restores descendant taps and keeps
+                // vertical scrolling independent for plan, goal, and future
+                // composer status surfaces.
+                surfaceRow
+                    .frame(maxWidth: .infinity, alignment: .center)
             }
         }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Session status")
         .accessibilityIdentifier(ActivityAccessibilityID.composerStatusRail)
+    }
+
+    private var surfaceRow: some View {
+        HStack(alignment: .bottom, spacing: ComposerStatusSurfaceMetrics.railSpacing) {
+            content()
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal)
     }
 
     init(

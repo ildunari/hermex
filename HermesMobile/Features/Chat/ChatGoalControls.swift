@@ -198,6 +198,11 @@ struct GoalStatusSurface: View {
                     .accessibilityHidden(true)
             }
         }
+        .onTapGesture {
+            withAnimation(ChatMotion.cardExpand(reduceMotion: reduceMotion)) {
+                isExpanded = false
+            }
+        }
         .accessibilityHint("Swipe vertically to read the full goal.")
         .accessibilityIdentifier(ActivityAccessibilityID.goalDetailsScroll)
     }
