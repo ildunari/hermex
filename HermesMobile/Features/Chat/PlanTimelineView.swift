@@ -401,11 +401,23 @@ private struct PlanRowView: View {
         }
         .frame(minHeight: 44, alignment: .top)
         .contentShape(Rectangle())
-        .onTapGesture {
-            if isDetailExpanded {
-                onToggleDetail()
-            } else {
-                onCollapsePlan()
+        .overlay {
+            HStack(spacing: 0) {
+                Button(action: handlePrimaryTap) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityHidden(true)
+
+                if !isDetailExpanded {
+                    // Leave the padded trailing ellipsis target owned by
+                    // PlanRowLabel. The rest of the row is an explicit button
+                    // so a vertical ScrollView cannot swallow its tap gesture.
+                    Color.clear
+                        .frame(width: 44)
+                        .allowsHitTesting(false)
+                }
             }
         }
         // Status is otherwise conveyed only by symbol shape and color, neither
@@ -424,6 +436,14 @@ private struct PlanRowView: View {
             named: "Collapse plan",
             onCollapsePlan
         )
+    }
+
+    private func handlePrimaryTap() {
+        if isDetailExpanded {
+            onToggleDetail()
+        } else {
+            onCollapsePlan()
+        }
     }
 
     private var statusDescription: String {

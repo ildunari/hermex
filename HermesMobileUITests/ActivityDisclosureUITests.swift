@@ -423,9 +423,16 @@ final class ActivityDisclosureUITests: XCTestCase {
             .matching(identifier: "plan.rows-scroll").firstMatch
         let header = app.descendants(matching: .any)
             .matching(identifier: "plan.header").firstMatch
+        let firstStep = app.descendants(matching: .any)
+            .matching(identifier: "plan-step-1").firstMatch
         XCTAssertTrue(rows.waitForExistence(timeout: 15), "The fixture should start with its plan expanded.")
+        XCTAssertTrue(firstStep.waitForExistence(timeout: 5), "The expanded plan should expose its first row.")
 
-        rows.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.18)).tap()
+        // The scroll view's accessibility frame can extend beneath the
+        // navigation bar when the keyboard squeezes the production chat. Tap
+        // a real visible row so this exercises the plan canvas gesture rather
+        // than an occluded coordinate owned by navigation chrome.
+        firstStep.coordinate(withNormalizedOffset: CGVector(dx: 0.08, dy: 0.5)).tap()
         XCTAssertTrue(
             rows.waitForNonExistence(timeout: 5),
             "Tapping the plan canvas inside the production status rail should collapse it."
@@ -434,11 +441,9 @@ final class ActivityDisclosureUITests: XCTestCase {
         XCTAssertTrue(header.waitForExistence(timeout: 5))
         header.tap()
         XCTAssertTrue(rows.waitForExistence(timeout: 5))
-        let window = app.windows.firstMatch
-        let canvasY = max(60, rows.frame.minY - 60)
-        window.coordinate(
-            withNormalizedOffset: CGVector(dx: 0.5, dy: canvasY / window.frame.height)
-        ).tap()
+        let emptyTranscript = app.staticTexts["Send a message to start the conversation."]
+        XCTAssertTrue(emptyTranscript.waitForExistence(timeout: 5))
+        emptyTranscript.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(
             rows.waitForNonExistence(timeout: 5),
             "Tapping outside the expanded plan on the conversation canvas should collapse it."
@@ -447,7 +452,9 @@ final class ActivityDisclosureUITests: XCTestCase {
         XCTAssertTrue(header.waitForExistence(timeout: 5))
         header.tap()
         XCTAssertTrue(rows.waitForExistence(timeout: 5))
-        window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.90)).tap()
+        let composer = app.textViews.firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(
             rows.waitForNonExistence(timeout: 5),
             "Tapping the composer outside the expanded plan should collapse it."
