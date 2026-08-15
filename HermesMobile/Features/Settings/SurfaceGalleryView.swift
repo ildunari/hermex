@@ -38,6 +38,10 @@ struct SurfaceGalleryView: View {
             LiveThinkingRevealProbeView()
         } else if page == 27 {
             PlanDismissalChatFixture()
+        } else if page == 28 {
+            GoalLongStressGalleryView()
+        } else if page == 29 {
+            GoalStatusRailGalleryView()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {

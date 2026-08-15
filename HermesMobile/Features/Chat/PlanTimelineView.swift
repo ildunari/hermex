@@ -30,9 +30,6 @@ struct PlanTimelineView: View {
     @AppStorage(ActivityBeamStyle.storageKey) private var beamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(HeaderLogoColor.storageKey) private var headerLogoColorHex = HeaderLogoColor.defaultHex
 
-    /// Drives phase 1 of the reveal (chrome) independently of the row fades, so
-    /// the container widens before its contents arrive. See `ChatMotion`.
-    @State private var chromeExpanded = false
 
     /// Natural height of each checklist row. Keeping the measurements separate
     /// lets the scroll window stop after exactly five tasks even when one row
@@ -63,39 +60,13 @@ struct PlanTimelineView: View {
         // on the row labels (see `PlanRowLabel`), so the card ends up as wide as
         // its longest *wrapped* row rather than its longest ideal one.
         .fixedSize(horizontal: true, vertical: false)
-        .background(
-            surfaceShape
-                .fill(palette.surface.opacity(0.5))
-                .overlay(surfaceShape.strokeBorder(palette.tableRule, lineWidth: 1))
-        )
-        // Glass sits over the tinted fill, not instead of it: the fill keeps the
-        // palette's warmth, glass supplies the blur and specular edge. Matches
-        // how `ChatActiveRunStatusView` layers the same two.
-        .adaptiveGlass(
-            .regular,
-            isInteractive: false,
-            fallbackMaterial: .regularMaterial,
-            in: surfaceShape
-        )
-        .clipShape(surfaceShape)
-        // Lifts the whole surface off the transcript so it floats above the
-        // composer rather than being printed onto the canvas.
-        .shadow(
-            color: .black.opacity(colorScheme == .dark ? 0.34 : 0.12),
-            radius: 8,
-            y: 3
-        )
-        // The beam marks the card as live while it is open — the same signal the
-        // thinking and tool blocks use, so the plan reads as one of that family.
-        .borderBeam(
-            style: beamStyle,
-            shape: surfaceShape,
-            active: chromeExpanded && isPlanRunning && beamStyle.isVisible
+        .composerStatusSurface(
+            isExpanded: isExpanded,
+            palette: palette,
+            beamStyle: beamStyle,
+            beamActive: isExpanded && isPlanRunning && beamStyle.isVisible
         )
         .onChange(of: isExpanded) { _, expanded in
-            withAnimation(ChatMotion.cardChrome(reduceMotion: reduceMotion)) {
-                chromeExpanded = expanded
-            }
             if !expanded {
                 expandedRowOffsets.removeAll()
             }
@@ -114,7 +85,6 @@ struct PlanTimelineView: View {
             }
         }
 #endif
-        .onAppear { chromeExpanded = isExpanded }
         .accessibilityElement(children: .contain)
     }
 
@@ -146,6 +116,7 @@ struct PlanTimelineView: View {
             // floating shape itself.
             .padding(.horizontal, 16)
             .padding(.vertical, 9)
+            .frame(minHeight: 44)
             // No surface of its own. The outer view owns the one background,
             // border, glass, and shadow for both states; the header only
             // supplies its hit target. Giving the header its own glass meant a
@@ -230,9 +201,9 @@ struct PlanTimelineView: View {
 
     private var paddedRows: some View {
         rows
-            .padding(.horizontal, ActivityBlockChrome.horizontalPadding)
-            .padding(.top, ActivityBlockChrome.topPadding)
-            .padding(.bottom, ActivityBlockChrome.bottomPadding)
+            .padding(.horizontal, ComposerStatusSurfaceMetrics.horizontalPadding)
+            .padding(.top, ComposerStatusSurfaceMetrics.topPadding)
+            .padding(.bottom, ComposerStatusSurfaceMetrics.bottomPadding)
     }
 
     /// Five tasks stay visible before the checklist scrolls. This keeps the
@@ -321,25 +292,6 @@ struct PlanTimelineView: View {
 
     // MARK: - Derived
 
-    /// The single surface shape, morphing between the collapsed pill and the
-    /// expanded card.
-    ///
-    /// One `RoundedRectangle` whose radius animates rather than a
-    /// `Capsule`/`RoundedRectangle` swap: swapping the type changes view
-    /// identity, so SwiftUI replaces the surface instead of animating it — the
-    /// same trap that produced the ghosted double-capsule on the activity
-    /// blocks. A large radius on a short pill is visually identical to a
-    /// capsule, so nothing is lost by expressing both as one shape.
-    private var surfaceShape: RoundedRectangle {
-        RoundedRectangle(
-            cornerRadius: chromeExpanded ? ActivityBlockChrome.cornerRadius : Self.collapsedRadius,
-            style: .continuous
-        )
-    }
-
-    /// Half the collapsed pill's height, which is what makes it read as a
-    /// capsule. Height is 9pt padding twice plus a footnote line.
-    private static let collapsedRadius: CGFloat = 19
 
     /// Upper bound so a long step can't stretch the card back to full width on
     /// a large phone. Past this the row wraps instead.
@@ -667,8 +619,8 @@ enum PlanTimelineLayout {
     static let maximumContainerFraction: CGFloat = 0.5
     static let minimumWindowHeight: CGFloat = 120
     static let estimatedRowHeight: CGFloat = 44
-    static let topChrome = ActivityBlockChrome.topPadding
-    static let bottomChrome = ActivityBlockChrome.bottomPadding
+    static let topChrome = ComposerStatusSurfaceMetrics.topPadding
+    static let bottomChrome = ComposerStatusSurfaceMetrics.bottomPadding
     static let verticalChrome = topChrome + bottomChrome
 
     static func windowHeight(

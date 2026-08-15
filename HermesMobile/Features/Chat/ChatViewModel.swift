@@ -2483,7 +2483,10 @@ final class ChatViewModel {
         }
 
         guard let streamID = activeStreamID else {
-            if let noticeMessage {
+            // A decoded goal has its own persistent, bounded composer surface.
+            // Only fall back to a transcript notice for legacy responses that
+            // did not include structured goal state.
+            if currentGoal == nil, let noticeMessage {
                 appendLocalNoticeMessage(noticeMessage)
             }
             return true
@@ -2495,7 +2498,10 @@ final class ChatViewModel {
         if streamingAssistantMessageID == nil {
             streamingAssistantMessageID = Self.latestAssistantMessageID(in: messages)
         }
-        if let noticeMessage {
+        // Do not pin the server's verbose "Goal set" prose above the composer:
+        // for a long goal that generic notice was unbounded and covered nearly
+        // the whole chat. Structured goal state is rendered by GoalStatusSurface.
+        if currentGoal == nil, let noticeMessage {
             pinLocalNoticeMessage(noticeMessage)
         }
 
