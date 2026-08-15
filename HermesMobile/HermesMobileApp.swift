@@ -47,6 +47,7 @@ struct HermesMobileApp: App {
 
     init() {
         ChatPaletteTemperature.migrateLegacyBackgroundStyle()
+        AppDiagnosticsReporter.shared.start()
         #if DEBUG
         loadInjectionIIIIfRequested()
         #endif

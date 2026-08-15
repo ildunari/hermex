@@ -32,12 +32,16 @@ struct ContentView: View {
                 // notification, since a relaunch means it finished while not active.
                 await reconcileOrphanedLiveActivities(notifiesOnCompletion: true)
             }
+            .task(id: diagnosticsUploadTaskID) {
+                await uploadPendingDiagnostics()
+            }
             .onChange(of: scenePhase) {
                 guard scenePhase == .active else { return }
                 importPendingSharedDraftIfAvailable()
                 // #248: the foreground pass stays silent — the in-session completion
                 // paths own notifications while the app is alive.
                 Task { await reconcileOrphanedLiveActivities(notifiesOnCompletion: false) }
+                Task { await uploadPendingDiagnostics() }
             }
     }
 
@@ -48,6 +52,22 @@ struct ContentView: View {
             notifiesOnCompletion: notifiesOnCompletion,
             preferenceEnabled: isResponseCompletionNotificationsEnabled
         )
+    }
+
+    private func uploadPendingDiagnostics() async {
+        guard case let .loggedIn(server) = authManager.state else { return }
+        await AppDiagnosticsReporter.shared.uploadPending(to: server)
+    }
+
+    private var diagnosticsUploadTaskID: String {
+        switch authManager.state {
+        case .loggedIn(let server):
+            return "logged-in:\(server.absoluteString)"
+        case .loggedOut(let server):
+            return "logged-out:\(server.absoluteString)"
+        case .unconfigured:
+            return "unconfigured"
+        }
     }
 
     @ViewBuilder

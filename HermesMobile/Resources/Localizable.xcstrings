@@ -112523,6 +112523,44 @@
         "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "正在更新看板⋯" } }
       }
     },
+    "Share Crash Diagnostics" : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Absturzdiagnosen teilen" } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Compartir diagnósticos de fallos" } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Partager les diagnostics de plantage" } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Condividi diagnostica arresti anomali" } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Udostępniaj diagnostykę awarii" } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Compartilhar diagnósticos de falhas" } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Crashdiagnostiek delen" } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Çökme tanılamalarını paylaş" } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отправлять данные диагностики сбоев" } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "クラッシュ診断を共有" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "共享崩溃诊断" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "충돌 진단 공유" } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "مشاركة تشخيصات الأعطال" } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "שיתוף אבחוני קריסה" } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "کریش کی تشخیصی معلومات شیئر کریں" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "分享當機診斷" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "分享當機診斷" } }
+    } },
+    "Sends Apple crash and hang diagnostics to your active Hermes server. Reports contain system call stacks and app/build details, never chat content or credentials." : { "localizations" : {
+      "de" : { "stringUnit" : { "state" : "translated", "value" : "Sendet Apples Absturz- und Hängediagnosen an deinen aktiven Hermes-Server. Berichte enthalten Systemaufrufstapel sowie App- und Build-Details, niemals Chat-Inhalte oder Zugangsdaten." } },
+      "es" : { "stringUnit" : { "state" : "translated", "value" : "Envía los diagnósticos de fallos y bloqueos de Apple a tu servidor Hermes activo. Los informes contienen pilas de llamadas del sistema y datos de la app y compilación, nunca contenido de chats ni credenciales." } },
+      "fr" : { "stringUnit" : { "state" : "translated", "value" : "Envoie les diagnostics Apple de plantage et de blocage à votre serveur Hermes actif. Les rapports contiennent les piles d’appels système et les détails de l’app et du build, jamais le contenu des discussions ni les identifiants." } },
+      "it" : { "stringUnit" : { "state" : "translated", "value" : "Invia la diagnostica Apple di arresti anomali e blocchi al server Hermes attivo. I report contengono stack di chiamate di sistema e dettagli di app e build, mai contenuti delle chat o credenziali." } },
+      "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wysyła diagnostykę awarii i zawieszeń Apple do aktywnego serwera Hermes. Raporty zawierają stosy wywołań systemowych oraz dane aplikacji i kompilacji, nigdy treść czatów ani dane logowania." } },
+      "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Envia diagnósticos de falhas e travamentos da Apple ao servidor Hermes ativo. Os relatórios contêm pilhas de chamadas do sistema e detalhes do app e da compilação, nunca conteúdo de conversas ou credenciais." } },
+      "nl" : { "stringUnit" : { "state" : "translated", "value" : "Stuurt crash- en hangdiagnostiek van Apple naar je actieve Hermes-server. Rapporten bevatten systeemaanroepstapels en app- en buildgegevens, nooit chatinhoud of aanmeldgegevens." } },
+      "tr" : { "stringUnit" : { "state" : "translated", "value" : "Apple çökme ve takılma tanılamalarını etkin Hermes sunucunuza gönderir. Raporlar sistem çağrı yığınları ile uygulama ve derleme ayrıntılarını içerir; sohbet içeriğini veya kimlik bilgilerini asla içermez." } },
+      "ru" : { "stringUnit" : { "state" : "translated", "value" : "Отправляет диагностику сбоев и зависаний Apple на активный сервер Hermes. Отчёты содержат системные стеки вызовов и сведения о приложении и сборке, но не содержимое чатов или учётные данные." } },
+      "ja" : { "stringUnit" : { "state" : "translated", "value" : "Appleのクラッシュおよびハング診断をアクティブなHermesサーバーに送信します。レポートにはシステムのコールスタックとアプリ／ビルド情報が含まれますが、チャット内容や認証情報は含まれません。" } },
+      "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "将 Apple 崩溃和卡死诊断发送到当前 Hermes 服务器。报告包含系统调用堆栈以及应用和构建详情，绝不包含聊天内容或凭据。" } },
+      "ko" : { "stringUnit" : { "state" : "translated", "value" : "Apple 충돌 및 멈춤 진단을 활성 Hermes 서버로 보냅니다. 보고서에는 시스템 호출 스택과 앱 및 빌드 정보가 포함되며, 채팅 내용이나 자격 증명은 포함되지 않습니다." } },
+      "ar" : { "stringUnit" : { "state" : "translated", "value" : "يرسل تشخيصات الأعطال والتوقف من Apple إلى خادم Hermes النشط. تحتوي التقارير على مكدسات استدعاءات النظام وتفاصيل التطبيق والإصدار، ولا تحتوي أبداً على محتوى الدردشة أو بيانات الاعتماد." } },
+      "he" : { "stringUnit" : { "state" : "translated", "value" : "שולח אבחוני קריסה ותקיעה של Apple לשרת Hermes הפעיל. הדוחות כוללים מחסניות קריאות מערכת ופרטי אפליקציה וגרסה, ולעולם לא תוכן שיחות או פרטי התחברות." } },
+      "ur" : { "stringUnit" : { "state" : "translated", "value" : "Apple کی کریش اور ہینگ تشخیصی معلومات آپ کے فعال Hermes سرور کو بھیجتا ہے۔ رپورٹس میں سسٹم کال اسٹیکس اور ایپ و بلڈ کی تفصیلات ہوتی ہیں، چیٹ کا مواد یا اسناد کبھی نہیں۔" } },
+      "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "將 Apple 當機與停滯診斷傳送到目前的 Hermes 伺服器。報告包含系統呼叫堆疊及 App 與組建詳情，絕不包含聊天內容或憑證。" } },
+      "zh-HK" : { "stringUnit" : { "state" : "translated", "value" : "將 Apple 當機與停滯診斷傳送到目前的 Hermes 伺服器。報告包含系統呼叫堆疊及 App 與版本詳情，絕不包含聊天內容或憑證。" } }
+    } },
     "Update failed" : {
       "localizations" : {
         "ar" : { "stringUnit" : { "state" : "translated", "value" : "فشل التحديث" } },

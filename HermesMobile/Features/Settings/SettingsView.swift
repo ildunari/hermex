@@ -62,6 +62,7 @@ struct SettingsView: View {
     @AppStorage(ResponseFontStyle.storageKey) private var responseFontStyleRawValue = ResponseFontStyle.defaultValue.rawValue
     @AppStorage(ActivityBeamStyle.storageKey) private var activityBeamStyleRawValue = ActivityBeamStyle.defaultValue.rawValue
     @AppStorage(AppHaptics.isEnabledKey) private var isHapticsEnabled = true
+    @AppStorage(AppDiagnosticsPreference.isEnabledKey) private var sharesDiagnosticsWithServer = true
     @AppStorage(ResponseCompletionNotifications.isEnabledKey) private var isResponseCompletionNotificationsEnabled = false
     @AppStorage(ResponseCompletionNotifications.hasRequestedPermissionKey) private var hasRequestedResponseCompletionNotificationPermission = false
     @AppStorage(AgentRunLiveActivityPrivacy.showsResponseExcerptsKey) private var showsLiveActivityResponseExcerpts = false
@@ -561,6 +562,23 @@ struct SettingsView: View {
                 SettingsCard(title: String(localized: "App")) {
                     SettingsInfoRow(title: String(localized: "Version"), value: appVersion)
                     SettingsInfoRow(title: String(localized: "Build"), value: appBuild)
+
+                    SettingsDivider()
+
+                    SettingsToggleRow(
+                        title: String(localized: "Share Crash Diagnostics"),
+                        systemImage: "stethoscope",
+                        isOn: $sharesDiagnosticsWithServer
+                    )
+                    .onChange(of: sharesDiagnosticsWithServer) { _, isEnabled in
+                        guard isEnabled else { return }
+                        AppDiagnosticsReporter.shared.capturePastDiagnostics()
+                        Task {
+                            await AppDiagnosticsReporter.shared.uploadPending(to: server)
+                        }
+                    }
+
+                    SettingsFootnote(String(localized: "Sends Apple crash and hang diagnostics to your active Hermes server. Reports contain system call stacks and app/build details, never chat content or credentials."))
 
                     SettingsDivider()
 

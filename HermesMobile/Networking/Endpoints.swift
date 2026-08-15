@@ -17,6 +17,7 @@ enum Endpoint {
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
     case subagents(parentSessionID: String)
+    case clientDiagnostics
     case newSession
     case renameSession
     case deleteSession
@@ -154,6 +155,8 @@ enum Endpoint {
             return "/api/session/status"
         case .subagents:
             return "/api/sessions"
+        case .clientDiagnostics:
+            return "/api/client-diagnostics"
         case .newSession:
             return "/api/session/new"
         case .renameSession:
