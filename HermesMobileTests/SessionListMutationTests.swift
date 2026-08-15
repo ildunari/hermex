@@ -2905,3 +2905,366 @@ private final class LockedSessionMutationRequestCounts {
         return (loadRequestCount, pinMutationRequestCount)
     }
 }
+
+// MARK: - Session list refresh benchmark harness
+//
+// Measures the three metrics tracked by the session-list refresh work:
+//   (a) wall time of the list refresh path (sessions + projects + profile)
+//   (b) `/api/sessions` request count for a burst of 3 automatic triggers in <1s
+//   (c) time-to-row-correct after returning from a chat
+//
+// Latency is injected per endpoint (sessions 300ms, projects 200ms, profiles
+// 200ms) so the numbers approximate a real round trip. Results are appended to
+// the file named by the `SESSIONLIST_BENCH_OUTPUT` environment variable when
+// set, so the same harness can be run on the base commit and the fix branch.
+
+final class SessionListRefreshBenchmarkTests: XCTestCase {
+    private static let sessionsLatency: TimeInterval = 0.3
+    private static let projectsLatency: TimeInterval = 0.2
+    private static let profilesLatency: TimeInterval = 0.2
+
+    override func tearDown() {
+        MockURLProtocol.requestHandler = nil
+        BenchmarkLatencyURLProtocol.configuration = nil
+        super.tearDown()
+    }
+
+    /// Control measurement: proves the mock transport really does serve
+    /// concurrent requests in parallel, so a concurrent-fetch benchmark result
+    /// reflects the code under test rather than a serialized test double.
+    @MainActor
+    func testBenchmarkControlMockTransportServesRequestsConcurrently() async throws {
+        let counts = BenchmarkRequestCounts()
+        let client = try makeBenchmarkClient(counts: counts)
+
+        let start = Date()
+        async let sessions = try? client.sessions()
+        async let projects = try? client.projects()
+        async let profiles = try? client.profiles()
+        _ = await (sessions, projects, profiles)
+        let elapsed = Date().timeIntervalSince(start)
+
+        Self.record("control.concurrent-transport-ms", elapsed * 1000)
+        XCTAssertLessThan(
+            elapsed,
+            Self.sessionsLatency + Self.projectsLatency,
+            "Mock transport serialized requests; concurrency benchmarks would be meaningless"
+        )
+    }
+
+    /// Metric (a): wall time of the full list refresh path.
+    @MainActor
+    func testBenchmarkRefreshPathWallTime() async throws {
+        let counts = BenchmarkRequestCounts()
+        let viewModel = try makeBenchmarkViewModel(counts: counts)
+
+        let start = Date()
+        await Self.refreshSessionsAndActiveProfile(viewModel)
+        let elapsed = Date().timeIntervalSince(start)
+
+        Self.record("a.refresh-path-ms", elapsed * 1000)
+        XCTAssertEqual(viewModel.sessions.count, 2)
+        XCTAssertEqual(viewModel.projects.count, 1)
+        XCTAssertEqual(viewModel.activeProfileName, "work")
+    }
+
+    /// Metric (b): `/api/sessions` request count for 3 automatic triggers <1s.
+    @MainActor
+    func testBenchmarkAutomaticTriggerBurstRequestCount() async throws {
+        let counts = BenchmarkRequestCounts()
+        let viewModel = try makeBenchmarkViewModel(counts: counts)
+
+        let start = Date()
+        await Self.runAutomaticTriggerBurst(viewModel)
+        let elapsed = Date().timeIntervalSince(start)
+
+        let sessionRequests = counts.count(forPath: "/api/sessions")
+        Self.record("b.sessions-requests-for-3-triggers", Double(sessionRequests))
+        Self.record("b.trigger-burst-ms", elapsed * 1000)
+        XCTAssertGreaterThanOrEqual(sessionRequests, 1)
+    }
+
+    /// Metric (c): time until the list row reflects the chat you just left.
+    /// The server-side title is already updated when the chat is exited, so the
+    /// only question is how long the list takes to show it.
+    @MainActor
+    func testBenchmarkTimeToRowCorrectAfterChatReturn() async throws {
+        let counts = BenchmarkRequestCounts()
+        let state = BenchmarkServerState()
+        let viewModel = try makeBenchmarkViewModel(counts: counts, state: state)
+        await viewModel.load()
+        let baselineRequests = counts.count(forPath: "/api/sessions")
+        state.sessionTwoTitle = "Patched from chat"
+        state.sessionTwoLastMessageAt = 1_800_000_500
+
+        let start = Date()
+        await Self.applyChatReturnUpdate(
+            viewModel,
+            sessionID: "bench-2",
+            title: "Patched from chat",
+            lastActive: 1_800_000_500
+        )
+        let elapsed = Date().timeIntervalSince(start)
+
+        let patchRequests = counts.count(forPath: "/api/sessions") - baselineRequests
+        Self.record("c.time-to-row-correct-ms", elapsed * 1000)
+        Self.record("c.network-requests-for-row-correct", Double(patchRequests))
+
+        let patched = viewModel.sessions.first { $0.sessionId == "bench-2" }
+        XCTAssertEqual(patched?.title, "Patched from chat")
+        XCTAssertEqual(patched?.lastMessageAt, 1_800_000_500)
+    }
+
+    // MARK: - Harness
+
+    @MainActor
+    private func makeBenchmarkViewModel(
+        counts: BenchmarkRequestCounts,
+        state: BenchmarkServerState = BenchmarkServerState()
+    ) throws -> SessionListViewModel {
+        let server = try XCTUnwrap(URL(string: "https://bench.example.test"))
+        let client = try makeBenchmarkClient(counts: counts, state: state, server: server)
+        return SessionListViewModel(server: server, client: client)
+    }
+
+    private func makeBenchmarkClient(
+        counts: BenchmarkRequestCounts,
+        state: BenchmarkServerState = BenchmarkServerState(),
+        server: URL? = nil
+    ) throws -> APIClient {
+        BenchmarkLatencyURLProtocol.configuration = BenchmarkLatencyURLProtocol.Configuration(
+            counts: counts,
+            state: state,
+            latencyByPath: [
+                "/api/sessions": Self.sessionsLatency,
+                "/api/projects": Self.projectsLatency,
+                "/api/profiles": Self.profilesLatency
+            ]
+        )
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [BenchmarkLatencyURLProtocol.self]
+        configuration.httpMaximumConnectionsPerHost = 8
+        let session = URLSession(configuration: configuration)
+        let resolvedServer = try server ?? XCTUnwrap(URL(string: "https://bench.example.test"))
+
+        return APIClient(baseURL: resolvedServer, session: session)
+    }
+
+    /// Appends one metric to the benchmark report file.
+    ///
+    /// xcodebuild only forwards environment variables to the test process when
+    /// they carry the `TEST_RUNNER_` prefix (it strips the prefix), so the run
+    /// command sets `TEST_RUNNER_SESSIONLIST_BENCH_OUTPUT`. Both spellings are
+    /// accepted here so the harness also works when run from Xcode directly.
+    private static func record(_ metric: String, _ value: Double) {
+        let line = String(format: "%@ = %.1f", metric, value)
+        print("BENCHMETRIC \(line)")
+        NSLog("BENCHMETRIC %@", line)
+
+        let environment = ProcessInfo.processInfo.environment
+        guard let path = environment["SESSIONLIST_BENCH_OUTPUT"]
+            ?? environment["TEST_RUNNER_SESSIONLIST_BENCH_OUTPUT"]
+        else { return }
+
+        let data = Data((line + "\n").utf8)
+        if let handle = FileHandle(forWritingAtPath: path) {
+            handle.seekToEndOfFile()
+            handle.write(data)
+            try? handle.close()
+        } else {
+            try? data.write(to: URL(fileURLWithPath: path))
+        }
+    }
+}
+
+// MARK: - Benchmark subject shims
+//
+// `SessionListView` is a SwiftUI view and cannot be driven headlessly, so these
+// shims replicate its refresh flow against the view model. Each is updated in
+// lockstep with the view so the benchmark measures the shipped behavior.
+// Marked BENCHMARK-SUBJECT so the pairing is greppable.
+
+extension SessionListRefreshBenchmarkTests {
+    /// BENCHMARK-SUBJECT: mirrors `SessionListView.refreshSessionsAndActiveProfile`.
+    @MainActor
+    static func refreshSessionsAndActiveProfile(_ viewModel: SessionListViewModel) async {
+        await viewModel.load()
+        if !viewModel.isViewingCachedData {
+            await viewModel.loadProjects()
+        }
+        await viewModel.loadActiveProfile()
+    }
+
+    /// BENCHMARK-SUBJECT: three automatic refresh triggers (onAppear +
+    /// returnRefreshID + scene-active) firing inside one second.
+    @MainActor
+    static func runAutomaticTriggerBurst(_ viewModel: SessionListViewModel) async {
+        await withTaskGroup(of: Void.self) { group in
+            for _ in 0..<3 {
+                group.addTask { @MainActor in
+                    await refreshSessionsAndActiveProfile(viewModel)
+                }
+            }
+        }
+    }
+
+    /// BENCHMARK-SUBJECT: bringing the list row up to date after leaving a chat.
+    @MainActor
+    static func applyChatReturnUpdate(
+        _ viewModel: SessionListViewModel,
+        sessionID: String,
+        title: String,
+        lastActive: Double
+    ) async {
+        // Base behavior: no local patch channel, so the row is only correct once
+        // a full list fetch returns.
+        await viewModel.load()
+    }
+}
+
+/// Thread-safe per-path request counter for the benchmark transport.
+final class BenchmarkRequestCounts: @unchecked Sendable {
+    private let lock = NSLock()
+    private var counts: [String: Int] = [:]
+
+    func increment(path: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        counts[path, default: 0] += 1
+    }
+
+    func count(forPath path: String) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return counts[path] ?? 0
+    }
+}
+
+/// A URL protocol that injects per-endpoint latency *asynchronously*.
+///
+/// `MockURLProtocol` runs its handler inline on `startLoading`, so sleeping
+/// inside it blocks the loader and serializes every request — which would make
+/// a concurrency benchmark measure the test double instead of the app. This one
+/// schedules the reply on a background queue, so overlapping requests really do
+/// overlap. `testBenchmarkControlMockTransportServesRequestsConcurrently` is the
+/// guard that keeps this property honest.
+final class BenchmarkLatencyURLProtocol: URLProtocol {
+    struct Configuration: @unchecked Sendable {
+        let counts: BenchmarkRequestCounts
+        let state: BenchmarkServerState
+        let latencyByPath: [String: TimeInterval]
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var _configuration: Configuration?
+
+    static var configuration: Configuration? {
+        get { lock.lock(); defer { lock.unlock() }; return _configuration }
+        set { lock.lock(); defer { lock.unlock() }; _configuration = newValue }
+    }
+
+    private var isStopped = false
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        guard let configuration = Self.configuration else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        let path = request.url?.path ?? ""
+        configuration.counts.increment(path: path)
+
+        let json: String
+        switch path {
+        case "/api/sessions":
+            json = configuration.state.sessionsJSON
+        case "/api/projects":
+            json = configuration.state.projectsJSON
+        case "/api/profiles":
+            json = configuration.state.profilesJSON
+        default:
+            json = "{}"
+        }
+
+        let latency = configuration.latencyByPath[path] ?? 0
+        let request = request
+        DispatchQueue.global().asyncAfter(deadline: .now() + latency) { [weak self] in
+            guard let self, !self.isStopped else { return }
+            guard let url = request.url,
+                  let response = HTTPURLResponse(
+                      url: url,
+                      statusCode: 200,
+                      httpVersion: nil,
+                      headerFields: ["Content-Type": "application/json"]
+                  )
+            else {
+                self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+                return
+            }
+
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: Data(json.utf8))
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() {
+        isStopped = true
+    }
+}
+
+/// Mutable server-side session state for the benchmark transport, so a test can
+/// change what `/api/sessions` returns between fetches.
+final class BenchmarkServerState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _sessionTwoTitle = "Bench two"
+    private var _sessionTwoLastMessageAt: Double = 1_800_000_100
+
+    var sessionTwoTitle: String {
+        get { lock.lock(); defer { lock.unlock() }; return _sessionTwoTitle }
+        set { lock.lock(); defer { lock.unlock() }; _sessionTwoTitle = newValue }
+    }
+
+    var sessionTwoLastMessageAt: Double {
+        get { lock.lock(); defer { lock.unlock() }; return _sessionTwoLastMessageAt }
+        set { lock.lock(); defer { lock.unlock() }; _sessionTwoLastMessageAt = newValue }
+    }
+
+    var sessionsJSON: String {
+        """
+        {
+          "sessions": [
+            {
+              "session_id": "bench-1",
+              "title": "Bench one",
+              "last_message_at": 1800000200,
+              "archived": false
+            },
+            {
+              "session_id": "bench-2",
+              "title": "\(sessionTwoTitle)",
+              "last_message_at": \(Int(sessionTwoLastMessageAt)),
+              "archived": false
+            }
+          ],
+          "archived_count": 0
+        }
+        """
+    }
+
+    let projectsJSON = """
+    { "projects": [ { "id": "project-1", "name": "Bench project" } ] }
+    """
+
+    let profilesJSON = """
+    {
+      "active": "work",
+      "profiles": [ { "name": "work", "is_active": true, "model": "claude-opus-5" } ]
+    }
+    """
+}
