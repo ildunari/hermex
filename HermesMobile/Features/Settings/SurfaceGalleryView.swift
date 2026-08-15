@@ -42,6 +42,8 @@ struct SurfaceGalleryView: View {
             GoalLongStressGalleryView()
         } else if page == 29 {
             GoalStatusRailGalleryView()
+        } else if page == 30 {
+            SubagentStatusGalleryView()
         } else if page == 17 {
             TranscriptStressLabView()
         } else if page == 19 {
@@ -694,6 +696,79 @@ private struct PlanDismissalChatFixture: View {
             loadsInitialMessages: false,
             initialPlanStateForTesting: state
         )
+    }
+}
+
+private struct SubagentStatusGalleryView: View {
+    @State private var isExpanded = true
+
+    private let children: [SubagentRun] = [
+        SubagentRun(
+            subagentID: "sa-contract",
+            parentSessionID: "gallery",
+            parentRunID: "run-gallery",
+            delegationGroupID: "group-1",
+            taskIndex: 0,
+            taskCount: 3,
+            prompt: "Inspect the WebUI lifecycle contract and map how delegated child events reach every client without leaking raw output.",
+            shortLabel: "Inspect the WebUI lifecycle contract",
+            lifecycle: .running,
+            model: "claude-opus-5",
+            provider: "anthropic",
+            reasoningEffort: "high",
+            startedAt: Date().timeIntervalSince1970 - 134,
+            updatedAt: Date().timeIntervalSince1970,
+            currentTool: "read_file",
+            toolCount: 8,
+            sequence: 12
+        ),
+        SubagentRun(
+            subagentID: "sa-client",
+            parentSessionID: "gallery",
+            parentRunID: "run-gallery",
+            delegationGroupID: "group-1",
+            taskIndex: 1,
+            taskCount: 3,
+            prompt: "Build the tolerant client reducer",
+            lifecycle: .completed,
+            startedAt: Date().timeIntervalSince1970 - 90,
+            updatedAt: Date().timeIntervalSince1970 - 18,
+            completedAt: Date().timeIntervalSince1970 - 18,
+            toolCount: 5,
+            usage: SubagentUsage(inputTokens: 12_400, outputTokens: 2_100, reasoningTokens: 500, costUsd: nil),
+            sequence: 9
+        ),
+        SubagentRun(
+            subagentID: "sa-review",
+            parentSessionID: "gallery",
+            parentRunID: "run-gallery",
+            delegationGroupID: "group-1",
+            taskIndex: 2,
+            taskCount: 3,
+            prompt: "Adversarially review authorization and reconnect behavior",
+            lifecycle: .failed,
+            startedAt: Date().timeIntervalSince1970 - 42,
+            updatedAt: Date().timeIntervalSince1970 - 4,
+            completedAt: Date().timeIntervalSince1970 - 4,
+            toolCount: 2,
+            error: "Ownership could not be resolved.",
+            sequence: 6
+        )
+    ]
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Text("Composer status · Agents")
+                .font(AppFont.title3(weight: .semibold))
+            ComposerStatusSurfaceRail(expandedSurface: isExpanded ? .subagents : nil) {
+                SubagentStatusSurface(children: children, isExpanded: $isExpanded)
+            }
+            Spacer()
+        }
+        .padding(.top, 28)
+        .environment(\.planDockHeight, 760)
+        .background(ChatPalette.appChrome(colorScheme: .dark).chatBackground)
+        .preferredColorScheme(.dark)
     }
 }
 #endif

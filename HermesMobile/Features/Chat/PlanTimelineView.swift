@@ -80,6 +80,11 @@ struct PlanTimelineView: View {
             }
         } label: {
             HStack(spacing: 7) {
+                Image(systemName: "checklist")
+                    .font(.system(size: ComposerStatusSurfaceMetrics.semanticIconSize, weight: .semibold))
+                    .foregroundStyle(palette.textSecondary)
+                    .accessibilityHidden(true)
+
                 progressGlyph
 
                 Text(progressLabel)
@@ -343,7 +348,7 @@ struct PlanTimelineView: View {
 
     private var accessibilityLabel: String {
         let done = state.todos.filter { $0.status == .completed }.count
-        return "Plan, \(done) of \(state.todos.count) steps complete."
+        return "Tasks, \(done) of \(state.todos.count) steps complete."
     }
 
     private var palette: ChatPalette {

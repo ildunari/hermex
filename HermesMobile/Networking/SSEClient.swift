@@ -71,6 +71,7 @@ enum SSEEvent: Equatable {
     case toolStarted(ToolStreamEvent)
     case toolCompleted(ToolStreamEvent)
     case todoState(TodoState)
+    case subagentUpsert(SubagentRun)
     case title(TitleStreamEvent)
     case metering(MeteringStreamEvent)
     case done(DoneStreamEvent)
@@ -293,6 +294,16 @@ struct SSEEventDecoder {
                 return .ignored
             }
             return .todoState(payload)
+        case "subagent.upsert", "subagent_upsert":
+            guard let payload = decodePayload(
+                SubagentRun.self,
+                eventType: eventType,
+                from: eventData,
+                decoder: decoder
+            ) else {
+                return .ignored
+            }
+            return .subagentUpsert(payload)
         case "title":
             let payload = decodePayload(TitleStreamEvent.self, eventType: eventType, from: eventData, decoder: decoder)
             return .title(payload ?? TitleStreamEvent())

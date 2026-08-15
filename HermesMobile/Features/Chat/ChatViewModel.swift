@@ -592,6 +592,7 @@ final class ChatViewModel {
     var isRespondingToClarification: Bool { pendingActionCoordinator.isRespondingToClarification }
     var clarificationErrorMessage: String? { pendingActionCoordinator.clarificationErrorMessage }
     private(set) var currentGoal: SubmittedGoal?
+    let subagentStore: SubagentStore
     private(set) var isSubmittingGoal = false
     private(set) var goalErrorMessage: String?
     private(set) var hasActivatedGoalCommand = false
@@ -714,6 +715,9 @@ final class ChatViewModel {
         currentProfile = session.profile
         isCLISession = session.isCliSession == true
         self.server = server
+        let subagentStore = SubagentStore()
+        subagentStore.reset(parentSessionID: session.sessionId)
+        self.subagentStore = subagentStore
         let resolvedClient = client ?? APIClient(baseURL: server)
         let resolvedStreamClient = streamClient ?? SSEClient()
         let resolvedLiveActivityManager = liveActivityManager ?? AgentLiveActivityManager.shared
@@ -4220,7 +4224,7 @@ final class ChatViewModel {
             activeBtwAnswer = "Error: \(message)"
             updateActiveBtwMessage(isLoading: false)
             finishBtwStream()
-        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .todoState, .title, .metering, .pendingSteerLeftover:
+        case .heartbeat, .ignored, .reasoning, .toolStarted, .toolCompleted, .todoState, .subagentUpsert, .title, .metering, .pendingSteerLeftover:
             break
         }
     }
@@ -5611,6 +5615,16 @@ extension ChatViewModel: ChatStreamCoordinatorDelegate {
     @discardableResult
     func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool {
         applyTodoState(payload)
+    }
+
+    func streamCoordinatorApplySubagentUpsert(_ payload: SubagentRun) {
+        guard let sessionID else { return }
+        subagentStore.apply(payload, expectedParentSessionID: sessionID)
+    }
+
+    func loadSubagents() async {
+        guard let sessionID else { return }
+        await subagentStore.loadSnapshot(client: client, parentSessionID: sessionID)
     }
 
     @discardableResult

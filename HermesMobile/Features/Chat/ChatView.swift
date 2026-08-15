@@ -650,6 +650,7 @@ struct ChatView: View {
             }
             .onAppear {
                 Task {
+                    async let subagentSnapshot: Void = viewModel.loadSubagents()
                     await viewModel.reconnectStreamIfNeeded(modelContext: modelContext)
 
                     if viewModel.activeStreamID != nil {
@@ -659,6 +660,7 @@ struct ChatView: View {
                     if let lastError = viewModel.lastError {
                         onAPIError(lastError)
                     }
+                    await subagentSnapshot
                 }
             }
             .onChange(of: viewModel.responseCompletionHapticTrigger) {
@@ -1118,6 +1120,7 @@ struct ChatView: View {
         if hasComposerStatusSurfaces {
             ComposerStatusSurfaceRail(expandedSurface: expandedComposerStatusSurface) {
                 if expandedComposerStatusSurface != .goal,
+                   expandedComposerStatusSurface != .subagents,
                    let planState = viewModel.planState,
                    !planState.isEmpty {
                     PlanTimelineView(
@@ -1129,6 +1132,7 @@ struct ChatView: View {
                 }
 
                 if expandedComposerStatusSurface != .plan,
+                   expandedComposerStatusSurface != .subagents,
                    let goal = viewModel.currentGoal {
                     GoalStatusSurface(
                         goal: goal,
@@ -1137,6 +1141,16 @@ struct ChatView: View {
                     )
                     .id(ComposerStatusSurfaceID.goal)
                 }
+
+                if expandedComposerStatusSurface != .plan,
+                   expandedComposerStatusSurface != .goal,
+                   !viewModel.subagentStore.children.isEmpty {
+                    SubagentStatusSurface(
+                        children: viewModel.subagentStore.children,
+                        isExpanded: composerStatusBinding(for: .subagents)
+                    )
+                    .id(ComposerStatusSurfaceID.subagents)
+                }
             }
             .padding(.bottom, 8)
             .transition(ChatMotion.bottomOverlayTransition(reduceMotion: reduceMotion))
@@ -1144,7 +1158,9 @@ struct ChatView: View {
     }
 
     private var hasComposerStatusSurfaces: Bool {
-        (viewModel.planState?.isEmpty == false) || viewModel.currentGoal != nil
+        (viewModel.planState?.isEmpty == false)
+            || viewModel.currentGoal != nil
+            || !viewModel.subagentStore.children.isEmpty
     }
 
     private func composerStatusBinding(for surface: ComposerStatusSurfaceID) -> Binding<Bool> {
@@ -1174,6 +1190,7 @@ struct ChatView: View {
         }
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.planState)
         .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.currentGoal)
+        .animation(ChatMotion.quickState(reduceMotion: reduceMotion), value: viewModel.subagentStore.children)
         .onChange(of: viewModel.planState) { _, state in
             guard expandedComposerStatusSurface == .plan,
                   state?.isEmpty != false else { return }
@@ -1182,6 +1199,10 @@ struct ChatView: View {
         }
         .onChange(of: viewModel.currentGoal) { _, goal in
             guard expandedComposerStatusSurface == .goal, goal == nil else { return }
+            expandedComposerStatusSurface = nil
+        }
+        .onChange(of: viewModel.subagentStore.children.isEmpty) { _, isEmpty in
+            guard expandedComposerStatusSurface == .subagents, isEmpty else { return }
             expandedComposerStatusSurface = nil
         }
         // Publish the height the dock actually sits in, so the plan card can

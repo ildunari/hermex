@@ -72,12 +72,17 @@ protocol ChatStreamCoordinatorDelegate: AnyObject {
     func streamCoordinatorUpdateTitle(_ payload: TitleStreamEvent) -> Bool
     @discardableResult
     func streamCoordinatorApplyTodoState(_ payload: TodoState) -> Bool
+    func streamCoordinatorApplySubagentUpsert(_ payload: SubagentRun)
     @discardableResult
     func streamCoordinatorApplyDone(_ payload: DoneStreamEvent) -> Bool
     func streamCoordinatorApplyApprovalUpdate(_ update: ApprovalPendingResponse)
     func streamCoordinatorApplyClarificationUpdate(_ update: ClarificationPendingResponse)
     @discardableResult
     func streamCoordinatorEnqueuePendingSteerLeftover(_ text: String) -> Bool
+}
+
+extension ChatStreamCoordinatorDelegate {
+    func streamCoordinatorApplySubagentUpsert(_ payload: SubagentRun) {}
 }
 
 @MainActor
@@ -496,6 +501,8 @@ final class ChatStreamCoordinator {
             if delegate?.streamCoordinatorApplyTodoState(payload) == true {
                 markProgress()
             }
+        case .subagentUpsert(let payload):
+            delegate?.streamCoordinatorApplySubagentUpsert(payload)
         case .metering(let payload):
             guard payload.sessionId == nil || payload.sessionId == delegate?.streamCoordinatorSessionID else {
                 break

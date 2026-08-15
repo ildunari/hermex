@@ -16,6 +16,7 @@ enum Endpoint {
     case sessionsSearch(query: String, content: Bool, depth: Int)
     case session(id: String, includeMessages: Bool, messageLimit: Int?, messageBefore: Int?, expandRenderable: Bool = false)
     case sessionStatus(id: String)
+    case subagents(parentSessionID: String)
     case newSession
     case renameSession
     case deleteSession
@@ -151,6 +152,8 @@ enum Endpoint {
             return "/api/session"
         case .sessionStatus:
             return "/api/session/status"
+        case .subagents:
+            return "/api/sessions"
         case .newSession:
             return "/api/session/new"
         case .renameSession:
@@ -544,6 +547,8 @@ enum Endpoint {
     func url(relativeTo baseURL: URL) -> URL {
         let url: URL
         switch self {
+        case let .subagents(parentSessionID):
+            url = subagentsURL(relativeTo: baseURL, parentSessionID: parentSessionID)
         case let .kanbanCardDetail(request):
             url = kanbanTaskURL(relativeTo: baseURL, cardID: request.cardID)
         case let .kanbanEditBoard(request):
@@ -584,6 +589,17 @@ enum Endpoint {
             return root
         }
         components.percentEncodedPath += "/\(encodedCardID)\(suffix)"
+        return components.url ?? root
+    }
+
+    private func subagentsURL(relativeTo baseURL: URL, parentSessionID: String) -> URL {
+        let root = baseURL.appending(path: "/api/sessions")
+        guard var components = URLComponents(url: root, resolvingAgainstBaseURL: false),
+              let encodedSessionID = parentSessionID.addingPercentEncoding(withAllowedCharacters: Self.pathSegmentAllowed)
+        else {
+            return root
+        }
+        components.percentEncodedPath += "/\(encodedSessionID)/subagents"
         return components.url ?? root
     }
 

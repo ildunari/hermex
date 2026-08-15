@@ -7,6 +7,7 @@ import SwiftUI
 enum ComposerStatusSurfaceID: Hashable {
     case plan
     case goal
+    case subagents
 }
 
 /// Shared spacing for every expanded composer surface.
@@ -21,6 +22,7 @@ enum ComposerStatusSurfaceMetrics {
     static let collapsedCornerRadius: CGFloat = 19
     static let expandedCornerRadius = ActivityBlockChrome.cornerRadius
     static let railSpacing: CGFloat = 8
+    static let semanticIconSize: CGFloat = 13
 }
 
 /// Horizontally scrolling home for composer status pills and their expanded cards.

@@ -32,6 +32,22 @@ enum ActivityAccessibilityID {
     static let goalHeader = "goal.header"
     /// The goal's bounded, independently scrolling detail body.
     static let goalDetailsScroll = "goal.details-scroll"
+    /// The Agents pill / expanded card header above the composer.
+    static let subagentsHeader = "subagents.header"
+    /// The bounded list of delegated-agent rows.
+    static let subagentsRowsScroll = "subagents.rows-scroll"
+    static func subagentRow(_ id: String) -> String {
+        "subagents.row.\(sanitized(id))"
+    }
+    static func subagentDetails(_ id: String) -> String {
+        "subagents.details.\(sanitized(id))"
+    }
     /// Horizontally scrolling container shared by plan, goal, and future pills.
     static let composerStatusRail = "composer-status.rail"
+
+    private static func sanitized(_ value: String) -> String {
+        value.map { character in
+            character.isLetter || character.isNumber || "-_.".contains(character) ? character : "_"
+        }.reduce(into: "") { $0.append($1) }
+    }
 }

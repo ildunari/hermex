@@ -528,4 +528,41 @@ final class ActivityDisclosureUITests: XCTestCase {
             "The pill band should scroll horizontally rather than compressing or wrapping."
         )
     }
+
+    func testAgentsSurfaceIsBoundedAndUsesOneOpenRowAccordion() {
+        let app = launchGallery(page: 30)
+        let header = app.descendants(matching: .any)
+            .matching(identifier: "subagents.header").firstMatch
+        let rows = app.descendants(matching: .any)
+            .matching(identifier: "subagents.rows-scroll").firstMatch
+        XCTAssertTrue(header.waitForExistence(timeout: 15))
+        XCTAssertTrue(rows.waitForExistence(timeout: 5))
+        XCTAssertLessThan(rows.frame.height, app.windows.firstMatch.frame.height * 0.6)
+
+        let first = app.descendants(matching: .any)
+            .matching(identifier: "subagents.row.run-gallery_sa-contract").firstMatch
+        let second = app.descendants(matching: .any)
+            .matching(identifier: "subagents.row.run-gallery_sa-client").firstMatch
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        XCTAssertTrue(second.waitForExistence(timeout: 5))
+
+        first.tap()
+        let firstDetails = app.descendants(matching: .any)
+            .matching(identifier: "subagents.details.run-gallery_sa-contract").firstMatch
+        XCTAssertTrue(firstDetails.waitForExistence(timeout: 5))
+
+        second.tap()
+        let secondDetails = app.descendants(matching: .any)
+            .matching(identifier: "subagents.details.run-gallery_sa-client").firstMatch
+        XCTAssertTrue(secondDetails.waitForExistence(timeout: 5))
+        XCTAssertTrue(firstDetails.waitForNonExistence(timeout: 5), "Only one agent row may be expanded.")
+
+        let screenshot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        screenshot.name = "agents-status-expanded"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+
+        header.tap()
+        XCTAssertTrue(rows.waitForNonExistence(timeout: 5))
+    }
 }

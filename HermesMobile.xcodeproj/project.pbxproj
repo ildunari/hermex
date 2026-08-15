@@ -42,6 +42,7 @@
 		C04000000000000000000003 /* APIClient+Chat.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000013 /* APIClient+Chat.swift */; };
 		C04000000000000000000004 /* APIClient+Workspace.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000014 /* APIClient+Workspace.swift */; };
 		C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000015 /* APIClient+ServerPanels.swift */; };
+		D0A600000000000000000003 /* APIClient+Subagents.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A600000000000000000004 /* APIClient+Subagents.swift */; };
 		C04000000000000000000006 /* APIClient+Cron.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000016 /* APIClient+Cron.swift */; };
 		C04000000000000000000007 /* APIClient+Memory.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000017 /* APIClient+Memory.swift */; };
 		C04000000000000000000008 /* APIClient+Skills.swift in Sources */ = {isa = PBXBuildFile; fileRef = C04000000000000000000018 /* APIClient+Skills.swift */; };
@@ -119,6 +120,10 @@
 		C05100000000000000000001 /* ChatTranscriptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000011 /* ChatTranscriptView.swift */; };
 		C05100000000000000000002 /* ChatMessageActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000012 /* ChatMessageActions.swift */; };
 		C05100000000000000000003 /* ChatGoalControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000013 /* ChatGoalControls.swift */; };
+		D0A600000000000000000005 /* SubagentStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A600000000000000000006 /* SubagentStore.swift */; };
+		D0A600000000000000000007 /* SubagentStatusSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A600000000000000000008 /* SubagentStatusSurface.swift */; };
+		D0A600000000000000000001 /* SubagentRun.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A600000000000000000002 /* SubagentRun.swift */; };
+		D0A600000000000000000009 /* SubagentRunTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0A60000000000000000000A /* SubagentRunTests.swift */; };
 		D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C500000000000000000002 /* ComposerStatusSurface.swift */; };
 		C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */; };
 		1A2B3C4D5E6F7000000000D0 /* SessionRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */; };
@@ -426,6 +431,7 @@
 		C04000000000000000000013 /* APIClient+Chat.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Chat.swift"; sourceTree = "<group>"; };
 		C04000000000000000000014 /* APIClient+Workspace.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Workspace.swift"; sourceTree = "<group>"; };
 		C04000000000000000000015 /* APIClient+ServerPanels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+ServerPanels.swift"; sourceTree = "<group>"; };
+		D0A600000000000000000004 /* APIClient+Subagents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Subagents.swift"; sourceTree = "<group>"; };
 		C04000000000000000000016 /* APIClient+Cron.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Cron.swift"; sourceTree = "<group>"; };
 		C04000000000000000000017 /* APIClient+Memory.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Memory.swift"; sourceTree = "<group>"; };
 		C04000000000000000000018 /* APIClient+Skills.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "APIClient+Skills.swift"; sourceTree = "<group>"; };
@@ -498,6 +504,10 @@
 		C05100000000000000000011 /* ChatTranscriptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptView.swift; sourceTree = "<group>"; };
 		C05100000000000000000012 /* ChatMessageActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatMessageActions.swift; sourceTree = "<group>"; };
 		C05100000000000000000013 /* ChatGoalControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatGoalControls.swift; sourceTree = "<group>"; };
+		D0A600000000000000000006 /* SubagentStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentStore.swift; sourceTree = "<group>"; };
+		D0A600000000000000000008 /* SubagentStatusSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentStatusSurface.swift; sourceTree = "<group>"; };
+		D0A600000000000000000002 /* SubagentRun.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentRun.swift; sourceTree = "<group>"; };
+		D0A60000000000000000000A /* SubagentRunTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubagentRunTests.swift; sourceTree = "<group>"; };
 		D0C500000000000000000002 /* ComposerStatusSurface.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComposerStatusSurface.swift; sourceTree = "<group>"; };
 		C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatTranscriptSupportingViews.swift; sourceTree = "<group>"; };
 		1A2B3C4D5E6F7000000000D2 /* SessionRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionRowView.swift; sourceTree = "<group>"; };
@@ -852,6 +862,7 @@
 				C03900000000000000000007 /* APIClientAuthAndErrorTests.swift */,
 				C03900000000000000000008 /* APIClientAgentControlTests.swift */,
 				C03900000000000000000009 /* APIClientConfigurationTests.swift */,
+				D0A60000000000000000000A /* SubagentRunTests.swift */,
 				C0390000000000000000000A /* APIClientCronEndpointTests.swift */,
 				C0390000000000000000000B /* APIClientMemoryEndpointTests.swift */,
 				C0390000000000000000000C /* APIClientSkillEndpointTests.swift */,
@@ -967,6 +978,7 @@
 				C04000000000000000000014 /* APIClient+Workspace.swift */,
 				C03120000000000000F002 /* APIClient+Git.swift */,
 				C04000000000000000000015 /* APIClient+ServerPanels.swift */,
+				D0A600000000000000000004 /* APIClient+Subagents.swift */,
 				C04000000000000000000016 /* APIClient+Cron.swift */,
 				C04000000000000000000017 /* APIClient+Memory.swift */,
 				C04000000000000000000018 /* APIClient+Skills.swift */,
@@ -996,6 +1008,7 @@
 				1A2B3C4D5E6F7000000000BD /* Workspace.swift */,
 				C03120000000000000F001 /* GitWorkspace.swift */,
 				1A2B3C4D5E6F7000000000BE /* ServerCatalog.swift */,
+				D0A600000000000000000002 /* SubagentRun.swift */,
 				1A2B3C4D5E6F70000000142 /* ModelFavoritesStore.swift */,
 				1A2B3C4D5E6F700000000301 /* ServerAccount.swift */,
 				1A2B3C4D5E6F7000000000DF /* ToolCall.swift */,
@@ -1104,6 +1117,8 @@
 				C05100000000000000000012 /* ChatMessageActions.swift */,
 				C05100000000000000000013 /* ChatGoalControls.swift */,
 				D0C500000000000000000002 /* ComposerStatusSurface.swift */,
+				D0A600000000000000000006 /* SubagentStore.swift */,
+				D0A600000000000000000008 /* SubagentStatusSurface.swift */,
 				C05100000000000000000014 /* ChatTranscriptSupportingViews.swift */,
 				C0CAM000000000000000B002 /* CameraPickerView.swift */,
 				C0DEC0DE0000000000000002 /* ChatComposerView.swift */,
@@ -1589,6 +1604,7 @@
 				C03180000000000000B007 /* GitTurnChangesCard.swift in Sources */,
 				C03140000000000000B001 /* GitBranchPickerView.swift in Sources */,
 				C04000000000000000000005 /* APIClient+ServerPanels.swift in Sources */,
+				D0A600000000000000000003 /* APIClient+Subagents.swift in Sources */,
 				C04000000000000000000006 /* APIClient+Cron.swift in Sources */,
 				C04000000000000000000007 /* APIClient+Memory.swift in Sources */,
 				C04000000000000000000008 /* APIClient+Skills.swift in Sources */,
@@ -1627,6 +1643,7 @@
 				1A2B3C4D5E6F7000000000AA /* ChatMessage.swift in Sources */,
 				1A2B3C4D5E6F7000000000AD /* Workspace.swift in Sources */,
 				1A2B3C4D5E6F7000000000AE /* ServerCatalog.swift in Sources */,
+				D0A600000000000000000001 /* SubagentRun.swift in Sources */,
 				1A2B3C4D5E6F70000000140 /* ModelFavoritesStore.swift in Sources */,
 				1A2B3C4D5E6F7000000000DE /* ToolCall.swift in Sources */,
 				1A2B3C4D5E6F7000000000A9 /* JSONValue.swift in Sources */,
@@ -1660,6 +1677,8 @@
 					C05100000000000000000002 /* ChatMessageActions.swift in Sources */,
 					C05100000000000000000003 /* ChatGoalControls.swift in Sources */,
 					D0C500000000000000000001 /* ComposerStatusSurface.swift in Sources */,
+					D0A600000000000000000005 /* SubagentStore.swift in Sources */,
+					D0A600000000000000000007 /* SubagentStatusSurface.swift in Sources */,
 					C05100000000000000000004 /* ChatTranscriptSupportingViews.swift in Sources */,
 					C0CAM000000000000000B001 /* CameraPickerView.swift in Sources */,
 				C0DEC0DE0000000000000001 /* ChatComposerView.swift in Sources */,
@@ -1798,6 +1817,7 @@
 				C03910000000000000000007 /* APIClientAuthAndErrorTests.swift in Sources */,
 				C03910000000000000000008 /* APIClientAgentControlTests.swift in Sources */,
 				C03910000000000000000009 /* APIClientConfigurationTests.swift in Sources */,
+				D0A600000000000000000009 /* SubagentRunTests.swift in Sources */,
 				C0391000000000000000000A /* APIClientCronEndpointTests.swift in Sources */,
 				C0391000000000000000000B /* APIClientMemoryEndpointTests.swift in Sources */,
 				C0391000000000000000000C /* APIClientSkillEndpointTests.swift in Sources */,
