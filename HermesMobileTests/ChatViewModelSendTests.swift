@@ -4933,19 +4933,8 @@ final class ChatViewModelSendTests: XCTestCase {
                 }
                 """, for: request)
             case "/api/profile/switch":
-                let body = try XCTUnwrap(apiTestJSONBody(from: request))
-                XCTAssertEqual(body["name"] as? String, "work")
-                return apiTestJSONResponse("""
-                {
-                  "active": "work",
-                  "default_model": "\(openRouterModel)",
-                  "default_workspace": "/tmp/workspace",
-                  "profiles": [
-                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true},
-                    {"name": "work", "model": "\(openRouterModel)", "provider": "openrouter", "is_active": true}
-                  ]
-                }
-                """, for: request)
+                XCTFail("Opening a session must never call /api/profile/switch")
+                throw URLError(.badURL)
             case "/api/models":
                 return apiTestJSONResponse("""
                 {
@@ -4990,27 +4979,21 @@ final class ChatViewModelSendTests: XCTestCase {
 
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
-        // The composer config load now issues its profile-scoped reads
-        // concurrently, so exact arrival order is not deterministic. What must
-        // still hold: `/api/models` and `/api/workspaces` are profile-scoped on
-        // the server (upstream #3957) and may not be issued before
-        // `/api/profile/switch` settles the active profile, and the send
-        // (`/api/chat/start`) happens after configuration resolves.
+        // Hydration is read-only with respect to the server's active profile:
+        // the session's "work" profile is resolved from `/api/profiles` and
+        // `/api/models`, never by switching the server's global active profile
+        // (which every other client would observe). The send (`/api/chat/start`)
+        // happens after configuration resolves.
         let paths = requestPaths.value
         XCTAssertEqual(Set(paths), [
             "/api/profiles",
-            "/api/profile/switch",
             "/api/models",
             "/api/reasoning",
             "/api/workspaces",
             "/api/commands",
             "/api/chat/start"
         ])
-        XCTAssertEqual(paths.count, 7, "no endpoint should be issued twice")
-        let switchIndex = try XCTUnwrap(paths.firstIndex(of: "/api/profile/switch"))
-        XCTAssertLessThan(try XCTUnwrap(paths.firstIndex(of: "/api/profiles")), switchIndex)
-        XCTAssertLessThan(switchIndex, try XCTUnwrap(paths.firstIndex(of: "/api/models")))
-        XCTAssertLessThan(switchIndex, try XCTUnwrap(paths.firstIndex(of: "/api/workspaces")))
+        XCTAssertEqual(paths.count, 6, "no endpoint should be issued twice")
         XCTAssertEqual(paths.last, "/api/chat/start", "send must follow configuration")
     }
 
@@ -6973,6 +6956,135 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.messages.compactMap(\.content), ["First question", "First answer", "Second question"])
         XCTAssertEqual(viewModel.activeStreamID, "stream-regen")
         XCTAssertEqual(streamClient.startedURLs.count, 1)
+    }
+
+    // MARK: - Effective-model attribution across send/retry/regenerate
+
+    @MainActor
+    func testSendAdoptsEffectiveModelFromChatStart() async throws {
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/chat/start")
+            return apiTestJSONResponse("""
+            {
+              "session_id": "session-abc",
+              "stream_id": "stream-send",
+              "effective_model": "@openai:gpt-5.5",
+              "effective_model_provider": "openai"
+            }
+            """, for: request)
+        }
+        // Session pins a requested model; the server may normalize/fall back.
+        XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
+
+        let didStart = await viewModel.sendMessage("Attribute the model")
+
+        XCTAssertTrue(didStart)
+        XCTAssertEqual(viewModel.selectedModelID, "@openai:gpt-5.5")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
+    }
+
+    @MainActor
+    func testRetryAdoptsEffectiveModelFromChatStart() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session/retry":
+                return apiTestJSONResponse("""
+                {
+                  "ok": true,
+                  "last_user_text": "Summarize the logs",
+                  "removed_count": 2
+                }
+                """, for: request)
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Earlier message", "timestamp": 1, "message_id": "u-1"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-retry",
+                  "effective_model": "@openai:gpt-5.5",
+                  "effective_model_provider": "openai"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await viewModel.executeSlashCommand(
+            try XCTUnwrap(SlashCommandCatalog.command(named: "retry"))
+        )
+
+        XCTAssertEqual(result, .executed(message: nil))
+        XCTAssertEqual(viewModel.selectedModelID, "@openai:gpt-5.5")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
+    }
+
+    @MainActor
+    func testRegenerateAdoptsEffectiveModelFromChatStart() async throws {
+        let viewModel = try makeViewModel { request in
+            switch request.url?.path {
+            case "/api/session":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "_messages_offset": 5,
+                    "messages": [
+                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                      {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"},
+                      {"role": "assistant", "content": "Second answer", "timestamp": 4, "message_id": "a-8"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/session/truncate":
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "_messages_offset": 5,
+                    "messages": [
+                      {"role": "user", "content": "First question", "timestamp": 1, "message_id": "u-5"},
+                      {"role": "assistant", "content": "First answer", "timestamp": 2, "message_id": "a-6"},
+                      {"role": "user", "content": "Second question", "timestamp": 3, "message_id": "u-7"}
+                    ]
+                  }
+                }
+                """, for: request)
+            case "/api/chat/start":
+                return apiTestJSONResponse("""
+                {
+                  "session_id": "session-abc",
+                  "stream_id": "stream-regen",
+                  "effective_model": "@openai:gpt-5.5",
+                  "effective_model_provider": "openai"
+                }
+                """, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        await viewModel.loadMessages()
+        let context = try XCTUnwrap(viewModel.actionContext(for: viewModel.messages[3], visibleIndex: 3))
+        let didRegenerate = await viewModel.regenerateAssistantResponse(context)
+
+        XCTAssertTrue(didRegenerate)
+        XCTAssertEqual(viewModel.selectedModelID, "@openai:gpt-5.5")
+        XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
     }
 
     @MainActor

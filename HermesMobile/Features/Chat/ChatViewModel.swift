@@ -1006,7 +1006,7 @@ final class ChatViewModel {
 
             let initialState = composerConfigurationState
             let result = await ChatComposerConfigLoader(client: client)
-                .loadConfiguration(from: initialState)
+                .loadConfiguration(from: initialState, sessionID: sessionID)
 
             // The load now runs concurrently with the transcript fetch, so a
             // view that disappears mid-flight cancels it. Applying a partial
@@ -1168,7 +1168,8 @@ final class ChatViewModel {
 
         guard let response = try? await client.reasoning(
             model: Self.nonEmpty(currentModel),
-            provider: Self.nonEmpty(currentModelProvider)
+            provider: Self.nonEmpty(currentModelProvider),
+            sessionID: Self.nonEmpty(sessionID)
         ) else {
             if token == reasoningGatingFetchToken {
                 supportedReasoningEfforts = nil
@@ -1400,7 +1401,8 @@ final class ChatViewModel {
             let response = try await client.saveReasoningEffort(
                 selectedEffort,
                 model: currentModel,
-                provider: currentModelProvider
+                provider: currentModelProvider,
+                sessionID: sessionID
             )
             selectedReasoningEffort = response.effectiveEffort ?? selectedEffort
             return true
@@ -3033,12 +3035,13 @@ final class ChatViewModel {
 
         do {
             if Self.reasoningDisplayArgs.contains(reasoning) {
-                _ = try await client.saveReasoningDisplay(reasoning)
+                _ = try await client.saveReasoningDisplay(reasoning, sessionID: sessionID)
             } else if Self.reasoningEffortArgs.contains(reasoning) {
                 let response = try await client.saveReasoningEffort(
                     reasoning,
                     model: currentModel,
-                    provider: currentModelProvider
+                    provider: currentModelProvider,
+                    sessionID: sessionID
                 )
                 selectedReasoningEffort = response.effectiveEffort ?? reasoning
             } else {

@@ -25,25 +25,27 @@ extension APIClient {
         )
     }
 
-    /// Reasoning status for a specific model/provider (`GET /api/reasoning`).
+    /// Reasoning status for a specific model/provider/session (`GET /api/reasoning`).
     /// Passing the session's current model + provider makes `supported_efforts`
-    /// model-accurate (mirrors the upstream WebUI composer chip, issue #18);
-    /// with no params the server resolves the config default model instead.
-    func reasoning(model: String? = nil, provider: String? = nil) async throws -> ReasoningStatusResponse {
-        try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
+    /// model-accurate (mirrors the upstream WebUI composer chip, issue #18), and
+    /// passing `sessionID` scopes the read to that session's retained effort so
+    /// opening a chat never reflects another session's override. With no params the
+    /// server resolves the config default model instead.
+    func reasoning(model: String? = nil, provider: String? = nil, sessionID: String? = nil) async throws -> ReasoningStatusResponse {
+        try await send(endpoint: .reasoning(model: model, provider: provider, sessionID: sessionID), method: "GET")
     }
 
-    /// Saves the reasoning effort for the session's current model. The write is
-    /// profile-global on the server (`agent.reasoning_effort`), so this never
-    /// claims per-session persistence; `model`/`provider` instead scope the
-    /// server's coercion so the echoed `reasoning_effort` matches what this
-    /// session's model actually accepts (mirrors the GET path, issue #18).
-    /// Both are optional so older servers that only accept a bare `effort`
-    /// keep working.
+    /// Saves the reasoning effort for the session's current model. `model`/`provider`
+    /// scope the server's coercion so the echoed `reasoning_effort` matches what this
+    /// session's model actually accepts (mirrors the GET path, issue #18), and
+    /// `sessionID` makes the write session-scoped: the server persists only the
+    /// session override and leaves the global config untouched. All are optional so
+    /// older servers that only accept a bare `effort` keep working.
     func saveReasoningEffort(
         _ effort: String,
         model: String? = nil,
-        provider: String? = nil
+        provider: String? = nil,
+        sessionID: String? = nil
     ) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
@@ -51,16 +53,17 @@ extension APIClient {
             body: ReasoningEffortRequest(
                 effort: effort,
                 model: model,
-                provider: provider
+                provider: provider,
+                sessionId: sessionID
             )
         )
     }
 
-    func saveReasoningDisplay(_ display: String) async throws -> ReasoningStatusResponse {
+    func saveReasoningDisplay(_ display: String, sessionID: String? = nil) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningDisplayRequest(display: display)
+            body: ReasoningDisplayRequest(display: display, sessionId: sessionID)
         )
     }
 
@@ -188,10 +191,12 @@ private struct ReasoningEffortRequest: Encodable {
     let effort: String
     let model: String?
     let provider: String?
+    let sessionId: String?
 }
 
 private struct ReasoningDisplayRequest: Encodable {
     let display: String
+    let sessionId: String?
 }
 
 private struct PersonalitySetRequest: Encodable {

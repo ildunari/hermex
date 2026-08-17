@@ -54,7 +54,7 @@ final class RequestPathRecorder: @unchecked Sendable {
 }
 
 final class ChatComposerConfigLoaderTests: APIClientTestCase {
-    func testLoadUsesSessionProfileDefaultAndRefreshesCommands() async throws {
+    func testLoadResolvesSessionProfileDefaultsAndRefreshesCommands() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         let requestPaths = RequestPathRecorder()
         let client = makeClient { request in
@@ -72,35 +72,9 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 }
                 """, for: request)
             case "/api/profile/switch":
-                let body = try apiTestJSONBody(from: request)
-                XCTAssertEqual(body["name"] as? String, "work")
-                // Hold the switch open long enough that any concurrently-issued
-                // profile-scoped request lands inside the window and is
-                // recorded as a violation. Without this stall the ordering
-                // assertions below would pass or fail on thread scheduling.
-                requestPaths.beginProfileSwitch()
-                Thread.sleep(forTimeInterval: 0.15)
-                requestPaths.endProfileSwitch()
-                return apiTestJSONResponse("""
-                {
-                  "active": "work",
-                  "default_model": "\(openRouterModel)",
-                  "default_workspace": "/tmp/workspace",
-                  "profiles": [
-                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true},
-                    {"name": "work", "model": "\(openRouterModel)", "provider": "openrouter", "is_active": true}
-                  ]
-                }
-                """, for: request)
+                XCTFail("Opening a session must never call /api/profile/switch")
+                throw URLError(.badURL)
             case "/api/models":
-                requestPaths.noteProfileScopedRequest("/api/models")
-                XCTAssertEqual(
-                    URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)?
-                        .queryItems?
-                        .first(where: { $0.name == "freshness" })?
-                        .value,
-                    "session_visit"
-                )
                 return apiTestJSONResponse("""
                 {
                   "default_model": "\(openRouterModel)",
@@ -118,7 +92,6 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
             case "/api/reasoning":
                 return apiTestJSONResponse(#"{"reasoning_effort": "medium"}"#, for: request)
             case "/api/workspaces":
-                requestPaths.noteProfileScopedRequest("/api/workspaces")
                 return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/workspace"}], "last": "/tmp/workspace"}"#, for: request)
             case "/api/commands":
                 return apiTestJSONResponse(#"{"commands": [{"name": "status", "description": "Show status"}]}"#, for: request)
@@ -135,6 +108,9 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNil(result.configurationError)
         XCTAssertEqual(result.state.selectedProfileName, "work")
         XCTAssertEqual(result.state.currentProfile, "work")
+        // Read-only resolution: the session pins profile "work", so its default
+        // model/provider come from the profile list even though the server's
+        // ACTIVE profile is "default".
         XCTAssertEqual(result.state.currentModel, openRouterModel)
         XCTAssertEqual(result.state.currentModelProvider, "openrouter")
         XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
@@ -145,31 +121,18 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
 
-        // Profile-scoped endpoints must not be issued before the profile is
-        // settled: `/api/models` and `/api/workspaces` resolve against the
-        // ACTIVE profile on the server (upstream #3957), so a concurrent read
-        // would return the pre-switch profile's data.
+        // Hydration is read-only with respect to the server's active profile:
+        // `/api/profile/switch` is never issued, so an opened (and possibly
+        // abandoned) chat cannot mutate global state other clients observe.
         let paths = requestPaths.value
-        XCTAssertEqual(
-            requestPaths.violations,
-            [],
-            "profile-scoped endpoints were issued while /api/profile/switch was unresolved"
-        )
+        XCTAssertFalse(paths.contains("/api/profile/switch"))
         XCTAssertEqual(Set(paths), [
             "/api/profiles",
-            "/api/profile/switch",
             "/api/models",
             "/api/reasoning",
             "/api/workspaces",
             "/api/commands"
         ])
-        let switchIndex = try XCTUnwrap(paths.firstIndex(of: "/api/profile/switch"))
-        let profilesIndex = try XCTUnwrap(paths.firstIndex(of: "/api/profiles"))
-        let modelsIndex = try XCTUnwrap(paths.firstIndex(of: "/api/models"))
-        let workspacesIndex = try XCTUnwrap(paths.firstIndex(of: "/api/workspaces"))
-        XCTAssertLessThan(profilesIndex, switchIndex, "profiles must resolve before switching")
-        XCTAssertLessThan(switchIndex, modelsIndex, "/api/models is profile-scoped")
-        XCTAssertLessThan(switchIndex, workspacesIndex, "/api/workspaces is profile-scoped")
     }
 
     func testLoadKeepsSessionModelOverrideWhenProfileHasDifferentDefault() async throws {
@@ -236,7 +199,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 currentModel: sessionModel,
                 currentModelProvider: "openai",
                 currentProfile: "work"
-            )
+            ),
+            sessionID: "session-abc"
         )
 
         XCTAssertNil(result.configurationError)
@@ -244,10 +208,12 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.selectedProfileName, "work")
         XCTAssertEqual(result.state.selectedReasoningEffort, "high")
-        // The reasoning query is scoped to the session's model/provider so the
-        // gating fields are model-accurate (issue #18).
+        // The reasoning query is scoped to the session's model/provider AND its
+        // session id so the gating fields are model-accurate (issue #18) and
+        // the read reflects this chat's retained effort.
         XCTAssertEqual(reasoningQueryItems["model"], sessionModel)
         XCTAssertEqual(reasoningQueryItems["provider"], "openai")
+        XCTAssertEqual(reasoningQueryItems["session_id"], "session-abc")
         XCTAssertEqual(result.state.supportedReasoningEfforts, ["low", "medium", "high"])
         XCTAssertEqual(result.state.supportsReasoningEffort, true)
     }
@@ -315,11 +281,12 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         ])
     }
 
-    /// Fail-closed: when profile resolution itself fails we cannot know which
-    /// profile the server would answer `/api/models` and `/api/workspaces` for,
-    /// so they are not issued at all. Showing another profile's model catalog
-    /// is worse than showing none.
-    func testLoadSkipsProfileScopedEndpointsWhenProfileResolutionFails() async throws {
+    /// Read-only hydration: a profile resolution failure records an error but
+    /// does not block the remaining read-only endpoints, because none of them
+    /// mutate the server's active profile. Showing the current profile's model
+    /// catalog and workspace list is still safe; only a switch would need to
+    /// gate on the resolved profile.
+    func testLoadKeepsReadOnlyEndpointsWhenProfileResolutionFails() async throws {
         let requestPaths = RequestPathRecorder()
         let client = makeClient { request in
             requestPaths.record(request.url?.path ?? "")
@@ -333,10 +300,19 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                     headerFields: ["Content-Type": "application/json"]
                 )
                 return (try XCTUnwrap(response), Data(#"{"error":"profiles unavailable"}"#.utf8))
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort": "low"}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [{"path": "/tmp/ws"}], "last": "/tmp/ws"}"#, for: request)
             case "/api/commands":
                 return apiTestJSONResponse(#"{"commands": [{"name": "status"}]}"#, for: request)
+            case "/api/profile/switch":
+                XCTFail("Opening a session must never call /api/profile/switch")
+                throw URLError(.badURL)
             default:
-                XCTFail("Profile-scoped endpoint issued without a settled profile: \(request.url?.path ?? "nil")")
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
                 throw URLError(.badURL)
             }
         }
@@ -346,11 +322,16 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         )
 
         XCTAssertNotNil(result.configurationError)
-        XCTAssertEqual(Set(requestPaths.value), ["/api/profiles", "/api/commands"])
-        // Commands are profile-independent, so they still land.
-        XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
-        XCTAssertTrue(result.state.modelCatalogGroups.isEmpty)
-        XCTAssertTrue(result.state.workspaceSuggestions.isEmpty)
+        XCTAssertEqual(Set(requestPaths.value), [
+            "/api/profiles",
+            "/api/models",
+            "/api/reasoning",
+            "/api/workspaces",
+            "/api/commands"
+        ])
+        XCTAssertEqual(result.state.modelCatalogGroups.count, 0)
+        XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/ws"])
+        XCTAssertEqual(result.state.selectedReasoningEffort, "low")
     }
 
     /// A session that already pins model+provider lets `/api/reasoning` overlap
@@ -387,7 +368,8 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
                 let model = (components?.queryItems ?? []).first { $0.name == "model" }?.value
                 let provider = (components?.queryItems ?? []).first { $0.name == "provider" }?.value
-                reasoningQuery.record("\(model ?? "nil")|\(provider ?? "nil")")
+                let sessionID = (components?.queryItems ?? []).first { $0.name == "session_id" }?.value
+                reasoningQuery.record("\("\(model ?? "nil")|\(provider ?? "nil")|\(sessionID ?? "nil")")")
                 return apiTestJSONResponse(#"{"reasoning_effort": "high"}"#, for: request)
             case "/api/workspaces":
                 return apiTestJSONResponse(#"{"workspaces": []}"#, for: request)
@@ -404,14 +386,76 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
                 currentModel: sessionModel,
                 currentModelProvider: "openai",
                 currentProfile: "work"
-            )
+            ),
+            sessionID: "session-abc"
         )
 
         XCTAssertNil(result.configurationError)
-        XCTAssertEqual(reasoningQuery.value, ["\(sessionModel)|openai"])
+        XCTAssertEqual(reasoningQuery.value, ["\(sessionModel)|openai|session-abc"])
         XCTAssertEqual(result.state.currentModel, sessionModel)
         XCTAssertEqual(result.state.currentModelProvider, "openai")
         XCTAssertEqual(result.state.selectedReasoningEffort, "high")
+    }
+
+    /// A/B independent hydration: two different sessions each read their own
+    /// retained effort, and the reasoning GET carries the matching session id,
+    /// so switching among sessions never leaks one chat's override into another.
+    func testLoadHydratesIndependentEffortPerSession() async throws {
+        let queries = RequestPathRecorder()
+        let client = makeClient { request in
+            switch request.url?.path {
+            case "/api/profiles":
+                return apiTestJSONResponse("""
+                {
+                  "active": "default",
+                  "profiles": [
+                    {"name": "default", "model": "gpt-5.4", "provider": "openai", "is_default": true}
+                  ]
+                }
+                """, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model": "gpt-5.4", "groups": []}"#, for: request)
+            case "/api/reasoning":
+                let components = URLComponents(url: try XCTUnwrap(request.url), resolvingAgainstBaseURL: false)
+                let sessionID = (components?.queryItems ?? []).first { $0.name == "session_id" }?.value
+                queries.record(sessionID ?? "nil")
+                let effort = sessionID == "session-a" ? "high" : "low"
+                return apiTestJSONResponse(
+                    #"{"reasoning_effort": "\#(effort)"}"#,
+                    for: request
+                )
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces": [], "last": null}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands": []}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let loader = ChatComposerConfigLoader(client: client)
+        let sessionA = await loader.loadConfiguration(
+            from: ChatComposerConfigState(),
+            sessionID: "session-a"
+        )
+        let sessionB = await loader.loadConfiguration(
+            from: ChatComposerConfigState(),
+            sessionID: "session-b"
+        )
+
+        XCTAssertNil(sessionA.configurationError)
+        XCTAssertNil(sessionB.configurationError)
+        XCTAssertEqual(sessionA.state.selectedReasoningEffort, "high")
+        XCTAssertEqual(sessionB.state.selectedReasoningEffort, "low")
+        // MockURLProtocol is process-global, so unrelated configuration tests may
+        // issue an unscoped reasoning request while this async test is running.
+        // Assert this loader's two session-scoped requests without treating that
+        // unrelated traffic as part of the A/B contract.
+        XCTAssertEqual(
+            queries.value.filter { $0 == "session-a" || $0 == "session-b" },
+            ["session-a", "session-b"]
+        )
     }
 
     /// `/api/profile/switch` mutates the server's ACTIVE profile, which every
@@ -426,7 +470,7 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
             switch request.url?.path {
             case "/api/profiles":
                 // Stall so the surrounding task is cancelled before the loader
-                // reaches the switch call.
+                // would have reached any profile-dependent work.
                 Thread.sleep(forTimeInterval: 0.2)
                 return apiTestJSONResponse("""
                 {
