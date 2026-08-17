@@ -512,7 +512,7 @@ final class ActivityDisclosureUITests: XCTestCase {
         XCTAssertFalse(details.exists, "Opening the plan must not reopen or overlap the goal card.")
     }
 
-    func testComposerStatusRailPansWhenFourGoalPillsDoNotFit() {
+    func testComposerStatusRailPansWhenCompactGoalPillsDoNotFit() {
         let app = launchGallery(page: 29)
         let rail = app.descendants(matching: .any)
             .matching(identifier: "composer-status.rail").firstMatch
@@ -520,13 +520,13 @@ final class ActivityDisclosureUITests: XCTestCase {
             .matching(identifier: "goal.header")
 
         XCTAssertTrue(rail.waitForExistence(timeout: 15))
-        XCTAssertEqual(goalHeaders.count, 4)
+        XCTAssertEqual(goalHeaders.count, 5)
 
         let runningHeader = goalHeaders.element(boundBy: 0)
         XCTAssertLessThanOrEqual(
             runningHeader.frame.height,
             45,
-            "The shared status control must keep the original 44-point resting pill height."
+            "The compact status pill must keep a touch-friendly hit region without growing beyond 44 points."
         )
         XCTAssertLessThanOrEqual(
             runningHeader.frame.width,
@@ -539,7 +539,7 @@ final class ActivityDisclosureUITests: XCTestCase {
         shadowScreenshot.lifetime = .keepAlways
         add(shadowScreenshot)
 
-        let trailingHeader = goalHeaders.element(boundBy: 3)
+        let trailingHeader = goalHeaders.element(boundBy: 4)
         let initialX = trailingHeader.frame.minX
         rail.swipeLeft()
         let shiftedDeadline = Date().addingTimeInterval(5)

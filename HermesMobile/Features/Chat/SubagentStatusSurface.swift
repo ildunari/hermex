@@ -49,9 +49,15 @@ struct SubagentStatusSurface: View {
                     .lineLimit(1)
                     .contentTransition(reduceMotion ? .identity : .numericText())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .frame(minHeight: 44)
+            .padding(.horizontal, isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderHorizontalPadding
+                : ComposerStatusSurfaceMetrics.collapsedHorizontalPadding)
+            .padding(.vertical, isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderVerticalPadding
+                : ComposerStatusSurfaceMetrics.collapsedVerticalPadding)
+            .frame(minHeight: isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderHeight
+                : ComposerStatusSurfaceMetrics.collapsedHeight)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

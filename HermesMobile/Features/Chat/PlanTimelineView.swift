@@ -93,13 +93,17 @@ struct PlanTimelineView: View {
                     )
                     .lineLimit(1)
             }
-            // Roomier than a status chip: the pill is the resting state of this
-            // surface, so it reads as a control rather than a label. No chevron
-            // — the whole pill is the hit target, and the affordance is the
-            // floating shape itself.
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
-            .frame(minHeight: 44)
+            // The resting capsule stays visually compact; the shared surface
+            // modifier supplies a separate 44-point hit region.
+            .padding(.horizontal, isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderHorizontalPadding
+                : ComposerStatusSurfaceMetrics.collapsedHorizontalPadding)
+            .padding(.vertical, isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderVerticalPadding
+                : ComposerStatusSurfaceMetrics.collapsedVerticalPadding)
+            .frame(minHeight: isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderHeight
+                : ComposerStatusSurfaceMetrics.collapsedHeight)
             // No surface of its own. The outer view owns the one background,
             // border, glass, and shadow for both states; the header only
             // supplies its hit target. Giving the header its own glass meant a

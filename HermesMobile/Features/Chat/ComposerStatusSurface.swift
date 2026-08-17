@@ -19,7 +19,14 @@ enum ComposerStatusSurfaceMetrics {
     static let horizontalPadding: CGFloat = 16
     static let topPadding: CGFloat = 14
     static let bottomPadding: CGFloat = 14
-    static let collapsedCornerRadius: CGFloat = 19
+    static let collapsedHeight: CGFloat = 34
+    static let collapsedHorizontalPadding: CGFloat = 12
+    static let collapsedVerticalPadding: CGFloat = 5
+    static let expandedHeaderHeight: CGFloat = 44
+    static let expandedHeaderHorizontalPadding: CGFloat = 16
+    static let expandedHeaderVerticalPadding: CGFloat = 9
+    static let collapsedHitTargetExpansion: CGFloat = 5
+    static let collapsedCornerRadius: CGFloat = collapsedHeight / 2
     static let expandedCornerRadius = ActivityBlockChrome.cornerRadius
     static let railSpacing: CGFloat = 8
 }
@@ -102,9 +109,9 @@ private struct ComposerStatusSurfaceModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            // Keep the compact pill visually quiet while preserving Apple's
-            // minimum comfortable touch target for every current/future surface.
-            .frame(minHeight: 44)
+            .frame(minHeight: isExpanded
+                ? ComposerStatusSurfaceMetrics.expandedHeaderHeight
+                : ComposerStatusSurfaceMetrics.collapsedHeight)
             .background(
                 shape
                     .fill(palette.surface.opacity(0.5))
@@ -130,6 +137,13 @@ private struct ComposerStatusSurfaceModifier: ViewModifier {
                 style: beamStyle,
                 shape: shape,
                 active: beamActive
+            )
+            // Keep the resting glass capsule visually compact without shrinking
+            // its interactive region below Apple's 44-point touch target.
+            .chatMinimumHitTarget(
+                horizontalPadding: 0,
+                verticalPadding: isExpanded ? 0 : ComposerStatusSurfaceMetrics.collapsedHitTargetExpansion,
+                in: shape
             )
     }
 }

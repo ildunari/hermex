@@ -495,7 +495,8 @@ struct GoalStatusRailGalleryView: View {
         SubmittedGoal(goal: "Active goal", status: "active", turnsUsed: 3, maxTurns: 20),
         SubmittedGoal(goal: "Paused goal", status: "paused", turnsUsed: 5, maxTurns: 20, pausedReason: "Waiting for input"),
         SubmittedGoal(goal: "Finished goal", status: "done", turnsUsed: 9, maxTurns: 20, lastVerdict: "done"),
-        SubmittedGoal(goal: "Cleared goal", status: "cleared", turnsUsed: 1, maxTurns: 20)
+        SubmittedGoal(goal: "Cleared goal", status: "cleared", turnsUsed: 1, maxTurns: 20),
+        SubmittedGoal(goal: "Queued goal", status: "pending", turnsUsed: 0, maxTurns: 20)
     ]
 
     var body: some View {

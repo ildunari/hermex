@@ -242,6 +242,17 @@ final class TodoStateTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(ComposerStatusSurfaceMetrics.bottomPadding, 12)
     }
 
+    func testCollapsedComposerStatusPillIsCompactWithFullHitTarget() {
+        XCTAssertEqual(ComposerStatusSurfaceMetrics.collapsedHeight, 34)
+        XCTAssertEqual(ComposerStatusSurfaceMetrics.collapsedHorizontalPadding, 12)
+        XCTAssertEqual(ComposerStatusSurfaceMetrics.collapsedVerticalPadding, 5)
+        XCTAssertEqual(
+            ComposerStatusSurfaceMetrics.collapsedHeight
+                + (2 * ComposerStatusSurfaceMetrics.collapsedHitTargetExpansion),
+            44
+        )
+    }
+
     // MARK: - Transport
 
     func testSSEDecodesTodoStateEvent() {
