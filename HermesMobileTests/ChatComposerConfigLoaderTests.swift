@@ -9,6 +9,7 @@ final class RequestPathRecorder: @unchecked Sendable {
     private var paths: [String] = []
     private var switchIsInFlight = false
     private var barrierViolations: [String] = []
+    private var profileRequestCount = 0
 
     func record(_ path: String) {
         lock.lock()
@@ -40,6 +41,13 @@ final class RequestPathRecorder: @unchecked Sendable {
         }
     }
 
+    func nextProfileRequestIndex() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        profileRequestCount += 1
+        return profileRequestCount
+    }
+
     var violations: [String] {
         lock.lock()
         defer { lock.unlock() }
@@ -54,7 +62,7 @@ final class RequestPathRecorder: @unchecked Sendable {
 }
 
 final class ChatComposerConfigLoaderTests: APIClientTestCase {
-    func testLoadResolvesSessionProfileDefaultsAndRefreshesCommands() async throws {
+    func testLoadPinnedInactiveProfileFailsClosedWithoutGlobalSwitch() async throws {
         let openRouterModel = "deepseek/deepseek-chat-v3-0324:free"
         let requestPaths = RequestPathRecorder()
         let client = makeClient { request in
@@ -105,34 +113,76 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
             from: ChatComposerConfigState(currentProfile: "work")
         )
 
-        XCTAssertNil(result.configurationError)
+        XCTAssertNotNil(result.configurationError)
         XCTAssertEqual(result.state.selectedProfileName, "work")
         XCTAssertEqual(result.state.currentProfile, "work")
-        // Read-only resolution: the session pins profile "work", so its default
-        // model/provider come from the profile list even though the server's
-        // ACTIVE profile is "default".
+        // Read-only resolution still gets the session's default model/provider
+        // from the profile list, but withholds profile-scoped catalog/workspaces
+        // because the server's ACTIVE profile is "default".
         XCTAssertEqual(result.state.currentModel, openRouterModel)
         XCTAssertEqual(result.state.currentModelProvider, "openrouter")
-        XCTAssertEqual(result.state.currentWorkspace, "/tmp/workspace")
+        XCTAssertNil(result.state.currentWorkspace)
         XCTAssertEqual(result.state.selectedReasoningEffort, "medium")
         // Older server: no supported_efforts / supports_reasoning_effort fields.
         XCTAssertNil(result.state.supportedReasoningEfforts)
         XCTAssertNil(result.state.supportsReasoningEffort)
-        XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/workspace"])
+        XCTAssertTrue(result.state.workspaceSuggestions.isEmpty)
         XCTAssertEqual(result.state.agentCommands.map(\.name), ["status"])
 
-        // Hydration is read-only with respect to the server's active profile:
-        // `/api/profile/switch` is never issued, so an opened (and possibly
-        // abandoned) chat cannot mutate global state other clients observe.
+        // Hydration is read-only and fail-closed: it neither switches profiles
+        // nor labels the active default profile's catalog/workspaces as "work".
         let paths = requestPaths.value
         XCTAssertFalse(paths.contains("/api/profile/switch"))
         XCTAssertEqual(Set(paths), [
             "/api/profiles",
-            "/api/models",
             "/api/reasoning",
-            "/api/workspaces",
             "/api/commands"
         ])
+    }
+
+    func testLoadDiscardsScopedResponsesWhenActiveProfileChangesInFlight() async throws {
+        let requests = RequestPathRecorder()
+        let client = makeClient { request in
+            requests.record(request.url?.path ?? "")
+            switch request.url?.path {
+            case "/api/profiles":
+                let active = requests.nextProfileRequestIndex() == 1 ? "work" : "default"
+                return apiTestJSONResponse("""
+                {
+                  "active": "\(active)",
+                  "profiles": [
+                    {"name": "default", "model": "gpt-5.4", "provider": "openai"},
+                    {"name": "work", "model": "work/model", "provider": "openrouter"}
+                  ]
+                }
+                """, for: request)
+            case "/api/models":
+                return apiTestJSONResponse(#"{"default_model":"work/model","groups":[{"name":"Work","provider_id":"openrouter","models":[{"id":"work/model","name":"Work Model"}]}]}"#, for: request)
+            case "/api/workspaces":
+                return apiTestJSONResponse(#"{"workspaces":[{"path":"/tmp/work"}],"last":"/tmp/work"}"#, for: request)
+            case "/api/reasoning":
+                return apiTestJSONResponse(#"{"reasoning_effort":"high"}"#, for: request)
+            case "/api/commands":
+                return apiTestJSONResponse(#"{"commands":[]}"#, for: request)
+            default:
+                XCTFail("Unexpected request path: \(request.url?.path ?? "nil")")
+                throw URLError(.badURL)
+            }
+        }
+
+        let result = await ChatComposerConfigLoader(client: client).loadConfiguration(
+            from: ChatComposerConfigState(currentProfile: "work"),
+            sessionID: "session-work"
+        )
+
+        XCTAssertNotNil(result.configurationError)
+        XCTAssertEqual(result.state.currentModel, "work/model")
+        XCTAssertEqual(result.state.currentModelProvider, "openrouter")
+        XCTAssertTrue(result.state.modelCatalogGroups.isEmpty)
+        XCTAssertTrue(result.state.workspaceSuggestions.isEmpty)
+        XCTAssertEqual(result.state.selectedReasoningEffort, "high")
+        XCTAssertEqual(requests.value.filter { $0 == "/api/profiles" }.count, 2)
+        XCTAssertFalse(requests.value.contains("/api/profile/switch"))
     }
 
     func testLoadKeepsSessionModelOverrideWhenProfileHasDifferentDefault() async throws {
@@ -281,12 +331,9 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         ])
     }
 
-    /// Read-only hydration: a profile resolution failure records an error but
-    /// does not block the remaining read-only endpoints, because none of them
-    /// mutate the server's active profile. Showing the current profile's model
-    /// catalog and workspace list is still safe; only a switch would need to
-    /// gate on the resolved profile.
-    func testLoadKeepsReadOnlyEndpointsWhenProfileResolutionFails() async throws {
+    /// Without a resolved active profile, profile-scoped catalog/workspace
+    /// responses cannot be attributed safely and must not be requested.
+    func testLoadFailsClosedWhenProfileResolutionFails() async throws {
         let requestPaths = RequestPathRecorder()
         let client = makeClient { request in
             requestPaths.record(request.url?.path ?? "")
@@ -324,13 +371,11 @@ final class ChatComposerConfigLoaderTests: APIClientTestCase {
         XCTAssertNotNil(result.configurationError)
         XCTAssertEqual(Set(requestPaths.value), [
             "/api/profiles",
-            "/api/models",
             "/api/reasoning",
-            "/api/workspaces",
             "/api/commands"
         ])
         XCTAssertEqual(result.state.modelCatalogGroups.count, 0)
-        XCTAssertEqual(result.state.workspaceSuggestions, ["/tmp/ws"])
+        XCTAssertTrue(result.state.workspaceSuggestions.isEmpty)
         XCTAssertEqual(result.state.selectedReasoningEffort, "low")
     }
 

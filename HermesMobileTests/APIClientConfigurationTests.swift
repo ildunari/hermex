@@ -428,8 +428,9 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["display"] as? String, "hide")
             XCTAssertNil(body?["effort"])
-            // The display write is session-scoped too: exact snake_case `session_id`.
-            XCTAssertEqual(body?["session_id"] as? String, "session-abc")
+            // Display visibility remains profile-global on the server. Only
+            // effort writes carry a session id.
+            XCTAssertNil(body?["session_id"])
             XCTAssertNil(body?["sessionId"])
 
             return apiTestJSONResponse("""
@@ -441,7 +442,7 @@ final class APIClientConfigurationTests: APIClientTestCase {
             """, for: request)
         }
 
-        let response = try await client.saveReasoningDisplay("hide", sessionID: "session-abc")
+        let response = try await client.saveReasoningDisplay("hide")
 
         XCTAssertEqual(response.ok, true)
         XCTAssertEqual(response.showReasoning, false)

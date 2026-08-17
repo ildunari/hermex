@@ -58,6 +58,12 @@ struct ChatComposerConfigLoadResult: Sendable {
     let configurationError: Error?
 }
 
+private struct ProfileScopeChangedDuringLoad: LocalizedError, Sendable {
+    var errorDescription: String? {
+        String(localized: "The server's active profile changed while loading this chat. Profile-scoped model and workspace choices were withheld to avoid showing another profile's configuration.")
+    }
+}
+
 /// Loads everything the composer needs (profile, model, provider, reasoning
 /// effort, workspaces, commands) for one chat.
 ///
@@ -71,14 +77,15 @@ struct ChatComposerConfigLoadResult: Sendable {
 /// so `/api/profiles` is only read to resolve the selected profile name and its
 /// default model/provider.
 ///
-/// What can overlap (all issued together at the top):
+/// What can overlap:
 /// - `/api/commands` is a static `hermes_cli` registry with no profile scoping.
-/// - `/api/models` and `/api/workspaces` resolve against the server's *current*
-///   active profile, which is stable during a read-only load, so they overlap
-///   `/api/profiles`.
-/// - `/api/reasoning` waits for the catalog because its scope is the resolved
-///   model+provider *and* the session id (so the read reflects this chat's
-///   retained effort, not another session's override).
+/// - `/api/models` and `/api/workspaces` overlap only after `/api/profiles`
+///   confirms the session profile matches the server's current active profile.
+///   A second profile read validates that the scope did not change in flight;
+///   otherwise both responses are discarded rather than mislabeled.
+/// - `/api/reasoning` waits until the session model/provider are resolved and
+///   then scopes the read by those values plus the session id, so it remains
+///   safe even when a profile-scoped catalog response is withheld.
 ///
 /// Each endpoint owns its own error handling: a failing `/api/models` no
 /// longer abandons workspaces and commands (which previously left the composer
@@ -102,27 +109,25 @@ struct ChatComposerConfigLoader {
             if configurationError == nil { configurationError = error }
         }
 
-        // Profile-independent endpoints overlap the whole chain. No
-        // `/api/profile/switch` is issued here: hydration must never mutate the
-        // server's global active profile (a side effect every other client
-        // observes). The session's profile rides each send through chat-start's
-        // `profile` field, so the composer only needs a read-only resolution.
+        // Profile-independent: this can overlap the entire read-only load.
         async let commandsResult: CommandsResponse? = try? await client.commands()
-        async let modelsResult: Result<ModelsResponse, Error> = await Self.capture {
-            try await client.models(freshness: .sessionVisit)
-        }
-        async let workspacesResult: Result<WorkspacesResponse, Error> = await Self.capture {
-            try await client.workspaces()
-        }
 
-        // ── Phase 1: read-only profile resolution ──
+        // Resolve the session profile without mutating the server-global active
+        // profile. `/api/models` and `/api/workspaces` are active-profile scoped,
+        // so they are only safe when the session profile matches the active
+        // profile observed before *and after* those reads.
+        var activeProfileBeforeScopedReads: String?
+        var canReadProfileScopedEndpoints = false
         do {
             let profilesResponse = try await client.profiles()
             state.profileOptions = profilesResponse.profiles ?? []
             state.isSingleProfileMode = profilesResponse.singleProfileMode ?? false
+            activeProfileBeforeScopedReads = Self.nonEmpty(profilesResponse.active)
             state.selectedProfileName = Self.nonEmpty(state.currentProfile)
-                ?? Self.nonEmpty(profilesResponse.active)
+                ?? activeProfileBeforeScopedReads
                 ?? profilesResponse.effectiveDefaultProfileName
+            canReadProfileScopedEndpoints = Self.nonEmpty(state.currentProfile) == nil
+                || Self.nonEmpty(state.currentProfile) == activeProfileBeforeScopedReads
         } catch {
             record(error)
         }
@@ -138,28 +143,62 @@ struct ChatComposerConfigLoader {
             state.currentModelProvider = Self.nonEmpty(selectedProfile?.provider)
         }
 
-        // ── Phase 2: apply the catalog, then scope reasoning to the resolved
-        // model/provider *and* session. The catalog can only change the model
-        // when it is still unresolved, so the reasoning read waits for it. ──
-        switch await modelsResult {
-        case .success(let modelsResponse):
-            state.modelCatalogGroups = modelsResponse.catalogGroups
-            if state.currentModel == nil {
-                state.currentModel = modelsResponse.defaultModel
+        var modelsResult: Result<ModelsResponse, Error>?
+        var workspacesResult: Result<WorkspacesResponse, Error>?
+        if canReadProfileScopedEndpoints {
+            async let scopedModels = Self.capture {
+                try await client.models(freshness: .sessionVisit)
             }
-            if Self.nonEmpty(state.currentModelProvider) == nil {
-                state.currentModelProvider = Self.uniqueProvider(
-                    for: state.currentModel,
-                    in: state.modelCatalogGroups
-                )
+            async let scopedWorkspaces = Self.capture {
+                try await client.workspaces()
             }
-        case .failure(let error):
-            record(error)
+            modelsResult = await scopedModels
+            workspacesResult = await scopedWorkspaces
+
+            // Another client can switch the global active profile while these
+            // requests are in flight. Re-read it and discard both responses if
+            // the scope moved; showing no catalog is safer than showing another
+            // profile's models as though they belonged to this session.
+            do {
+                let activeAfter = Self.nonEmpty(try await client.profiles().active)
+                if activeAfter != activeProfileBeforeScopedReads {
+                    canReadProfileScopedEndpoints = false
+                    modelsResult = nil
+                    workspacesResult = nil
+                    record(ProfileScopeChangedDuringLoad())
+                }
+            } catch {
+                canReadProfileScopedEndpoints = false
+                modelsResult = nil
+                workspacesResult = nil
+                record(error)
+            }
+        } else if Self.nonEmpty(state.currentProfile) != nil {
+            record(ProfileScopeChangedDuringLoad())
         }
 
-        // Scope the query to the session's resolved model/provider *and* its
-        // session id so the effort read reflects this chat's retained effort,
-        // never another session's override or the global config default.
+        if canReadProfileScopedEndpoints {
+            switch modelsResult {
+            case .success(let modelsResponse):
+                state.modelCatalogGroups = modelsResponse.catalogGroups
+                if state.currentModel == nil {
+                    state.currentModel = modelsResponse.defaultModel
+                }
+                if Self.nonEmpty(state.currentModelProvider) == nil {
+                    state.currentModelProvider = Self.uniqueProvider(
+                        for: state.currentModel,
+                        in: state.modelCatalogGroups
+                    )
+                }
+            case .failure(let error):
+                record(error)
+            case nil:
+                break
+            }
+        }
+
+        // The reasoning endpoint is explicitly scoped by model/provider/session,
+        // so it remains safe even when the profile-global catalog was discarded.
         let reasoningResult = await Self.capture {
             try await client.reasoning(
                 model: Self.nonEmpty(state.currentModel),
@@ -176,15 +215,19 @@ struct ChatComposerConfigLoader {
             record(error)
         }
 
-        switch await workspacesResult {
-        case .success(let workspaceResponse):
-            state.workspaceRoots = workspaceResponse.workspaces ?? []
-            if state.currentWorkspace == nil {
-                state.currentWorkspace = workspaceResponse.last ?? state.workspaceRoots.compactMap(\.path).first
+        if canReadProfileScopedEndpoints {
+            switch workspacesResult {
+            case .success(let workspaceResponse):
+                state.workspaceRoots = workspaceResponse.workspaces ?? []
+                if state.currentWorkspace == nil {
+                    state.currentWorkspace = workspaceResponse.last ?? state.workspaceRoots.compactMap(\.path).first
+                }
+                state.workspaceSuggestions = state.workspaceRoots.compactMap(\.path)
+            case .failure(let error):
+                record(error)
+            case nil:
+                break
             }
-            state.workspaceSuggestions = state.workspaceRoots.compactMap(\.path)
-        case .failure(let error):
-            record(error)
         }
 
         state.agentCommands = (await commandsResult)?.commands ?? []

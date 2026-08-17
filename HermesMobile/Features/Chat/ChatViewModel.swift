@@ -3035,7 +3035,7 @@ final class ChatViewModel {
 
         do {
             if Self.reasoningDisplayArgs.contains(reasoning) {
-                _ = try await client.saveReasoningDisplay(reasoning, sessionID: sessionID)
+                _ = try await client.saveReasoningDisplay(reasoning)
             } else if Self.reasoningEffortArgs.contains(reasoning) {
                 let response = try await client.saveReasoningEffort(
                     reasoning,

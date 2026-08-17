@@ -59,11 +59,14 @@ extension APIClient {
         )
     }
 
-    func saveReasoningDisplay(_ display: String, sessionID: String? = nil) async throws -> ReasoningStatusResponse {
+    /// Reasoning visibility is a profile-global display preference on the
+    /// server. Do not imply per-session semantics by sending a session id that
+    /// the endpoint intentionally ignores.
+    func saveReasoningDisplay(_ display: String) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningDisplayRequest(display: display, sessionId: sessionID)
+            body: ReasoningDisplayRequest(display: display)
         )
     }
 
@@ -196,7 +199,6 @@ private struct ReasoningEffortRequest: Encodable {
 
 private struct ReasoningDisplayRequest: Encodable {
     let display: String
-    let sessionId: String?
 }
 
 private struct PersonalitySetRequest: Encodable {

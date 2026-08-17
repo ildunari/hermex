@@ -4980,20 +4980,18 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertTrue(didStart)
         XCTAssertEqual(streamClient.startedURLs.count, 1)
         // Hydration is read-only with respect to the server's active profile:
-        // the session's "work" profile is resolved from `/api/profiles` and
-        // `/api/models`, never by switching the server's global active profile
-        // (which every other client would observe). The send (`/api/chat/start`)
-        // happens after configuration resolves.
+        // the session's "work" default comes from `/api/profiles`, while the
+        // active "default" profile's catalog/workspaces are withheld rather
+        // than mislabeled. The send still carries the resolved session profile,
+        // model, and provider after configuration resolves.
         let paths = requestPaths.value
         XCTAssertEqual(Set(paths), [
             "/api/profiles",
-            "/api/models",
             "/api/reasoning",
-            "/api/workspaces",
             "/api/commands",
             "/api/chat/start"
         ])
-        XCTAssertEqual(paths.count, 6, "no endpoint should be issued twice")
+        XCTAssertEqual(paths.count, 4, "no endpoint should be issued twice")
         XCTAssertEqual(paths.last, "/api/chat/start", "send must follow configuration")
     }
 
@@ -5176,7 +5174,9 @@ final class ChatViewModelSendTests: XCTestCase {
         XCTAssertEqual(viewModel.selectedWorkspacePath, selectedWorkspace)
         XCTAssertEqual(viewModel.selectedModelID, "gpt-5.4")
         XCTAssertEqual(viewModel.selectedModelProviderID, "openai")
-        XCTAssertEqual(profileRequests.count, 2)
+        // Each of the two loads brackets profile-scoped reads with a before/after
+        // active-profile validation, so two loads issue four profile reads.
+        XCTAssertEqual(profileRequests.count, 4)
         XCTAssertNil(viewModel.composerConfigurationErrorMessage)
     }
 
