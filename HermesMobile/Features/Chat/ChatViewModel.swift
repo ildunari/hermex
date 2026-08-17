@@ -976,6 +976,21 @@ final class ChatViewModel {
         }
     }
 
+    /// Adopts the model/provider the server actually used for a chat start
+    /// (requested-to-actual attribution). The server may normalize or fall back
+    /// to a different model than the request, and echoing that value keeps the
+    /// composer showing what really ran. This is session-scoped only: it never
+    /// switches the session's profile and never disturbs profile-global state,
+    /// so a fallback to another profile's model does not move the whole session.
+    private func applyChatStartAttribution(_ response: ChatStartResponse) {
+        if let effectiveModel = Self.nonEmpty(response.effectiveModel) {
+            currentModel = effectiveModel
+        }
+        if let effectiveProvider = Self.nonEmpty(response.effectiveModelProvider) {
+            currentModelProvider = effectiveProvider
+        }
+    }
+
     func loadComposerConfiguration() async {
         if isLoadingComposerConfiguration {
             needsComposerConfigurationReload = true
@@ -1382,7 +1397,11 @@ final class ChatViewModel {
         defer { isUpdatingComposerConfiguration = false }
 
         do {
-            let response = try await client.saveReasoningEffort(selectedEffort)
+            let response = try await client.saveReasoningEffort(
+                selectedEffort,
+                model: currentModel,
+                provider: currentModelProvider
+            )
             selectedReasoningEffort = response.effectiveEffort ?? selectedEffort
             return true
         } catch {
@@ -2463,6 +2482,7 @@ final class ChatViewModel {
                 return false
             }
 
+            applyChatStartAttribution(response)
             completeExplicitModelPickForChatStart(explicitModelPick)
             streamCoordinator.start(streamID: streamID)
             return true
@@ -3015,7 +3035,11 @@ final class ChatViewModel {
             if Self.reasoningDisplayArgs.contains(reasoning) {
                 _ = try await client.saveReasoningDisplay(reasoning)
             } else if Self.reasoningEffortArgs.contains(reasoning) {
-                let response = try await client.saveReasoningEffort(reasoning)
+                let response = try await client.saveReasoningEffort(
+                    reasoning,
+                    model: currentModel,
+                    provider: currentModelProvider
+                )
                 selectedReasoningEffort = response.effectiveEffort ?? reasoning
             } else {
                 return .unsupported(friendlyMessage: String(localized: "Unknown reasoning level: \(reasoning)."))
@@ -3483,6 +3507,7 @@ final class ChatViewModel {
                 return .unsupported(friendlyMessage: chatResponse.error ?? String(localized: "The server did not return a stream ID after retrying."))
             }
 
+            applyChatStartAttribution(chatResponse)
             completeExplicitModelPickForChatStart(explicitModelPick)
             messages.append(
                 ChatMessage(
@@ -3847,6 +3872,7 @@ final class ChatViewModel {
                 return false
             }
 
+            applyChatStartAttribution(chatResponse)
             completeExplicitModelPickForChatStart(explicitModelPick)
             streamCoordinator.prepareForNewResponse()
             responseCompletionNeedsTranscriptRefresh = false

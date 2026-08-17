@@ -33,11 +33,26 @@ extension APIClient {
         try await send(endpoint: .reasoning(model: model, provider: provider), method: "GET")
     }
 
-    func saveReasoningEffort(_ effort: String) async throws -> ReasoningStatusResponse {
+    /// Saves the reasoning effort for the session's current model. The write is
+    /// profile-global on the server (`agent.reasoning_effort`), so this never
+    /// claims per-session persistence; `model`/`provider` instead scope the
+    /// server's coercion so the echoed `reasoning_effort` matches what this
+    /// session's model actually accepts (mirrors the GET path, issue #18).
+    /// Both are optional so older servers that only accept a bare `effort`
+    /// keep working.
+    func saveReasoningEffort(
+        _ effort: String,
+        model: String? = nil,
+        provider: String? = nil
+    ) async throws -> ReasoningStatusResponse {
         try await send(
             endpoint: .reasoning(),
             method: "POST",
-            body: ReasoningEffortRequest(effort: effort)
+            body: ReasoningEffortRequest(
+                effort: effort,
+                model: model,
+                provider: provider
+            )
         )
     }
 
@@ -171,6 +186,8 @@ private struct DefaultModelRequest: Encodable {
 
 private struct ReasoningEffortRequest: Encodable {
     let effort: String
+    let model: String?
+    let provider: String?
 }
 
 private struct ReasoningDisplayRequest: Encodable {

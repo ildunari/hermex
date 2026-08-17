@@ -4,6 +4,12 @@ struct ChatStartResponse: Decodable, Equatable {
     let streamId: String?
     let sessionId: String?
     let error: String?
+    /// The model the server actually resolved for this run. Present when the
+    /// requested model was normalized or fell back to a different one, so the
+    /// composer can show the real (effective) model instead of the request.
+    let effectiveModel: String?
+    /// The provider the server actually used, echoed back when resolved.
+    let effectiveModelProvider: String?
 }
 
 struct ChatCancelResponse: Decodable, Equatable {

@@ -331,6 +331,12 @@ final class APIClientConfigurationTests: APIClientTestCase {
             let data = try XCTUnwrap(apiTestBodyData(from: request))
             let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
             XCTAssertEqual(body?["effort"] as? String, "xhigh")
+            XCTAssertEqual(body?["model"] as? String, "@openai:gpt-5.5")
+            XCTAssertEqual(body?["provider"] as? String, "openai")
+            // The reasoning write is profile-global on the server; the client
+            // must not invent a per-session field the endpoint does not accept.
+            XCTAssertNil(body?["session_id"])
+            XCTAssertNil(body?["sessionId"])
 
             return apiTestJSONResponse("""
             {
@@ -340,7 +346,11 @@ final class APIClientConfigurationTests: APIClientTestCase {
             """, for: request)
         }
 
-        let response = try await client.saveReasoningEffort("xhigh")
+        let response = try await client.saveReasoningEffort(
+            "xhigh",
+            model: "@openai:gpt-5.5",
+            provider: "openai"
+        )
 
         XCTAssertEqual(response.ok, true)
         XCTAssertEqual(response.effectiveEffort, "xhigh")

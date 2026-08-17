@@ -222,6 +222,43 @@ final class ModelCatalogTests: XCTestCase {
             groups
         )
     }
+
+    // MARK: - /api/chat/start effective-model attribution
+
+    func testChatStartResponseDecodesEffectiveModelAndProvider() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            ChatStartResponse.self,
+            from: Data("""
+            {
+              "stream_id": "stream-1",
+              "session_id": "session-abc",
+              "effective_model": "@openai:gpt-5.5",
+              "effective_model_provider": "openai"
+            }
+            """.utf8)
+        )
+
+        XCTAssertEqual(response.streamId, "stream-1")
+        XCTAssertEqual(response.sessionId, "session-abc")
+        XCTAssertEqual(response.effectiveModel, "@openai:gpt-5.5")
+        XCTAssertEqual(response.effectiveModelProvider, "openai")
+    }
+
+    func testChatStartResponseToleratesMissingEffectiveModelFields() throws {
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        let response = try decoder.decode(
+            ChatStartResponse.self,
+            from: Data(#"{"stream_id": "stream-1", "session_id": "session-abc"}"#.utf8)
+        )
+
+        XCTAssertEqual(response.streamId, "stream-1")
+        XCTAssertEqual(response.sessionId, "session-abc")
+        XCTAssertNil(response.effectiveModel)
+        XCTAssertNil(response.effectiveModelProvider)
+    }
 }
 
 final class PersonalityAutocompleteTests: XCTestCase {
