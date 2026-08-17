@@ -170,6 +170,7 @@ final class SlashCommandTests: XCTestCase {
         XCTAssertTrue(levels.contains("medium"))
         XCTAssertTrue(levels.contains("high"))
         XCTAssertTrue(levels.contains("xhigh"))
+        XCTAssertTrue(levels.contains("max"))
     }
 
     // MARK: - ParsedSlashQuery
