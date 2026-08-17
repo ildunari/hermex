@@ -100,3 +100,25 @@ unless explicitly asked.
 If something here surprises you or contradicts the project, tell the developer and
 **propose** an AGENTS.md edit — don't silently edit it. This file is a Band-Aid for what
 can't be fixed in code/tests/tooling; your proposed edits are also a signal of what to fix structurally.
+
+## Cursor Cloud specific instructions
+Cursor Cloud Agent VMs run **Linux x86_64 (Ubuntu 24.04)**, but Hermex is a native
+iOS/SwiftUI app that only builds on **macOS + Xcode 26 (iOS 18 SDK) + iOS Simulator**.
+Those tools are Apple-only and cannot be installed on Linux, so on a Cloud Agent VM you
+**cannot** build/run/launch the app or run the XCTest suite (`xcodebuild`, `xcrun`,
+`simctl`, XcodeBuildMCP, InjectionIII, and the whole `.xcodebuildmcp`/simulator flow in
+this file are unavailable). Real iOS build/test/run must happen on macOS — locally or via
+the existing GitHub Actions `Build and Test` job (`.github/workflows/pr-ci.yml`, `macos-26`).
+
+What a Linux Cloud Agent VM *can* do — useful for docs, config, non-Swift tooling, and
+static reasoning about Swift source:
+- `scripts/check-swift-file-sizes` — the repo file-size policy lint (bash; warning-only).
+- `ruby ci/select_testflight_build_number_test.rb` — TestFlight build-number selector unit
+  tests. Needs Ruby (`sudo apt-get install -y ruby-full`); `minitest` ships with Ruby, so
+  no extra gem install. This is maintainer CI tooling, not part of the app build.
+- `python3` is preinstalled for helper scripts (e.g. `scripts/verify_kanban_reference_server.py`,
+  which additionally needs the pinned upstream Hermes/WebUI checkouts to do anything).
+
+There are no Linux-installable dependencies for the app itself (no `Package.swift`,
+`package.json`, or `requirements.txt` at the repo root; SwiftPM deps resolve inside Xcode
+on macOS), so the Cloud Agent update script installs nothing.
