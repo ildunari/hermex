@@ -62,3 +62,9 @@ fastlane/test_output/
 
 # Local agent plan/scratch state (per-session, per-machine; not tracked)
 /.hermes/
+
+# Local design-exploration renders (HTML comps + PNG/JPG output, ~46 MB).
+# Curated design work belongs in docs/design/; these are per-session scratch.
+/design/
+/session-inbox-concepts/
+/session-inbox-concepts-collage.png
