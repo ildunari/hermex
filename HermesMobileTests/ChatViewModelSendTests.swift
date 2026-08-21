@@ -6683,6 +6683,112 @@ final class ChatViewModelSendTests: XCTestCase {
     }
 
     @MainActor
+    func testReloadWithMisalignedOverlapStillReplacesTranscript() async throws {
+        var sessionRequestCount = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            sessionRequestCount += 1
+            if sessionRequestCount == 1 {
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                      {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                    ],
+                    "_messages_truncated": true,
+                    "_messages_offset": 2
+                  }
+                }
+                """, for: request)
+            }
+
+            // A rewrite retained the first on-screen message but moved it to a
+            // different absolute index. Preserving offset 2 would make both row
+            // identity and destructive action keep-counts incorrect.
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "assistant", "content": "Compacted context", "timestamp": 2, "message_id": "a-1"},
+                  {"role": "user", "content": "Recent question", "timestamp": 3, "message_id": "u-2"},
+                  {"role": "assistant", "content": "Recent answer", "timestamp": 4, "message_id": "a-3"}
+                ],
+                "_messages_truncated": false,
+                "_messages_offset": 0
+              }
+            }
+            """, for: request)
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Compacted context",
+            "Recent question",
+            "Recent answer"
+        ])
+        XCTAssertEqual(viewModel.messagesOffset, 0)
+        XCTAssertFalse(viewModel.hasOlderMessages)
+    }
+
+    @MainActor
+    func testReloadUsesExpectedOverlapWhenFallbackMessageIDsRepeat() async throws {
+        var sessionRequestCount = 0
+        let viewModel = try makeViewModel { request in
+            XCTAssertEqual(request.url?.path, "/api/session")
+            sessionRequestCount += 1
+            if sessionRequestCount == 1 {
+                return apiTestJSONResponse("""
+                {
+                  "session": {
+                    "session_id": "session-abc",
+                    "messages": [
+                      {"role": "user", "content": "Repeated question"},
+                      {"role": "assistant", "content": "Recent answer", "message_id": "a-3"}
+                    ],
+                    "_messages_truncated": true,
+                    "_messages_offset": 2
+                  }
+                }
+                """, for: request)
+            }
+
+            // The first and third messages intentionally share ChatMessage's
+            // fallback ID. The offset delta identifies index 2 as the real
+            // overlap; firstIndex would incorrectly choose index 0.
+            return apiTestJSONResponse("""
+            {
+              "session": {
+                "session_id": "session-abc",
+                "messages": [
+                  {"role": "user", "content": "Repeated question"},
+                  {"role": "assistant", "content": "Older answer", "message_id": "a-1"},
+                  {"role": "user", "content": "Repeated question"},
+                  {"role": "assistant", "content": "Recent answer", "message_id": "a-3"}
+                ],
+                "_messages_truncated": false,
+                "_messages_offset": 0
+              }
+            }
+            """, for: request)
+        }
+
+        await viewModel.loadMessages()
+        await viewModel.loadMessages()
+
+        XCTAssertEqual(viewModel.messages.compactMap(\.content), [
+            "Repeated question",
+            "Recent answer"
+        ])
+        XCTAssertEqual(viewModel.messagesOffset, 2)
+        XCTAssertTrue(viewModel.hasOlderMessages)
+    }
+
+    @MainActor
     func testLoadOlderMessagesKeepsAffordanceWhenAnotherOlderPageExists() async throws {
         let viewModel = try makeViewModel { request in
             XCTAssertEqual(request.url?.path, "/api/session")

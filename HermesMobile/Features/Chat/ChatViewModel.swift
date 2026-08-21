@@ -1625,10 +1625,11 @@ final class ChatViewModel {
     /// and a reader who scrolled up is dumped at the top of the session.
     ///
     /// When the reloaded window still contains the first message we're already
-    /// showing, drop the reloaded rows *before* that overlap and keep the
-    /// current offset: rows on screen keep their renderIDs, and the tail is
-    /// replaced with the server-authoritative content. Returns nil when the
-    /// windows don't overlap (fall back to plain replacement).
+    /// showing at the absolute index implied by both offsets, drop the reloaded
+    /// rows *before* that overlap and keep the current offset: rows on screen
+    /// keep their renderIDs, and the tail is replaced with the
+    /// server-authoritative content. Returns nil when the windows don't align
+    /// (fall back to plain replacement).
     nonisolated private static func trimmingReloadedMessages(
         _ reloadedMessages: [ChatMessage],
         toPreserveCurrentMessages currentMessages: [ChatMessage],
@@ -1636,8 +1637,14 @@ final class ChatViewModel {
         reloadedMessagesOffset: Int
     ) -> [ChatMessage]? {
         guard reloadedMessagesOffset < currentMessagesOffset,
-              let firstCurrentMessage = currentMessages.first,
-              let overlapIndex = reloadedMessages.firstIndex(where: { $0.id == firstCurrentMessage.id })
+              let firstCurrentMessage = currentMessages.first
+        else {
+            return nil
+        }
+
+        let overlapIndex = currentMessagesOffset - reloadedMessagesOffset
+        guard reloadedMessages.indices.contains(overlapIndex),
+              reloadedMessages[overlapIndex].id == firstCurrentMessage.id
         else {
             return nil
         }
